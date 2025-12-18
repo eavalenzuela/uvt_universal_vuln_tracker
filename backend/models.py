@@ -31,7 +31,24 @@ class Product(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     creator = db.relationship("User", foreign_keys=[created_by])
 
+    owners = db.relationship("ProductOwner", back_populates="product", cascade="all, delete-orphan")
     versions = db.relationship("ProductVersion", back_populates="product", cascade="all, delete-orphan")
+
+class ProductOwner(db.Model):
+    __tablename__ = "product_owners"
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    product = db.relationship("Product", back_populates="owners")
+    user = db.relationship("User")
+
+    __table_args__ = (
+        db.UniqueConstraint("product_id", "user_id", name="unique_product_owner"),
+    )
 
 class ProductVersion(db.Model):
     __tablename__ = "product_versions"
