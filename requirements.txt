@@ -1,0 +1,18 @@
+# Core
+Flask>=3.0,<4.0
+Werkzeug>=3.0,<4.0
+
+# DB / ORM / Migrations
+SQLAlchemy>=2.0,<3.0
+Flask-SQLAlchemy>=3.1,<4.0
+Alembic>=1.13,<2.0
+Flask-Migrate>=4.0,<5.0
+
+# Headers
+Flask-CORS>=6.0.2
+
+# Auth
+PyJWT>=2.8,<3.0
+
+# Postgres driver (psycopg v3)
+psycopg[binary]>=3.1,<4.0

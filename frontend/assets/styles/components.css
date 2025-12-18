@@ -1,0 +1,67 @@
+.row { display: flex; gap: 12px; align-items: center; }
+.spacer { flex: 1; }
+
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700;
+}
+
+.card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.btn {
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #e6e8ee;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.btn.primary {
+  border-color: rgba(106,169,255,0.6);
+  background: rgba(106,169,255,0.18);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #e6e8ee;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.nav a {
+  display: block;
+  padding: 10px 10px;
+  border-radius: 10px;
+  color: rgba(230,232,238,0.9);
+}
+.nav a.active {
+  background: rgba(106,169,255,0.18);
+  border: 1px solid rgba(106,169,255,0.25);
+}
+
+#toast-root {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  min-width: 260px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(20,24,35,0.95);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.toast .title { font-weight: 700; margin-bottom: 4px; }
+.toast .msg { color: rgba(230,232,238,0.85); }

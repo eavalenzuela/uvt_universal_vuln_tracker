@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>UVT – Universal Vuln Tracker</title>
+    <link rel="icon" href="./favicon.ico" />
+    <link rel="stylesheet" href="./assets/styles/base.css" />
+    <link rel="stylesheet" href="./assets/styles/layout.css" />
+    <link rel="stylesheet" href="./assets/styles/components.css" />
+    <link rel="stylesheet" href="./assets/styles/pages.css" />
+  </head>
+  <body>
+    <div id="app-shell">
+      <header id="app-header"></header>
+
+      <div id="app-body">
+        <nav id="app-sidebar" aria-label="Primary"></nav>
+        <main id="app-main" tabindex="-1"></main>
+      </div>
+
+      <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+      <div id="modal-root"></div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
