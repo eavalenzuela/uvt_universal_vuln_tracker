@@ -5,9 +5,11 @@ import secrets
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
 
+from datetime import datetime
+
 from ..database import db
-from ..models import User
-from ..auth import role_required, hash_password, generate_token
+from ..models import User, AuditLog
+from ..auth import role_required, hash_password, generate_token, revoke_tokens
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
@@ -38,6 +40,20 @@ def _user_summary(u: User):
         "full_name": full_name or None,
         "is_active": u.is_active,
     }
+
+
+def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
+    db.session.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            table_name=table,
+            record_id=record_id,
+            old_values=old_values,
+            new_values=new_values,
+            created_at=datetime.utcnow(),
+        )
+    )
 
 @bp.get("/users")
 @role_required("Admin")
@@ -170,6 +186,9 @@ def update_user(user_id: int):
     u = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
 
+    changed = False
+    old_values = {}
+
     if "email" in data:
         email = (data.get("email") or "").strip()
         if not email:
@@ -177,25 +196,45 @@ def update_user(user_id: int):
         existing = User.query.filter(User.email == email, User.id != u.id).first()
         if existing:
             return jsonify({"error": "Email already exists"}), 400
+        old_values["email"] = u.email
         u.email = email
+        changed = True
 
     if "username" in data:
         # keep simple: disallow username change for now
         return jsonify({"error": "username cannot be changed"}), 400
 
     if "first_name" in data:
+        old_values["first_name"] = u.first_name
         u.first_name = data.get("first_name")
+        changed = True
     if "last_name" in data:
+        old_values["last_name"] = u.last_name
         u.last_name = data.get("last_name")
+        changed = True
 
+    role_changed = False
     if "role" in data:
         role = (data.get("role") or "").strip()
         if role not in _ALLOWED_ROLES:
             return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
+        old_values["role"] = u.role
         u.role = role
+        role_changed = True
+        changed = True
 
+    is_active_changed = False
     if "is_active" in data:
+        is_active_changed = bool(data.get("is_active")) != bool(u.is_active)
+        old_values["is_active"] = u.is_active
         u.is_active = bool(data.get("is_active"))
+        changed = True
+
+    if role_changed or is_active_changed:
+        revoke_tokens(u)
+
+    if changed:
+        _audit(request.user.id, "UPDATE", "users", u.id, old_values=old_values or None, new_values=_user_json(u))
 
     db.session.commit()
     return jsonify(_user_json(u))
@@ -213,7 +252,10 @@ def reset_password(user_id: int):
     if not password:
         return jsonify({"error": "password is required"}), 400
 
+    old_password_hash = u.password_hash
     u.password_hash = hash_password(password)
+    revoke_tokens(u)
+    _audit(request.user.id, "RESET_PASSWORD", "users", u.id, old_values={"password_hash": old_password_hash}, new_values=None)
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -225,7 +267,21 @@ def impersonate(user_id: int):
     if not target.is_active:
         return jsonify({"error": "Cannot impersonate inactive user"}), 400
 
-    token = generate_token(target.id, target.username, target.role)
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "reason is required to impersonate"}), 400
+
+    token = generate_token(target.id, target.username, target.role, target.token_version, target.last_revoked_at)
+    _audit(
+        request.user.id,
+        "IMPERSONATE",
+        "users",
+        target.id,
+        old_values={"actor": request.user.username},
+        new_values={"impersonated": target.username, "reason": reason},
+    )
+    db.session.commit()
     return jsonify({"token": token, "user": _user_json(target)})
 
 
@@ -234,8 +290,58 @@ def impersonate(user_id: int):
 def toggle_active(user_id: int):
     u = User.query.get_or_404(user_id)
     u.is_active = not u.is_active
+    revoke_tokens(u)
+    _audit(
+        request.user.id,
+        "TOGGLE_ACTIVE",
+        "users",
+        u.id,
+        old_values={"is_active": not u.is_active},
+        new_values={"is_active": u.is_active},
+    )
     db.session.commit()
     return jsonify(_user_json(u))
+
+
+@bp.get("/audit-logs")
+@role_required("Admin")
+def list_audit_logs():
+    limit = request.args.get("limit")
+    try:
+        limit = int(limit) if limit is not None else 100
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid limit"}), 400
+    limit = max(1, min(limit, 500))
+
+    action = (request.args.get("action") or "").strip()
+    table = (request.args.get("table") or "").strip()
+
+    query = AuditLog.query
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if table:
+        query = query.filter(AuditLog.table_name == table)
+
+    logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
+
+    def _user_payload(log: AuditLog):
+        if not log.user:
+            return None
+        return {"id": log.user.id, "username": log.user.username, "email": log.user.email}
+
+    return jsonify([
+        {
+            "id": log.id,
+            "action": log.action,
+            "table_name": log.table_name,
+            "record_id": log.record_id,
+            "old_values": log.old_values,
+            "new_values": log.new_values,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "user": _user_payload(log),
+        }
+        for log in logs
+    ])
 
 
 @bp.get("/users/export")

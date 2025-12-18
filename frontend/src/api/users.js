@@ -19,8 +19,8 @@ export async function toggleUserActive(userId) {
   return apiFetch(`/api/users/${userId}/toggle-active`, { method: "POST" });
 }
 
-export async function impersonateUser(userId) {
-  return apiFetch(`/api/users/${userId}/impersonate`, { method: "POST" });
+export async function impersonateUser(userId, { reason } = {}) {
+  return apiFetch(`/api/users/${userId}/impersonate`, { method: "POST", body: { reason } });
 }
 
 export async function updateUser(userId, data) {

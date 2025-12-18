@@ -159,7 +159,12 @@ export async function AdminUsersView() {
       data.forEach((u) => userList.appendChild(userCard(u, {
         onImpersonate: async (user) => {
           try {
-            const res = await impersonateUser(user.id);
+            const reason = window.prompt(`Why are you impersonating ${user.username}?`);
+            if (!reason) {
+              toast({ title: "Impersonation cancelled", message: "A reason is required" });
+              return;
+            }
+            const res = await impersonateUser(user.id, { reason });
             setSession({ token: res.token, user: res.user });
             toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
           } catch (e) {

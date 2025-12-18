@@ -8,18 +8,26 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from .database import db
 from .models import User
 
+
+def revoke_tokens(user: User):
+    user.token_version = int(user.token_version or 0) + 1
+    user.last_revoked_at = datetime.datetime.utcnow()
+    db.session.add(user)
+
 def hash_password(password: str) -> str:
     return generate_password_hash(password)
 
 def verify_password(password: str, hashed_password: str) -> bool:
     return check_password_hash(hashed_password, password)
 
-def generate_token(user_id: int, username: str, role: str) -> str:
+def generate_token(user_id: int, username: str, role: str, token_version: int = 1, last_revoked_at=None) -> str:
     now = datetime.datetime.utcnow()
     payload = {
         "sub": str(user_id),
         "username": username,
         "role": role,
+        "token_version": int(token_version or 1),
+        "last_revoked_at": int(last_revoked_at.timestamp()) if last_revoked_at else None,
         "iat": now,
         "exp": now + datetime.timedelta(hours=12),
     }
@@ -51,6 +59,20 @@ def login_required(f):
         if not user or not user.is_active:
             return jsonify({"error": "User inactive or not found"}), 401
 
+        token_version = int(claims.get("token_version", 0))
+        if token_version != int(user.token_version or 0):
+            return jsonify({"error": "Token revoked"}), 401
+
+        issued_at = claims.get("iat")
+        last_revoked_at = user.last_revoked_at
+        if issued_at and last_revoked_at:
+            try:
+                issued_dt = datetime.datetime.utcfromtimestamp(issued_at) if isinstance(issued_at, (int, float)) else issued_at
+                if issued_dt <= last_revoked_at:
+                    return jsonify({"error": "Token revoked"}), 401
+            except Exception:
+                return jsonify({"error": "Invalid token"}), 401
+
         request.user = user  # simple attachment for downstream use
         request.jwt_claims = claims
         return f(*args, **kwargs)
@@ -64,9 +86,6 @@ def admin_required(f):
             return jsonify({"error": "Admin required"}), 403
         return f(*args, **kwargs)
     return wrapper
-
-from functools import wraps
-from flask import jsonify, request
 
 def role_required(*allowed_roles: str):
     """
