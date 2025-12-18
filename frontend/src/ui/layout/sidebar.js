@@ -28,7 +28,10 @@ export function renderSidebar() {
   root.innerHTML = "";
 
   const state = getState();
-  if (!isAuthed(state)) {
+  const authed = isAuthed(state);
+  const admin = isAdmin(state);
+
+  if (!authed) {
     root.appendChild(el("div", { class: "muted" }, "Please log in."));
     return;
   }
@@ -39,7 +42,7 @@ export function renderSidebar() {
     navLink("Products", "/products"),
   );
 
-  if (isAdmin(state)) {
+  if (admin) {
     nav.appendChild(el("div", { style: "height:10px" }));
     nav.appendChild(navLink("Admin: Users", "/admin/users"));
   }
