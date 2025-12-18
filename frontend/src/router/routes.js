@@ -2,8 +2,8 @@ import { requireAuth, requireRole } from "./guards.js";
 import { LoginView } from "../views/login/loginView.js";
 import { DashboardView } from "../views/dashboard/dashboardView.js";
 import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
-import { ProductsView } from "../views/products/productsView.js";
 import { NotFoundView } from "../views/notFoundView.js";
+import { AdminUsersView } from "../views/admin/adminUsersView.js";
 
 // Later you can add: VulnDetailView for "/vulnerabilities/:id"
 export const ROUTES = [
@@ -21,5 +21,5 @@ export const ROUTES = [
   { path: "/products", view: ProductsView, guard: () => requireAuth() },
   { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
 
-  { path: "/admin/users", view: () => NotFoundView({ message: "Users admin view not wired yet." }), guard: () => requireAuth() && requireRole("Admin") },
+  { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
 ];
