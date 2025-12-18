@@ -7,7 +7,7 @@ from backend.models import Product, ProductVersion, User, Vulnerability, Vulnera
 
 
 def auth_header(user):
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -142,7 +142,11 @@ def test_user_management_endpoints(app, client):
     assert toggle_resp.status_code == 200
     assert toggle_resp.get_json()["is_active"] is True
 
-    impersonate_resp = client.post(f"/api/users/{analyst_id}/impersonate", headers=headers)
+    impersonate_resp = client.post(
+        f"/api/users/{analyst_id}/impersonate",
+        headers=headers,
+        json={"reason": "Troubleshooting user issue"},
+    )
     assert impersonate_resp.status_code == 200
     assert "token" in impersonate_resp.get_json()
 

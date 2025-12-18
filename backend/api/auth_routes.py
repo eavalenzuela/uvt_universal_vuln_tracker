@@ -16,7 +16,7 @@ def login():
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     return jsonify({
         "token": token,
         "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}
@@ -48,7 +48,7 @@ def register():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     return jsonify({
         "token": token,
         "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}

@@ -18,6 +18,10 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    token_version = db.Column(db.Integer, default=1, nullable=False)
+    last_revoked_at = db.Column(db.DateTime)
+
+
 class Product(db.Model):
     __tablename__ = "products"
 

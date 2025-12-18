@@ -4,6 +4,7 @@ import { DashboardView } from "../views/dashboard/dashboardView.js";
 import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
 import { NotFoundView } from "../views/notFoundView.js";
 import { AdminUsersView } from "../views/admin/adminUsersView.js";
+import { AdminLogsView } from "../views/admin/adminLogsView.js";
 import { ProductsView } from "../views/products/productsView.js";
 
 // Later you can add: VulnDetailView for "/vulnerabilities/:id"
@@ -23,4 +24,5 @@ export const ROUTES = [
   { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
+  { path: "/admin/logs", view: AdminLogsView, guard: () => requireAuth() && requireRole("Admin") },
 ];
