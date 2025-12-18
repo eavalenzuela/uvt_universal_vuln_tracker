@@ -1,11 +1,31 @@
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 from sqlalchemy import asc, desc, or_
 
 from ..database import db
-from ..models import Vulnerability, VulnerabilityVersion, ProductVersion, AuditLog
+from ..models import Vulnerability, VulnerabilityVersion, ProductVersion, AuditLog, Product
 from ..auth import login_required, role_required
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
+
+
+def _parse_date(date_str):
+    if not date_str:
+        return None
+    try:
+        return datetime.fromisoformat(date_str).date()
+    except ValueError:
+        return None
+
+
+def _parse_cvss(score):
+    if score is None or score == "":
+        return None
+    try:
+        return round(float(score), 1)
+    except (TypeError, ValueError):
+        return None
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
     db.session.add(AuditLog(
@@ -16,6 +36,28 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
         old_values=old_values,
         new_values=new_values,
     ))
+
+@bp.get("/product_versions")
+@login_required
+def list_product_versions():
+    include_inactive = str(request.args.get("include_inactive", "")).lower() == "true"
+    q = ProductVersion.query.join(Product, ProductVersion.product_id == Product.id)
+    if not include_inactive:
+        q = q.filter(ProductVersion.is_active.is_(True))
+
+    versions = q.order_by(asc(Product.name), asc(ProductVersion.version)).all()
+    return jsonify([
+        {
+            "id": pv.id,
+            "product_id": pv.product_id,
+            "product_name": pv.product.name if pv.product else None,
+            "version": pv.version,
+            "release_date": pv.release_date.isoformat() if pv.release_date else None,
+            "is_active": pv.is_active,
+        }
+        for pv in versions
+    ])
+
 
 @bp.get("/vulnerabilities")
 @login_required
@@ -54,6 +96,7 @@ def list_vulnerabilities():
             "status": v.status,
             "published_date": v.published_date.isoformat() if v.published_date else None,
             "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
+            "created_at": v.created_at.isoformat(),
             "updated_at": v.updated_at.isoformat(),
         } for v in items.items],
         "page": page,
@@ -69,14 +112,22 @@ def create_vulnerability():
     if not title:
         return jsonify({"error": "title is required"}), 400
 
+    published_date = _parse_date(data.get("published_date"))
+    if data.get("published_date") and published_date is None:
+        return jsonify({"error": "Invalid published_date; expected ISO date"}), 400
+
+    last_modified_date = _parse_date(data.get("last_modified_date"))
+    if data.get("last_modified_date") and last_modified_date is None:
+        return jsonify({"error": "Invalid last_modified_date; expected ISO date"}), 400
+
     v = Vulnerability(
         cve_id=(data.get("cve_id") or None),
         title=title,
         description=data.get("description"),
         severity=data.get("severity", "Medium"),
-        cvss_score=data.get("cvss_score"),
-        published_date=data.get("published_date"),
-        last_modified_date=data.get("last_modified_date"),
+        cvss_score=_parse_cvss(data.get("cvss_score")),
+        published_date=published_date,
+        last_modified_date=last_modified_date,
         status=data.get("status", "Open"),
         created_by=request.user.id,
         assigned_to=data.get("assigned_to"),
@@ -87,9 +138,13 @@ def create_vulnerability():
     # optional: attach affected versions immediately
     affected_versions = data.get("affected_versions") or []
     for pv_id in affected_versions:
+        pv = ProductVersion.query.get(int(pv_id))
+        if not pv:
+            db.session.rollback()
+            return jsonify({"error": f"Invalid product version {pv_id}"}), 400
         db.session.add(VulnerabilityVersion(
             vulnerability_id=v.id,
-            product_version_id=int(pv_id),
+            product_version_id=pv.id,
             affected=True
         ))
 
@@ -122,7 +177,9 @@ def get_vulnerability(vuln_id: int):
             "mitigation_status": m.mitigation_status,
             "notes": m.notes,
             "product_id": pv.product_id if pv else None,
+            "product_name": pv.product.name if getattr(pv, "product", None) else None,
             "version": pv.version if pv else None,
+            "release_date": pv.release_date.isoformat() if getattr(pv, "release_date", None) else None,
         })
 
     return jsonify({
@@ -153,7 +210,20 @@ def update_vulnerability(vuln_id: int):
     for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
                   "last_modified_date", "status", "assigned_to"]:
         if field in data:
-            setattr(v, field, data[field])
+            if field == "title":
+                title_value = (data.get(field) or "").strip()
+                if not title_value:
+                    return jsonify({"error": "title cannot be empty"}), 400
+                setattr(v, field, title_value)
+            elif field in {"published_date", "last_modified_date"}:
+                parsed = _parse_date(data.get(field))
+                if data.get(field) and parsed is None:
+                    return jsonify({"error": f"Invalid {field}; expected ISO date"}), 400
+                setattr(v, field, parsed)
+            elif field == "cvss_score":
+                setattr(v, field, _parse_cvss(data.get(field)))
+            else:
+                setattr(v, field, data[field])
 
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status
@@ -202,3 +272,64 @@ def attach_versions(vuln_id: int):
 
     db.session.commit()
     return jsonify({"ok": True, "added": added})
+
+
+@bp.patch("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
+@role_required("Admin", "Analyst")
+def update_vulnerability_version(vuln_id: int, mapping_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    old_values = {
+        "affected": mapping.affected,
+        "fixed_in_version": mapping.fixed_in_version,
+        "mitigation_status": mapping.mitigation_status,
+        "notes": mapping.notes,
+    }
+
+    if "affected" in data:
+        val = data.get("affected")
+        if isinstance(val, str):
+            mapping.affected = val.lower() in {"true", "1", "yes", "on"}
+        else:
+            mapping.affected = bool(val)
+    for field in ["fixed_in_version", "mitigation_status", "notes"]:
+        if field in data:
+            setattr(mapping, field, data.get(field))
+
+    _audit(request.user.id, "UPDATE", "vulnerability_versions", mapping.id, old_values=old_values, new_values={
+        "affected": mapping.affected,
+        "fixed_in_version": mapping.fixed_in_version,
+        "mitigation_status": mapping.mitigation_status,
+        "notes": mapping.notes,
+    })
+
+    db.session.commit()
+
+    return jsonify({
+        "id": mapping.id,
+        "vulnerability_id": mapping.vulnerability_id,
+        "product_version_id": mapping.product_version_id,
+        "affected": mapping.affected,
+        "fixed_in_version": mapping.fixed_in_version,
+        "mitigation_status": mapping.mitigation_status,
+        "notes": mapping.notes,
+    })
+
+
+@bp.delete("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
+@role_required("Admin", "Analyst")
+def delete_vulnerability_version(vuln_id: int, mapping_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
+
+    _audit(request.user.id, "DELETE", "vulnerability_versions", mapping.id, old_values={
+        "product_version_id": mapping.product_version_id,
+        "affected": mapping.affected,
+        "fixed_in_version": mapping.fixed_in_version,
+    }, new_values=None)
+
+    db.session.delete(mapping)
+    db.session.commit()
+    return jsonify({"ok": True})
