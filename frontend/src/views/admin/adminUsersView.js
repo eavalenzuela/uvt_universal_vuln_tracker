@@ -1,4 +1,7 @@
 import { el } from "../../ui/dom/el.js";
+import { toast } from "../../ui/components/toast.js";
+import { setSession } from "../../state/store.js";
+import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
 
 function pill(label, color, subtle = false) {
   const baseColor = color || "#1f2937";
@@ -11,9 +14,13 @@ function pill(label, color, subtle = false) {
 }
 
 function statCard(title, value, hint) {
+  const valueNode = (typeof value === "string" || typeof value === "number")
+    ? el("div", { style: "font-size: 24px; font-weight: 700;", text: value })
+    : value;
+
   return el("div", { class: "card", style: "flex:1; min-width: 180px; padding: 12px;" },
     el("div", { class: "muted", text: title }),
-    el("div", { style: "font-size: 24px; font-weight: 700;" , text: value }),
+    valueNode,
     hint ? el("div", { class: "muted", style: "font-size: 12px;", text: hint }) : null,
   );
 }
@@ -28,12 +35,17 @@ function improvementCard(index, improvement) {
   );
 }
 
-function userCard(user) {
-  const statusColor = {
-    Active: "#16a34a",
-    Pending: "#f59e0b",
-    Disabled: "#dc2626",
-  }[user.status] || "#4b5563";
+function userCard(user, { onImpersonate, onToggle }) {
+  const statusLabel = user.is_active ? "Active" : "Disabled";
+  const statusColor = user.is_active ? "#16a34a" : "#dc2626";
+  const name = user.full_name || user.username;
+  const lastSeen = (user.updated_at || user.created_at || "").slice(0, 10) || "Unknown";
+
+  const impersonateBtn = el("button", { class: "btn" }, "Impersonate");
+  impersonateBtn.addEventListener("click", () => onImpersonate(user));
+
+  const toggleBtn = el("button", { class: "btn" }, user.is_active ? "Disable" : "Enable");
+  toggleBtn.addEventListener("click", () => onToggle(user));
 
   return el("div", { class: "card", style: "padding: 12px;" },
     el("div", { class: "row", style: "justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;" },
@@ -41,30 +53,20 @@ function userCard(user) {
         el("div", { class: "row", style: "align-items: center; gap: 8px; flex-wrap: wrap;" },
           el("div", { class: "muted", text: user.username }),
           pill(user.role, "#2563eb"),
-          pill(user.status, statusColor, true),
-          user.mfa ? pill("MFA", "#0d9488", true) : null,
+          pill(statusLabel, statusColor, true),
         ),
-        el("div", { style: "font-weight: 700; margin-top: 4px;", text: user.name }),
-        el("div", { class: "muted", style: "margin-top: 2px;", text: `${user.email} \u2022 Last seen ${user.lastSeen}` }),
-        user.notes ? el("div", { style: "margin-top: 8px;" , text: user.notes }) : null,
+        el("div", { style: "font-weight: 700; margin-top: 4px;", text: name }),
+        el("div", { class: "muted", style: "margin-top: 2px;", text: `${user.email} \u2022 Updated ${lastSeen}` }),
       ),
       el("div", { class: "row", style: "gap: 6px; flex-wrap: wrap;" },
-        el("button", { class: "btn" }, "Impersonate"),
-        el("button", { class: "btn" }, user.status === "Disabled" ? "Enable" : "Disable"),
-        el("button", { class: "btn" }, "Reset MFA"),
+        impersonateBtn,
+        toggleBtn,
       ),
     ),
   );
 }
 
 export async function AdminUsersView() {
-  const users = [
-    { username: "asato", name: "Alicia Sato", email: "asato@example.com", role: "Admin", status: "Active", lastSeen: "5m ago", mfa: true, notes: "Owns production RBAC and incident response." },
-    { username: "jsingh", name: "Jaspreet Singh", email: "jaspreet@example.com", role: "Analyst", status: "Pending", lastSeen: "Awaiting invite", mfa: false, notes: "Awaiting approval to join the AppSec rotation." },
-    { username: "lramirez", name: "Luis Ramirez", email: "lramirez@example.com", role: "Viewer", status: "Active", lastSeen: "2h ago", mfa: true, notes: "Read-only access for reporting. Auto-disables after 30 days idle." },
-    { username: "tnguyen", name: "Thao Nguyen", email: "thao@example.com", role: "Analyst", status: "Disabled", lastSeen: "Revoked", mfa: false, notes: "Temporarily disabled after offboarding ticket." },
-  ];
-
   const improvements = [
     {
       title: "Faster triage",
@@ -80,46 +82,151 @@ export async function AdminUsersView() {
     },
   ];
 
-  const stats = {
-    total: users.length,
-    active: users.filter((u) => u.status === "Active").length,
-    pending: users.filter((u) => u.status === "Pending").length,
-    disabled: users.filter((u) => u.status === "Disabled").length,
-  };
+  const totalEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
+  const activeEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
+  const pendingEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
+  const disabledEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
+
+  const searchInput = el("input", { class: "input", type: "search", placeholder: "Search by name, email, or username" });
+  const statusSelect = el("select", { class: "input" },
+    el("option", { value: "", text: "Filter by status" }),
+    el("option", { value: "active", text: "Active" }),
+    el("option", { value: "disabled", text: "Disabled" }),
+  );
+  const roleSelect = el("select", { class: "input" },
+    el("option", { value: "", text: "Filter by role" }),
+    el("option", { value: "Admin", text: "Admin" }),
+    el("option", { value: "Analyst", text: "Analyst" }),
+    el("option", { value: "Viewer", text: "Viewer" }),
+  );
+
+  const inviteBtn = el("button", { class: "btn primary" }, "Invite user");
+  const exportBtn = el("button", { class: "btn" }, "Export CSV");
+  const applyBtn = el("button", { class: "btn" }, "Apply filters");
 
   const controls = el("div", { class: "row", style: "gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0;" },
-    el("input", { class: "input", type: "search", placeholder: "Search by name, email, or username" }),
-    el("select", { class: "input" },
-      el("option", { value: "", text: "Filter by status" }),
-      el("option", { value: "Active", text: "Active" }),
-      el("option", { value: "Pending", text: "Pending" }),
-      el("option", { value: "Disabled", text: "Disabled" }),
-    ),
-    el("select", { class: "input" },
-      el("option", { value: "", text: "Filter by role" }),
-      el("option", { value: "Admin", text: "Admin" }),
-      el("option", { value: "Analyst", text: "Analyst" }),
-      el("option", { value: "Viewer", text: "Viewer" }),
-    ),
+    searchInput,
+    statusSelect,
+    roleSelect,
+    applyBtn,
     el("div", { class: "spacer" }),
-    el("button", { class: "btn primary" }, "Invite user"),
-    el("button", { class: "btn" }, "Export CSV"),
+    inviteBtn,
+    exportBtn,
   );
 
   const statsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
-    statCard("Total users", stats.total, "Includes all active, pending, and disabled"),
-    statCard("Active", stats.active, "Allowed to sign in"),
-    statCard("Pending", stats.pending, "Awaiting invite or approval"),
-    statCard("Disabled", stats.disabled, "Access revoked"),
+    statCard("Total users", totalEl, "Includes all active and disabled"),
+    statCard("Active", activeEl, "Allowed to sign in"),
+    statCard("Pending", pendingEl, "Awaiting activation"),
+    statCard("Disabled", disabledEl, "Access revoked"),
   );
 
   const improvementsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
     improvements.map((imp, idx) => improvementCard(idx, imp)),
   );
 
-  const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" },
-    users.map((u) => userCard(u)),
-  );
+  const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" });
+
+  function applyStats(data) {
+    const total = data.length;
+    const active = data.filter((u) => u.is_active).length;
+    const disabled = total - active;
+    totalEl.textContent = total.toString();
+    activeEl.textContent = active.toString();
+    disabledEl.textContent = disabled.toString();
+    pendingEl.textContent = "0";
+  }
+
+  async function loadUsersList() {
+    userList.innerHTML = "";
+    userList.appendChild(el("div", { class: "muted", text: "Loading users..." }));
+    try {
+      const data = await listUsers({
+        search: searchInput.value.trim() || undefined,
+        role: roleSelect.value || undefined,
+        status: statusSelect.value || undefined,
+      });
+
+      userList.innerHTML = "";
+      if (!data?.length) {
+        userList.appendChild(el("div", { class: "muted", text: "No users found." }));
+        applyStats([]);
+        return;
+      }
+
+      applyStats(data);
+
+      data.forEach((u) => userList.appendChild(userCard(u, {
+        onImpersonate: async (user) => {
+          try {
+            const res = await impersonateUser(user.id);
+            setSession({ token: res.token, user: res.user });
+            toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
+          } catch (e) {
+            toast({ title: "Impersonation failed", message: e?.message || "Unable to impersonate user" });
+          }
+        },
+        onToggle: async (user) => {
+          try {
+            const updated = await toggleUserActive(user.id);
+            toast({ title: updated.is_active ? "User enabled" : "User disabled", message: `${user.username} is now ${updated.is_active ? "active" : "disabled"}.` });
+            loadUsersList();
+          } catch (e) {
+            toast({ title: "Action failed", message: e?.message || "Unable to update user" });
+          }
+        },
+      })));
+    } catch (e) {
+      userList.innerHTML = "";
+      toast({ title: "Failed to load users", message: e?.message || "Unable to fetch users" });
+      userList.appendChild(el("div", { class: "muted", text: "Unable to load users." }));
+    }
+  }
+
+  applyBtn.addEventListener("click", loadUsersList);
+
+  inviteBtn.addEventListener("click", async () => {
+    const username = window.prompt("Username for the new user?");
+    if (!username) return;
+    const email = window.prompt("Email for the new user?");
+    if (!email) return;
+    const role = window.prompt("Role (Admin, Analyst, Viewer)?", "Analyst") || "Analyst";
+    const first_name = window.prompt("First name (optional)") || undefined;
+    const last_name = window.prompt("Last name (optional)") || undefined;
+
+    try {
+      const res = await inviteUser({ username: username.trim(), email: email.trim(), role: role.trim(), first_name, last_name });
+      toast({ title: "User invited", message: `Temp password: ${res.temp_password}` });
+      loadUsersList();
+    } catch (e) {
+      toast({ title: "Invite failed", message: e?.message || "Unable to invite user" });
+    }
+  });
+
+  exportBtn.addEventListener("click", async () => {
+    try {
+      const csv = await exportUsers({
+        search: searchInput.value.trim() || undefined,
+        role: roleSelect.value || undefined,
+        status: statusSelect.value || undefined,
+      });
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "users.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Exported", message: "User CSV downloaded" });
+    } catch (e) {
+      toast({ title: "Export failed", message: e?.message || "Unable to export users" });
+    }
+  });
+
+  loadUsersList();
 
   return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" },
     el("div", { class: "card" },
