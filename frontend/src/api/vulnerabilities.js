@@ -12,3 +12,40 @@ export async function listVulnerabilities({ search, severity, status, sort = "up
 
   return apiFetch(`/api/vulnerabilities?${params.toString()}`, { method: "GET" });
 }
+
+export async function createVulnerability(data) {
+  return apiFetch("/api/vulnerabilities", { method: "POST", body: data });
+}
+
+export async function getVulnerability(id) {
+  return apiFetch(`/api/vulnerabilities/${id}`, { method: "GET" });
+}
+
+export async function updateVulnerability(id, data) {
+  return apiFetch(`/api/vulnerabilities/${id}`, { method: "PUT", body: data });
+}
+
+export async function deleteVulnerability(id) {
+  return apiFetch(`/api/vulnerabilities/${id}`, { method: "DELETE" });
+}
+
+export async function listProductVersions({ includeInactive = false } = {}) {
+  const params = new URLSearchParams();
+  if (includeInactive) params.set("include_inactive", "true");
+  return apiFetch(`/api/product_versions?${params.toString()}`, { method: "GET" });
+}
+
+export async function attachVulnerabilityVersions(id, productVersionIds) {
+  return apiFetch(`/api/vulnerabilities/${id}/versions`, {
+    method: "POST",
+    body: { product_version_ids: productVersionIds },
+  });
+}
+
+export async function updateVulnerabilityVersion(id, mappingId, data) {
+  return apiFetch(`/api/vulnerabilities/${id}/versions/${mappingId}`, { method: "PATCH", body: data });
+}
+
+export async function deleteVulnerabilityVersion(id, mappingId) {
+  return apiFetch(`/api/vulnerabilities/${id}/versions/${mappingId}`, { method: "DELETE" });
+}
