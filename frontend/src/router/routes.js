@@ -18,7 +18,7 @@ export const ROUTES = [
   { path: "/vulnerabilities/:id", view: VulnListView, guard: () => requireAuth() },
 
   // placeholders for later:
-  { path: "/products", view: () => NotFoundView({ message: "Products view not wired yet." }), guard: () => requireAuth() },
+  { path: "/products", view: ProductsView, guard: () => requireAuth() },
   { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
