@@ -1,0 +1,315 @@
+from datetime import date
+import json
+
+from backend.auth import create_user, generate_token, hash_password
+from backend.database import db
+from backend.models import Product, ProductVersion, User, Vulnerability, VulnerabilityVersion
+
+
+def auth_header(user):
+    token = generate_token(user.id, user.username, user.role)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def create_admin(app):
+    with app.app_context():
+        user = create_user("admin", "admin@example.com", "secret", role="Admin")
+        db.session.refresh(user)
+        db.session.expunge(user)
+        return user
+
+
+def create_user_direct(app, username, email, role="Analyst", is_active=True):
+    with app.app_context():
+        user = User(
+            username=username,
+            email=email,
+            password_hash=hash_password("pass123"),
+            role=role,
+            is_active=is_active,
+        )
+        db.session.add(user)
+        db.session.commit()
+        db.session.refresh(user)
+        db.session.expunge(user)
+        return user
+
+
+def create_product_with_version(app, owner_id=None, version="1.0.0"):
+    with app.app_context():
+        product = Product(name="Widget", description="Test product", created_by=owner_id)
+        db.session.add(product)
+        db.session.commit()
+
+        pv = ProductVersion(product_id=product.id, version=version, release_date=date(2024, 1, 1))
+        db.session.add(pv)
+        db.session.commit()
+        db.session.refresh(product)
+        db.session.refresh(pv)
+        db.session.expunge(product)
+        db.session.expunge(pv)
+        return product, pv
+
+
+def test_health_endpoint(client):
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"ok": True}
+
+
+def test_auth_register_login_and_me(client):
+    register = client.post(
+        "/api/auth/register",
+        json={"username": "first", "email": "first@example.com", "password": "secret"},
+    )
+    assert register.status_code == 201
+    payload = register.get_json()
+    assert payload["user"]["role"] == "Admin"
+
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "first", "password": "secret"},
+    )
+    assert login.status_code == 200
+    token = login.get_json()["token"]
+
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.get_json()["username"] == "first"
+
+
+def test_auth_guard_rails(app, client):
+    create_admin(app)
+
+    missing = client.get("/api/products")
+    assert missing.status_code == 401
+
+    invalid = client.get("/api/products", headers={"Authorization": "Bearer bad-token"})
+    assert invalid.status_code == 401
+
+
+def test_user_management_endpoints(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    viewer = create_user_direct(app, "view", "view@example.com", role="Viewer")
+
+    forbidden = client.get("/api/users", headers=auth_header(viewer))
+    assert forbidden.status_code == 403
+
+    create_resp = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "analyst", "email": "analyst@example.com", "password": "secret", "role": "Analyst"},
+    )
+    assert create_resp.status_code == 201
+    analyst_id = create_resp.get_json()["id"]
+
+    invite_resp = client.post(
+        "/api/users/invite",
+        headers=headers,
+        json={"username": "viewer", "email": "viewer@example.com", "role": "Viewer"},
+    )
+    assert invite_resp.status_code == 201
+    invited = invite_resp.get_json()
+    assert invited["temp_password"]
+
+    list_resp = client.get("/api/users?search=analyst&role=Analyst&status=active", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(u["username"] == "analyst" for u in list_resp.get_json())
+
+    invalid_filter = client.get("/api/users?role=Unknown", headers=headers)
+    assert invalid_filter.status_code == 400
+
+    detail_resp = client.get(f"/api/users/{analyst_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["username"] == "analyst"
+
+    patch_resp = client.patch(
+        f"/api/users/{analyst_id}",
+        headers=headers,
+        json={"email": "new@example.com", "first_name": "Ana", "role": "Viewer", "is_active": False},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.get_json()["email"] == "new@example.com"
+    assert patch_resp.get_json()["role"] == "Viewer"
+    assert patch_resp.get_json()["is_active"] is False
+
+    reset_resp = client.post(f"/api/users/{analyst_id}/reset-password", headers=headers, json={"password": "newpass"})
+    assert reset_resp.status_code == 200
+
+    toggle_resp = client.post(f"/api/users/{analyst_id}/toggle-active", headers=headers)
+    assert toggle_resp.status_code == 200
+    assert toggle_resp.get_json()["is_active"] is True
+
+    impersonate_resp = client.post(f"/api/users/{analyst_id}/impersonate", headers=headers)
+    assert impersonate_resp.status_code == 200
+    assert "token" in impersonate_resp.get_json()
+
+    active_list = client.get("/api/users/active", headers=headers)
+    assert active_list.status_code == 200
+    assert any(u["username"] == "analyst" for u in active_list.get_json())
+
+    export = client.get("/api/users/export", headers=headers)
+    assert export.status_code == 200
+    assert "username,email,role" in export.get_data(as_text=True)
+
+
+def test_product_crud_with_versions(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "analyst", "analyst@example.com")
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/products",
+        headers=headers,
+        json={"name": "Product A", "description": "Desc"},
+    )
+    assert create_resp.status_code == 201
+    product_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/products", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(p["name"] == "Product A" for p in list_resp.get_json())
+
+    detail_resp = client.get(f"/api/products/{product_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["version_count"] == 0
+
+    invalid_owner = client.patch(
+        f"/api/products/{product_id}",
+        headers=headers,
+        json={"owner_ids": [999]},
+    )
+    assert invalid_owner.status_code == 400
+
+    patch_resp = client.patch(
+        f"/api/products/{product_id}",
+        headers=headers,
+        json={"name": "Product A+", "description": "Updated", "owner_ids": [analyst.id]},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.get_json()["name"] == "Product A+"
+    assert patch_resp.get_json()["owners"][0]["username"] == "analyst"
+
+    bad_version = client.post(
+        f"/api/products/{product_id}/versions",
+        headers=headers,
+        json={"version": " ", "release_date": "not-a-date"},
+    )
+    assert bad_version.status_code == 400
+
+    version_resp = client.post(
+        f"/api/products/{product_id}/versions",
+        headers=headers,
+        json={"version": "1.0", "release_date": "2024-01-01", "is_active": True},
+    )
+    assert version_resp.status_code == 201
+    version_id = version_resp.get_json()["id"]
+
+    versions = client.get(f"/api/products/{product_id}/versions", headers=headers)
+    assert versions.status_code == 200
+    assert any(v["version"] == "1.0" for v in versions.get_json())
+
+    invalid_update = client.patch(
+        f"/api/products/{product_id}/versions/{version_id}",
+        headers=headers,
+        json={"release_date": "2024-13-01"},
+    )
+    assert invalid_update.status_code == 400
+
+    update_resp = client.patch(
+        f"/api/products/{product_id}/versions/{version_id}",
+        headers=headers,
+        json={"version": "1.1", "is_active": False},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.get_json()["version"] == "1.1"
+
+    delete_version = client.delete(f"/api/products/{product_id}/versions/{version_id}", headers=headers)
+    assert delete_version.status_code == 200
+
+    delete_resp = client.delete(f"/api/products/{product_id}", headers=headers)
+    assert delete_resp.status_code == 200
+
+
+def test_vulnerability_endpoints(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "analyst", "analyst@example.com")
+    headers = auth_header(admin)
+
+    product, pv1 = create_product_with_version(app, owner_id=admin.id, version="1.0")
+    _, pv2 = create_product_with_version(app, owner_id=admin.id, version="2.0")
+
+    product_versions = client.get("/api/product_versions", headers=headers)
+    assert product_versions.status_code == 200
+    assert any(pv["product_id"] == product.id for pv in product_versions.get_json())
+
+    product_versions_all = client.get("/api/product_versions?include_inactive=true", headers=headers)
+    assert product_versions_all.status_code == 200
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={
+            "cve_id": "CVE-0001",
+            "title": "Example vuln",
+            "severity": "High",
+            "cvss_score": "not-a-number",
+            "published_date": "2024-01-02",
+            "last_modified_date": "2024-01-03",
+            "status": "Open",
+            "assigned_to": analyst.id,
+            "affected_versions": [pv1.id],
+        },
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/vulnerabilities?severity=High&status=Open&search=Example", headers=headers)
+    assert list_resp.status_code == 200
+    assert list_resp.get_json()["total"] == 1
+
+    detail_resp = client.get(f"/api/vulnerabilities/{vuln_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["cve_id"] == "CVE-0001"
+    mapping_id = detail_resp.get_json()["affected_versions"][0]["id"]
+
+    invalid_update = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"published_date": "2024-14-01"},
+    )
+    assert invalid_update.status_code == 400
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"title": "Updated vuln", "cvss_score": 9.9, "severity": "Critical", "status": "In Progress"},
+    )
+    assert update_resp.status_code == 200
+
+    attach_resp = client.post(
+        f"/api/vulnerabilities/{vuln_id}/versions",
+        headers=headers,
+        json={"product_version_ids": [pv2.id]},
+    )
+    assert attach_resp.status_code == 200
+    assert attach_resp.get_json()["added"] == 1
+
+    patch_mapping = client.patch(
+        f"/api/vulnerabilities/{vuln_id}/versions/{mapping_id}",
+        headers=headers,
+        json={"affected": False, "fixed_in_version": "1.0.1", "notes": "Mitigated"},
+    )
+    assert patch_mapping.status_code == 200
+    assert patch_mapping.get_json()["affected"] is False
+
+    delete_mapping = client.delete(
+        f"/api/vulnerabilities/{vuln_id}/versions/{mapping_id}",
+        headers=headers,
+    )
+    assert delete_mapping.status_code == 200
+
+    delete_resp = client.delete(f"/api/vulnerabilities/{vuln_id}", headers=headers)
+    assert delete_resp.status_code == 200
