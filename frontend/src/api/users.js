@@ -37,3 +37,7 @@ export async function exportUsers({ search, role, status } = {}) {
   const suffix = qs ? `?${qs}` : "";
   return apiFetch(`/api/users/export${suffix}`, { method: "GET" });
 }
+
+export async function listActiveUsers() {
+  return apiFetch("/api/users/active", { method: "GET" });
+}

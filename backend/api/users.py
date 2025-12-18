@@ -28,6 +28,17 @@ def _user_json(u: User):
         "updated_at": u.updated_at.isoformat(),
     }
 
+
+def _user_summary(u: User):
+    full_name = " ".join(filter(None, [u.first_name, u.last_name])).strip()
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "full_name": full_name or None,
+        "is_active": u.is_active,
+    }
+
 @bp.get("/users")
 @role_required("Admin")
 def list_users():
@@ -135,6 +146,13 @@ def invite_user():
     payload = _user_json(u)
     payload["temp_password"] = password
     return jsonify(payload), 201
+
+
+@bp.get("/users/active")
+@role_required("Admin", "Analyst")
+def list_active_users():
+    users = User.query.filter(User.is_active.is_(True)).order_by(User.username.asc()).all()
+    return jsonify([_user_summary(u) for u in users])
 
 @bp.get("/users/<int:user_id>")
 @role_required("Admin")
