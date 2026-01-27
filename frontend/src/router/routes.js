@@ -5,6 +5,7 @@ import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
 import { NotFoundView } from "../views/notFoundView.js";
 import { AdminUsersView } from "../views/admin/adminUsersView.js";
 import { AdminLogsView } from "../views/admin/adminLogsView.js";
+import { AdminPluginsView } from "../views/admin/adminPluginsView.js";
 import { ProductsView } from "../views/products/productsView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
 
@@ -27,4 +28,5 @@ export const ROUTES = [
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/logs", view: AdminLogsView, guard: () => requireAuth() && requireRole("Admin") },
+  { path: "/admin/plugins", view: AdminPluginsView, guard: () => requireAuth() && requireRole("Admin") },
 ];
