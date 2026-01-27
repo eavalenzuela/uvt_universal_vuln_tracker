@@ -6,6 +6,12 @@ from backend.services.jira_sync import JiraApiError, JiraClient
 from backend.services.slack_alerts import SlackWebhookClient, SlackWebhookError
 
 from .base import BasePlugin
+from .controls_import_plugins import (
+    CisControlsImportPlugin,
+    PciDssControlsImportPlugin,
+    StigControlsImportPlugin,
+)
+from .vuln_feed_plugins import ExploitDbVulnerabilityFeedPlugin, NvdVulnerabilityFeedPlugin
 
 
 class SlackAlertsPlugin(BasePlugin):
@@ -182,4 +188,9 @@ class JiraSyncPlugin(BasePlugin):
 BUILTIN_PLUGINS: tuple[type[BasePlugin], ...] = (
     SlackAlertsPlugin,
     JiraSyncPlugin,
+    NvdVulnerabilityFeedPlugin,
+    ExploitDbVulnerabilityFeedPlugin,
+    CisControlsImportPlugin,
+    PciDssControlsImportPlugin,
+    StigControlsImportPlugin,
 )
