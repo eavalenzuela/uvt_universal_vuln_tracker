@@ -1,4 +1,12 @@
 import { el } from "../../ui/dom/el.js";
+import { listActiveUsers } from "../../api/users.js";
+import {
+  getVulnerability,
+  listOpenHighCriticalVulnerabilities,
+  updateVulnerability,
+} from "../../api/vulnerabilities.js";
+import { navigate } from "../../router/router.js";
+import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
@@ -8,6 +16,12 @@ const DEFAULT_WIDGETS = [
     title: "Triage Queue",
     description: "Incoming vulnerabilities awaiting assignment.",
     settings: { filter: "Unassigned", range: "Last 7 days" },
+  },
+  {
+    id: "high-risk-open",
+    title: "High risk open vulnerabilities",
+    description: "Open High/Critical findings needing attention.",
+    settings: { filter: "High/Critical", range: "Last 30 days" },
   },
   {
     id: "sla",
@@ -41,6 +55,56 @@ const DEFAULT_WIDGETS = [
   },
 ];
 
+const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
+
+function formatAge(value) {
+  if (!value) return "-";
+  const deltaMs = Date.now() - new Date(value).getTime();
+  if (Number.isNaN(deltaMs)) return "-";
+  const days = Math.floor(deltaMs / (1000 * 60 * 60 * 24));
+  if (days <= 0) return "Today";
+  return `${days}d`;
+}
+
+function severityBadge(severity) {
+  const colors = {
+    Critical: "#7f1d1d",
+    High: "#b45309",
+    Medium: "#92400e",
+    Low: "#365314",
+    None: "#334155",
+  };
+  const bg = {
+    Critical: "#fef2f2",
+    High: "#fffbeb",
+    Medium: "#fffbeb",
+    Low: "#f0fdf4",
+    None: "#f8fafc",
+  };
+  const color = colors[severity] || "#0f172a";
+  return el(
+    "span",
+    {
+      class: "badge",
+      style: `background: ${bg[severity] || "#f8fafc"}; color: ${color}; border: 1px solid #e2e8f0;`,
+    },
+    severity || "Unknown",
+  );
+}
+
+let cachedUsers = null;
+async function ensureActiveUsers() {
+  if (cachedUsers) return cachedUsers;
+  try {
+    cachedUsers = await listActiveUsers();
+    return cachedUsers;
+  } catch (error) {
+    console.warn("Unable to load active users.", error);
+    cachedUsers = [];
+    return cachedUsers;
+  }
+}
+
 function loadDashboardState() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -62,6 +126,7 @@ function saveDashboardState(state) {
 
 export async function DashboardView() {
   const user = getState()?.session?.user;
+  const writable = canWrite(getState());
   const savedState = loadDashboardState();
   const widgetById = new Map(DEFAULT_WIDGETS.map((widget) => [widget.id, widget]));
   const order = savedState?.order?.length ? savedState.order : DEFAULT_WIDGETS.map((widget) => widget.id);
@@ -196,6 +261,145 @@ export async function DashboardView() {
     document.body.append(overlay);
   }
 
+  function renderHighRiskWidget() {
+    const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+    const list = el("div", { class: "muted", text: "Loading high-risk vulnerabilities..." });
+    container.append(list);
+
+    const load = async () => {
+      list.innerHTML = "";
+      list.appendChild(el("div", { class: "muted", text: "Loading high-risk vulnerabilities..." }));
+      try {
+        const data = await listOpenHighCriticalVulnerabilities({ page_size: 6, sort: "updated_at", order: "desc" });
+        const users = await ensureActiveUsers();
+        const userMap = new Map((users || []).map((u) => [u.id, u]));
+        const details = await Promise.all(
+          (data.items || []).map(async (item) => {
+            try {
+              const detail = await getVulnerability(item.id);
+              return { ...item, detail };
+            } catch (error) {
+              console.warn("Unable to load vulnerability detail.", error);
+              return { ...item, detail: null };
+            }
+          }),
+        );
+
+        list.innerHTML = "";
+        if (!details.length) {
+          list.appendChild(el("div", { class: "muted", text: "No open High/Critical vulnerabilities." }));
+          return;
+        }
+
+        const headerRow = el(
+          "div",
+          {
+            style:
+              "display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:#64748b;",
+          },
+          el("div", { text: "ID" }),
+          el("div", { text: "Title" }),
+          el("div", { text: "Asset/App" }),
+          el("div", { text: "CVSS" }),
+          el("div", { text: "Severity" }),
+          el("div", { text: "Age" }),
+          el("div", { text: "Owner" }),
+          el("div", { text: "Actions" }),
+        );
+
+        const rows = details.map((item) => {
+          const detail = item.detail;
+          const vulnId = item.cve_id || `VULN-${item.id}`;
+          const productNames = Array.from(
+            new Set((detail?.affected_versions || []).map((version) => version.product_name).filter(Boolean)),
+          );
+          const assetLabel = productNames.length
+            ? productNames.length > 1
+              ? `${productNames[0]} +${productNames.length - 1}`
+              : productNames[0]
+            : "-";
+          const owner = detail?.assigned_to ? userMap.get(detail.assigned_to) : null;
+          const ownerLabel = owner ? (owner.full_name || owner.username || owner.email || `User ${owner.id}`) : "Unassigned";
+
+          const actionRow = el(
+            "div",
+            { style: "display:flex; gap:6px; flex-wrap:wrap; align-items:center;" },
+            el("button", {
+              class: "btn",
+              text: "Open",
+              onClick: () => navigate(`/vulnerabilities/${item.id}`),
+            }),
+          );
+
+          if (writable) {
+            const statusSelect = el(
+              "select",
+              { class: "input", style: "padding:4px 6px; font-size:12px;" },
+              ...STATUS_OPTIONS.map((status) =>
+                el("option", { value: status, text: status, selected: status === item.status }),
+              ),
+            );
+            const assigneeSelect = el("select", { class: "input", style: "padding:4px 6px; font-size:12px; min-width:120px;" },
+              el("option", { value: "", text: "Unassigned" }),
+              ...(users || []).map((u) => {
+                const label = u.full_name || u.username || u.email || `User ${u.id}`;
+                return el("option", { value: u.id, text: label, selected: u.id === detail?.assigned_to });
+              }),
+            );
+            const saveBtn = el("button", { class: "btn", text: "Update" });
+            saveBtn.addEventListener("click", async () => {
+              saveBtn.disabled = true;
+              statusSelect.disabled = true;
+              assigneeSelect.disabled = true;
+              saveBtn.textContent = "Saving...";
+              try {
+                await updateVulnerability(item.id, {
+                  status: statusSelect.value,
+                  assigned_to: assigneeSelect.value ? Number(assigneeSelect.value) : null,
+                });
+                await load();
+              } catch (error) {
+                console.warn("Unable to update vulnerability.", error);
+              } finally {
+                saveBtn.disabled = false;
+                statusSelect.disabled = false;
+                assigneeSelect.disabled = false;
+                saveBtn.textContent = "Update";
+              }
+            });
+            actionRow.append(statusSelect, assigneeSelect, saveBtn);
+          }
+
+          return el(
+            "div",
+            {
+              style:
+                "display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid #e2e8f0;",
+            },
+            el("div", { style: "font-weight:600; color:#0f172a;", text: vulnId }),
+            el("div", { style: "font-weight:600;", text: item.title }),
+            el("div", { class: "muted", text: assetLabel }),
+            el("div", { text: item.cvss_score ?? "-" }),
+            severityBadge(item.severity || "Unknown"),
+            el("div", { text: formatAge(item.created_at) }),
+            el("div", { class: "muted", text: ownerLabel }),
+            actionRow,
+          );
+        });
+
+        list.append(headerRow, ...rows);
+      } catch (error) {
+        list.innerHTML = "";
+        console.warn("Unable to load high risk vulnerabilities.", error);
+        list.appendChild(el("div", { class: "muted", text: "Unable to load high risk vulnerabilities." }));
+      }
+    };
+
+    load();
+
+    return container;
+  }
+
   function renderGrid() {
     grid.innerHTML = "";
     hiddenList.innerHTML = "";
@@ -301,12 +505,14 @@ export async function DashboardView() {
         actions,
       );
 
-      const details = el(
-        "div",
-        { style: "display:flex; flex-direction:column; gap:4px;" },
-        el("div", { class: "muted", text: `Filter: ${widgetSettings.filter}` }),
-        el("div", { class: "muted", text: `Date range: ${widgetSettings.range}` }),
-      );
+      const details = widgetId === "high-risk-open"
+        ? renderHighRiskWidget()
+        : el(
+          "div",
+          { style: "display:flex; flex-direction:column; gap:4px;" },
+          el("div", { class: "muted", text: `Filter: ${widgetSettings.filter}` }),
+          el("div", { class: "muted", text: `Date range: ${widgetSettings.range}` }),
+        );
 
       card.append(headerRow, details);
       grid.append(card);
