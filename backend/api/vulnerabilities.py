@@ -8,6 +8,7 @@ from ..models import (
     Vulnerability,
     VulnerabilityVersion,
     VulnerabilityAttackVector,
+    VulnerabilityTerminalImpact,
     AttackVector,
     ProductVersion,
     AuditLog,
@@ -273,6 +274,16 @@ def get_vulnerability(vuln_id: int):
             "release_date": pv.release_date.isoformat() if getattr(pv, "release_date", None) else None,
         })
 
+    terminal_impact_mappings = VulnerabilityTerminalImpact.query.filter_by(vulnerability_id=v.id).all()
+    terminal_impact_rows = []
+    for mapping in terminal_impact_mappings:
+        terminal_impact_rows.append({
+            "id": mapping.id,
+            "terminal_impact_id": mapping.terminal_impact_id,
+            "terminal_impact_name": mapping.terminal_impact.name if mapping.terminal_impact else None,
+            "terminal_impact_description": mapping.terminal_impact.description if mapping.terminal_impact else None,
+        })
+
     return jsonify({
         "id": v.id,
         "cve_id": v.cve_id,
@@ -290,6 +301,7 @@ def get_vulnerability(vuln_id: int):
         "updated_at": v.updated_at.isoformat(),
         "affected_versions": version_rows,
         "attack_vectors": attack_vector_rows,
+        "terminal_impacts": terminal_impact_rows,
     })
 
 @bp.put("/vulnerabilities/<int:vuln_id>")

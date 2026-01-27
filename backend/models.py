@@ -136,6 +136,7 @@ class Vulnerability(db.Model):
 
     versions = db.relationship("VulnerabilityVersion", back_populates="vulnerability", cascade="all, delete-orphan")
     attack_vectors = db.relationship("VulnerabilityAttackVector", back_populates="vulnerability", cascade="all, delete-orphan")
+    terminal_impacts = db.relationship("VulnerabilityTerminalImpact", back_populates="vulnerability", cascade="all, delete-orphan")
 
 class VulnerabilityVersion(db.Model):
     __tablename__ = "vulnerability_versions"
@@ -172,6 +173,18 @@ class AttackVector(db.Model):
 
     vulnerability_links = db.relationship("VulnerabilityAttackVector", back_populates="attack_vector", cascade="all, delete-orphan")
 
+class TerminalImpact(db.Model):
+    __tablename__ = "terminal_impacts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    description = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    vulnerability_links = db.relationship("VulnerabilityTerminalImpact", back_populates="terminal_impact", cascade="all, delete-orphan")
+
 class VulnerabilityAttackVector(db.Model):
     __tablename__ = "vulnerability_attack_vectors"
 
@@ -189,6 +202,23 @@ class VulnerabilityAttackVector(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("vulnerability_id", "attack_vector_id", "product_version_id", name="unique_vuln_attack_vector"),
+    )
+
+class VulnerabilityTerminalImpact(db.Model):
+    __tablename__ = "vulnerability_terminal_impacts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    terminal_impact_id = db.Column(db.Integer, db.ForeignKey("terminal_impacts.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    vulnerability = db.relationship("Vulnerability", back_populates="terminal_impacts")
+    terminal_impact = db.relationship("TerminalImpact", back_populates="vulnerability_links")
+
+    __table_args__ = (
+        db.UniqueConstraint("vulnerability_id", "terminal_impact_id", name="unique_vuln_terminal_impact"),
     )
 
 class AuditLog(db.Model):
