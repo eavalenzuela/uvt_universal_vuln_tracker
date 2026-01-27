@@ -1,6 +1,6 @@
 # Testing Guide
 
-This project uses `pytest` for automated tests. The suite exercises every API endpoint to ensure complete coverage of the Flask backend.
+This project uses `pytest` for automated tests. The suite exercises the core API endpoints to ensure solid coverage of the Flask backend, including catalogs (controls, attack vectors, terminal impacts) and plugin runs.
 
 ## Setup
 
@@ -19,7 +19,7 @@ pytest --cov=backend --cov-report=term-missing
 
 The command will:
 - Initialize an in-memory SQLite database for each test.
-- Hit every API endpoint with valid and invalid payloads.
+- Hit key API endpoints with valid and invalid payloads.
 - Produce a coverage report showing line-by-line execution.
 
 ## Notes
