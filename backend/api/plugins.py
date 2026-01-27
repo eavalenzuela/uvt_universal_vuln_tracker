@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
@@ -8,41 +7,12 @@ from sqlalchemy import asc
 
 from ..auth import login_required, role_required
 from ..models import PluginConfig
+from ..plugins.config import mask_config
 from ..plugins.registry import PluginRegistry
 from ..plugins.runner import get_latest_plugin_run, run_plugin
 from ..plugins.state import get_plugin_config
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
-
-_SENSITIVE_KEY_MARKERS = (
-    "secret",
-    "token",
-    "password",
-    "api_key",
-    "apikey",
-    "access_key",
-    "private_key",
-    "client_secret",
-)
-
-
-def _is_sensitive_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(marker in lowered for marker in _SENSITIVE_KEY_MARKERS)
-
-
-def _sanitize_config(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        sanitized: dict[str, Any] = {}
-        for key, item in value.items():
-            if _is_sensitive_key(str(key)):
-                sanitized[key] = "******" if item not in (None, "") else item
-            else:
-                sanitized[key] = _sanitize_config(item)
-        return sanitized
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_sanitize_config(item) for item in value]
-    return value
 
 
 def _plugin_run_json(run):
@@ -65,7 +35,7 @@ def _plugin_config_json(config: PluginConfig | None, *, plugin_id: str | None = 
         "enabled": config.enabled if config else True,
         "schedule_cron": config.schedule_cron if config else None,
         "interval_minutes": config.interval_minutes if config else None,
-        "config": _sanitize_config(config.config_json or {}) if config else {},
+        "config": mask_config(config.config_json or {}) if config else {},
     }
 
 
@@ -98,7 +68,7 @@ def list_plugins():
                 "version": plugin_cls.version,
                 "capabilities": list(plugin_cls.capabilities or []),
                 "config_schema": plugin_cls.config_schema,
-                "config": _sanitize_config(config_row.config_json or {}) if config_row else {},
+                "config": mask_config(config_row.config_json or {}, plugin_cls.config_schema) if config_row else {},
                 "enabled": config_row.enabled if config_row else True,
                 "schedule_cron": config_row.schedule_cron if config_row else None,
                 "interval_minutes": config_row.interval_minutes if config_row else None,
@@ -131,7 +101,7 @@ def get_plugin(plugin_id: str):
         "version": plugin_cls.version,
         "capabilities": list(plugin_cls.capabilities or []),
         "config_schema": plugin_cls.config_schema,
-        "config": _sanitize_config(config_row.config_json or {}) if config_row else {},
+        "config": mask_config(config_row.config_json or {}, plugin_cls.config_schema) if config_row else {},
         "enabled": config_row.enabled if config_row else True,
         "schedule_cron": config_row.schedule_cron if config_row else None,
         "interval_minutes": config_row.interval_minutes if config_row else None,

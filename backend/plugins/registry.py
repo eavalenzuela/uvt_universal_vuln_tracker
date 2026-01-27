@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Iterable, Mapping, Sequence, Type
+from typing import Any, Iterable, Mapping, Sequence, Type
 
 from .base import BasePlugin
 from .builtins import BUILTIN_PLUGINS
+from .config import prepare_plugin_config, validate_config_schema
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +24,30 @@ class PluginRegistry:
             raise ValueError("Plugin classes must define a non-empty plugin_id.")
         if plugin_id in self._plugins:
             raise ValueError(f"Plugin '{plugin_id}' is already registered.")
+        validate_config_schema(plugin_cls.config_schema)
         self._plugins[plugin_id] = plugin_cls
 
     def list_plugins(self) -> list[Type[BasePlugin]]:
         return list(self._plugins.values())
 
-    def create(self, plugin_id: str, config: Mapping[str, object] | None = None) -> BasePlugin:
+    def create(
+        self,
+        plugin_id: str,
+        config: Mapping[str, Any] | None = None,
+        *,
+        env: Mapping[str, str] | None = None,
+        secret_store: Any | None = None,
+    ) -> BasePlugin:
         plugin_cls = self._plugins.get(plugin_id)
         if not plugin_cls:
             raise KeyError(f"No plugin registered with id '{plugin_id}'.")
-        return plugin_cls(config=config)
+        prepared_config = prepare_plugin_config(
+            config,
+            plugin_cls.config_schema,
+            env=env,
+            secret_store=secret_store,
+        )
+        return plugin_cls(config=prepared_config)
 
 
 def load_plugins(
