@@ -96,6 +96,37 @@ export async function AdminUsersView() {
     statCard("Disabled", disabledEl, "Access revoked"),
   );
 
+  const inviteUsername = el("input", { class: "input", placeholder: "Username", required: "true" });
+  const inviteEmail = el("input", { class: "input", placeholder: "Email", required: "true" });
+  const inviteRole = el("select", { class: "input" },
+    el("option", { value: "Admin", text: "Admin" }),
+    el("option", { value: "Analyst", text: "Analyst", selected: "true" }),
+    el("option", { value: "Viewer", text: "Viewer" }),
+  );
+  const inviteFirstName = el("input", { class: "input", placeholder: "First name (optional)" });
+  const inviteLastName = el("input", { class: "input", placeholder: "Last name (optional)" });
+  const inviteSubmit = el("button", { class: "btn primary", type: "submit" }, "Send invite");
+  const inviteCancel = el("button", { class: "btn", type: "button" }, "Cancel");
+
+  const inviteForm = el(
+    "form",
+    { style: "display: flex; flex-direction: column; gap: 8px;" },
+    el("div", {}, el("div", { class: "muted", text: "Username" }), inviteUsername),
+    el("div", {}, el("div", { class: "muted", text: "Email" }), inviteEmail),
+    el("div", {}, el("div", { class: "muted", text: "Role" }), inviteRole),
+    el("div", {}, el("div", { class: "muted", text: "First name" }), inviteFirstName),
+    el("div", {}, el("div", { class: "muted", text: "Last name" }), inviteLastName),
+    el("div", { class: "row", style: "justify-content: flex-end; gap: 8px;" }, inviteCancel, inviteSubmit),
+  );
+
+  const inviteCard = el(
+    "div",
+    { class: "card", style: "margin-top: 12px; display: none;" },
+    el("h3", { style: "margin-top: 0;", text: "Invite user" }),
+    el("p", { class: "muted", text: "Create a new user and assign their role." }),
+    inviteForm,
+  );
+
   const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" });
 
   function applyStats(data) {
@@ -161,21 +192,46 @@ export async function AdminUsersView() {
 
   applyBtn.addEventListener("click", loadUsersList);
 
-  inviteBtn.addEventListener("click", async () => {
-    const username = window.prompt("Username for the new user?");
-    if (!username) return;
-    const email = window.prompt("Email for the new user?");
-    if (!email) return;
-    const role = window.prompt("Role (Admin, Analyst, Viewer)?", "Analyst") || "Analyst";
-    const first_name = window.prompt("First name (optional)") || undefined;
-    const last_name = window.prompt("Last name (optional)") || undefined;
+  inviteBtn.addEventListener("click", () => {
+    const next = inviteCard.style.display === "none";
+    inviteCard.style.display = next ? "block" : "none";
+    if (next) inviteUsername.focus();
+  });
 
+  inviteCancel.addEventListener("click", () => {
+    inviteCard.style.display = "none";
+  });
+
+  inviteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = inviteUsername.value.trim();
+    const email = inviteEmail.value.trim();
+    if (!username || !email) {
+      toast({ title: "Missing fields", message: "Username and email are required." });
+      return;
+    }
+
+    inviteSubmit.disabled = true;
     try {
-      const res = await inviteUser({ username: username.trim(), email: email.trim(), role: role.trim(), first_name, last_name });
+      const res = await inviteUser({
+        username,
+        email,
+        role: inviteRole.value,
+        first_name: inviteFirstName.value.trim() || undefined,
+        last_name: inviteLastName.value.trim() || undefined,
+      });
       toast({ title: "User invited", message: `Temp password: ${res.temp_password}` });
+      inviteUsername.value = "";
+      inviteEmail.value = "";
+      inviteRole.value = "Analyst";
+      inviteFirstName.value = "";
+      inviteLastName.value = "";
+      inviteCard.style.display = "none";
       loadUsersList();
     } catch (e) {
       toast({ title: "Invite failed", message: e?.message || "Unable to invite user" });
+    } finally {
+      inviteSubmit.disabled = false;
     }
   });
 
@@ -216,6 +272,7 @@ export async function AdminUsersView() {
       ),
       statsRow,
       controls,
+      inviteCard,
       userList,
     ),
   );

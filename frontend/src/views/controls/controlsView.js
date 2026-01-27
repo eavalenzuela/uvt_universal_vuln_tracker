@@ -1,6 +1,8 @@
 import { el } from "../../ui/dom/el.js";
 import { listControls, createControl } from "../../api/controls.js";
 import { toast } from "../../ui/components/toast.js";
+import { getState } from "../../state/store.js";
+import { canWrite } from "../../state/permissions.js";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -42,6 +44,7 @@ function renderControlCard(control) {
 }
 
 export async function ControlsView() {
+  const writable = canWrite(getState());
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 12px;" });
   const summary = el("div", { class: "muted", text: "Loading controls..." });
   const createToggle = el("button", { class: "btn primary", type: "button" }, "New control");
@@ -72,8 +75,8 @@ export async function ControlsView() {
     { class: "card" },
     el("h1", { class: "page-title", text: "Controls" }),
     el("p", { class: "muted", text: "Browse the full inventory of security controls." }),
-    el("div", { class: "row", style: "justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0;" }, summary, createToggle),
-    createCard,
+    el("div", { class: "row", style: "justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0;" }, summary, writable ? createToggle : null),
+    writable ? createCard : null,
     list,
   );
 
@@ -97,40 +100,44 @@ export async function ControlsView() {
     }
   }
 
-  createToggle.addEventListener("click", () => {
-    const next = createCard.style.display === "none";
-    createCard.style.display = next ? "block" : "none";
-    if (next) {
-      createName.focus();
-    }
-  });
+  if (writable) {
+    createToggle.addEventListener("click", () => {
+      const next = createCard.style.display === "none";
+      createCard.style.display = next ? "block" : "none";
+      if (next) {
+        createName.focus();
+      }
+    });
+  }
 
-  createForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = createName.value.trim();
-    if (!name) {
-      toast({ title: "Name required", message: "Please enter a control name." });
-      return;
-    }
-    createSubmit.disabled = true;
-    try {
-      const created = await createControl({
-        name,
-        framework: createFramework.value.trim() || undefined,
-        description: createDescription.value.trim() || undefined,
-      });
-      toast({ title: "Control created", message: `${created.name} added.` });
-      createName.value = "";
-      createFramework.value = "";
-      createDescription.value = "";
-      createCard.style.display = "none";
-      await loadControls();
-    } catch (err) {
-      toast({ title: "Failed", message: err?.message || "Unable to create control" });
-    } finally {
-      createSubmit.disabled = false;
-    }
-  });
+  if (writable) {
+    createForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = createName.value.trim();
+      if (!name) {
+        toast({ title: "Name required", message: "Please enter a control name." });
+        return;
+      }
+      createSubmit.disabled = true;
+      try {
+        const created = await createControl({
+          name,
+          framework: createFramework.value.trim() || undefined,
+          description: createDescription.value.trim() || undefined,
+        });
+        toast({ title: "Control created", message: `${created.name} added.` });
+        createName.value = "";
+        createFramework.value = "";
+        createDescription.value = "";
+        createCard.style.display = "none";
+        await loadControls();
+      } catch (err) {
+        toast({ title: "Failed", message: err?.message || "Unable to create control" });
+      } finally {
+        createSubmit.disabled = false;
+      }
+    });
+  }
 
   loadControls();
 

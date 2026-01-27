@@ -160,6 +160,11 @@ function renderVersionRow(mapping, vulnId, reloadDetails, canEdit) {
         deleteBtn.disabled = false;
       }
     });
+  } else {
+    affectedToggle.disabled = true;
+    fixedInput.disabled = true;
+    mitigationSelect.disabled = true;
+    notesInput.disabled = true;
   }
 
   return el(

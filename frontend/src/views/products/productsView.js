@@ -12,6 +12,8 @@ import {
 import { listControls, createControl } from "../../api/controls.js";
 import { listActiveUsers } from "../../api/users.js";
 import { toast } from "../../ui/components/toast.js";
+import { getState } from "../../state/store.js";
+import { canWrite, isAdmin } from "../../state/permissions.js";
 
 function renderOwnerChip(owner) {
   const label = owner.full_name || owner.username || owner.email || `User ${owner.id}`;
@@ -25,7 +27,7 @@ function renderOwnerChip(owner) {
   );
 }
 
-function renderProductCard(product, reloadList) {
+function renderProductCard(product, reloadList, { canEdit, isAdminUser }) {
   const detailContent = el("div", {});
   const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
 
@@ -55,7 +57,7 @@ function renderProductCard(product, reloadList) {
         "div",
         { class: "row", style: "gap: 6px;" },
         viewBtn,
-        editBtn,
+        canEdit ? editBtn : null,
       ),
     ),
     el(
@@ -110,29 +112,34 @@ function renderProductCard(product, reloadList) {
     } else {
       detailData.versions.forEach((v) => {
         const toggleBtn = el("button", { class: "btn" }, v.is_active ? "Mark inactive" : "Mark active");
-        toggleBtn.addEventListener("click", async () => {
-          try {
-            await updateProductVersion(product.id, v.id, { is_active: !v.is_active });
-            toast({ title: "Version updated", message: `${v.version} status changed.` });
-            detailData = await loadDetails(true);
-            await reloadList();
-          } catch (err) {
-            toast({ title: "Failed", message: err?.message || "Unable to update version" });
-          }
-        });
-
         const deleteBtn = el("button", { class: "btn" }, "Delete");
-        deleteBtn.addEventListener("click", async () => {
-          if (!confirm(`Delete version ${v.version}?`)) return;
-          try {
-            await deleteProductVersion(product.id, v.id);
-            toast({ title: "Version removed", message: `${v.version} deleted.` });
-            detailData = await loadDetails(true);
-            await reloadList();
-          } catch (err) {
-            toast({ title: "Failed", message: err?.message || "Unable to delete version" });
-          }
-        });
+        if (canEdit) {
+          toggleBtn.addEventListener("click", async () => {
+            try {
+              await updateProductVersion(product.id, v.id, { is_active: !v.is_active });
+              toast({ title: "Version updated", message: `${v.version} status changed.` });
+              detailData = await loadDetails(true);
+              await reloadList();
+            } catch (err) {
+              toast({ title: "Failed", message: err?.message || "Unable to update version" });
+            }
+          });
+
+          deleteBtn.addEventListener("click", async () => {
+            if (!confirm(`Delete version ${v.version}?`)) return;
+            try {
+              await deleteProductVersion(product.id, v.id);
+              toast({ title: "Version removed", message: `${v.version} deleted.` });
+              detailData = await loadDetails(true);
+              await reloadList();
+            } catch (err) {
+              toast({ title: "Failed", message: err?.message || "Unable to delete version" });
+            }
+          });
+        } else {
+          toggleBtn.disabled = true;
+          deleteBtn.disabled = true;
+        }
 
         versionList.appendChild(
           el(
@@ -149,66 +156,69 @@ function renderProductCard(product, reloadList) {
                 el("span", { text: v.release_date ? `Released ${v.release_date}` : "Release date not set" }),
               ),
             ),
-            el("div", { class: "row", style: "gap: 6px;" }, toggleBtn, deleteBtn),
+            canEdit ? el("div", { class: "row", style: "gap: 6px;" }, toggleBtn, deleteBtn) : null,
           ),
         );
       });
     }
 
-    const versionInput = el("input", { class: "input", placeholder: "Version identifier", required: "true" });
-    const releaseInput = el("input", { class: "input", type: "date" });
-    const activeInput = el("input", { type: "checkbox", checked: true });
-    const addBtn = el("button", { class: "btn primary", type: "submit" }, "Add version");
+    let addForm = null;
+    if (canEdit) {
+      const versionInput = el("input", { class: "input", placeholder: "Version identifier", required: "true" });
+      const releaseInput = el("input", { class: "input", type: "date" });
+      const activeInput = el("input", { type: "checkbox", checked: true });
+      const addBtn = el("button", { class: "btn primary", type: "submit" }, "Add version");
 
-    const addForm = el(
-      "form",
-      { style: "display: flex; flex-direction: column; gap: 8px;" },
-      el("div", {}, el("div", { class: "muted", text: "Version" }), versionInput),
-      el("div", {}, el("div", { class: "muted", text: "Release date" }), releaseInput),
-      el(
-        "label",
-        { class: "row", style: "gap: 8px; align-items: center;" },
-        activeInput,
-        el("span", { text: "Active" }),
-      ),
-      el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
-    );
+      addForm = el(
+        "form",
+        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        el("div", {}, el("div", { class: "muted", text: "Version" }), versionInput),
+        el("div", {}, el("div", { class: "muted", text: "Release date" }), releaseInput),
+        el(
+          "label",
+          { class: "row", style: "gap: 8px; align-items: center;" },
+          activeInput,
+          el("span", { text: "Active" }),
+        ),
+        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+      );
 
-    addForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const version = versionInput.value.trim();
-      if (!version) {
-        toast({ title: "Version required", message: "Please enter a version label." });
-        return;
-      }
-      addBtn.disabled = true;
-      addBtn.textContent = "Saving...";
-      try {
-        await createProductVersion(product.id, {
-          version,
-          release_date: releaseInput.value || undefined,
-          is_active: !!activeInput.checked,
-        });
-        toast({ title: "Version added", message: `${version} created.` });
-        versionInput.value = "";
-        releaseInput.value = "";
-        activeInput.checked = true;
-        detailData = await loadDetails(true);
-        await reloadList();
-      } catch (err) {
-        toast({ title: "Failed", message: err?.message || "Unable to add version" });
-      } finally {
-        addBtn.disabled = false;
-        addBtn.textContent = "Add version";
-      }
-    });
+      addForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const version = versionInput.value.trim();
+        if (!version) {
+          toast({ title: "Version required", message: "Please enter a version label." });
+          return;
+        }
+        addBtn.disabled = true;
+        addBtn.textContent = "Saving...";
+        try {
+          await createProductVersion(product.id, {
+            version,
+            release_date: releaseInput.value || undefined,
+            is_active: !!activeInput.checked,
+          });
+          toast({ title: "Version added", message: `${version} created.` });
+          versionInput.value = "";
+          releaseInput.value = "";
+          activeInput.checked = true;
+          detailData = await loadDetails(true);
+          await reloadList();
+        } catch (err) {
+          toast({ title: "Failed", message: err?.message || "Unable to add version" });
+        } finally {
+          addBtn.disabled = false;
+          addBtn.textContent = "Add version";
+        }
+      });
+    }
 
     return el(
       "div",
       {},
       el("h4", { text: "Versions" }),
       versionList,
-      el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }),
+      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
       addForm,
     );
   }
@@ -238,43 +248,53 @@ function renderProductCard(product, reloadList) {
         notesInput.value = mapping.notes || "";
 
         const saveBtn = el("button", { class: "btn" }, "Save");
-        saveBtn.addEventListener("click", async () => {
-          const updated = mappings.map((entry) => {
-            if (entry.id !== mapping.id) return entry;
-            return {
-              ...entry,
-              implementation_status: statusSelect.value,
-              notes: notesInput.value,
-            };
+        if (canEdit) {
+          saveBtn.addEventListener("click", async () => {
+            const updated = mappings.map((entry) => {
+              if (entry.id !== mapping.id) return entry;
+              return {
+                ...entry,
+                implementation_status: statusSelect.value,
+                notes: notesInput.value,
+              };
+            });
+            saveBtn.disabled = true;
+            try {
+              detailData = await updateProduct(product.id, { controls: buildControlsPayload(updated) });
+              toast({ title: "Control updated", message: `${mapping.name} saved.` });
+              await reloadList();
+              renderDetails();
+            } catch (err) {
+              toast({ title: "Failed", message: err?.message || "Unable to update control mapping" });
+            } finally {
+              saveBtn.disabled = false;
+            }
           });
+        } else {
           saveBtn.disabled = true;
-          try {
-            detailData = await updateProduct(product.id, { controls: buildControlsPayload(updated) });
-            toast({ title: "Control updated", message: `${mapping.name} saved.` });
-            await reloadList();
-            renderDetails();
-          } catch (err) {
-            toast({ title: "Failed", message: err?.message || "Unable to update control mapping" });
-          } finally {
-            saveBtn.disabled = false;
-          }
-        });
+          statusSelect.disabled = true;
+          notesInput.disabled = true;
+        }
 
         const removeBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Remove");
-        removeBtn.addEventListener("click", async () => {
-          if (!confirm(`Remove ${mapping.name} from this product?`)) return;
+        if (canEdit) {
+          removeBtn.addEventListener("click", async () => {
+            if (!confirm(`Remove ${mapping.name} from this product?`)) return;
+            removeBtn.disabled = true;
+            try {
+              const updated = mappings.filter((entry) => entry.id !== mapping.id);
+              detailData = await updateProduct(product.id, { controls: buildControlsPayload(updated) });
+              toast({ title: "Control removed", message: `${mapping.name} unmapped.` });
+              await reloadList();
+              renderDetails();
+            } catch (err) {
+              toast({ title: "Failed", message: err?.message || "Unable to remove control mapping" });
+              removeBtn.disabled = false;
+            }
+          });
+        } else {
           removeBtn.disabled = true;
-          try {
-            const updated = mappings.filter((entry) => entry.id !== mapping.id);
-            detailData = await updateProduct(product.id, { controls: buildControlsPayload(updated) });
-            toast({ title: "Control removed", message: `${mapping.name} unmapped.` });
-            await reloadList();
-            renderDetails();
-          } catch (err) {
-            toast({ title: "Failed", message: err?.message || "Unable to remove control mapping" });
-            removeBtn.disabled = false;
-          }
-        });
+        }
 
         list.appendChild(
           el(
@@ -285,126 +305,132 @@ function renderProductCard(product, reloadList) {
             mapping.description ? el("div", { class: "muted", text: mapping.description }) : null,
             el("div", { style: "margin-top: 8px;" }, el("div", { class: "muted", text: "Implementation status" }), statusSelect),
             el("div", { style: "margin-top: 8px;" }, el("div", { class: "muted", text: "Notes" }), notesInput),
-            el("div", { class: "row", style: "gap: 8px; justify-content: flex-end; margin-top: 8px;" }, saveBtn, removeBtn),
+            canEdit
+              ? el("div", { class: "row", style: "gap: 8px; justify-content: flex-end; margin-top: 8px;" }, saveBtn, removeBtn)
+              : null,
           ),
         );
       });
     }
 
-    const addSelect = el("select", { class: "input" });
-    const addStatus = el("select", { class: "input" }, ...controlStatusOptions.map((status) => el("option", { value: status, text: status })));
-    const addNotes = el("textarea", { class: "input", rows: "2", placeholder: "Notes (optional)" });
-    const addBtn = el("button", { class: "btn primary", type: "submit" }, "Add control");
+    let addForm = null;
+    let createForm = null;
+    if (canEdit) {
+      const addSelect = el("select", { class: "input" });
+      const addStatus = el("select", { class: "input" }, ...controlStatusOptions.map((status) => el("option", { value: status, text: status })));
+      const addNotes = el("textarea", { class: "input", rows: "2", placeholder: "Notes (optional)" });
+      const addBtn = el("button", { class: "btn primary", type: "submit" }, "Add control");
 
-    function refreshAddOptions() {
-      const mappedIds = new Set(mappings.map((m) => m.id));
-      addSelect.innerHTML = "";
-      const available = (controlOptions || []).filter((c) => !mappedIds.has(c.id));
-      if (!available.length) {
-        addSelect.appendChild(el("option", { value: "", text: "No available controls" }));
-        addSelect.disabled = true;
-        addBtn.disabled = true;
-        return;
+      function refreshAddOptions() {
+        const mappedIds = new Set(mappings.map((m) => m.id));
+        addSelect.innerHTML = "";
+        const available = (controlOptions || []).filter((c) => !mappedIds.has(c.id));
+        if (!available.length) {
+          addSelect.appendChild(el("option", { value: "", text: "No available controls" }));
+          addSelect.disabled = true;
+          addBtn.disabled = true;
+          return;
+        }
+        addSelect.disabled = false;
+        addBtn.disabled = false;
+        available.forEach((control) => {
+          const label = control.framework ? `${control.framework} - ${control.name}` : control.name;
+          addSelect.appendChild(el("option", { value: control.id, text: label }));
+        });
       }
-      addSelect.disabled = false;
-      addBtn.disabled = false;
-      available.forEach((control) => {
-        const label = control.framework ? `${control.framework} - ${control.name}` : control.name;
-        addSelect.appendChild(el("option", { value: control.id, text: label }));
+
+      refreshAddOptions();
+
+      addForm = el(
+        "form",
+        { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
+        el("div", {}, el("div", { class: "muted", text: "Control" }), addSelect),
+        el("div", {}, el("div", { class: "muted", text: "Implementation status" }), addStatus),
+        el("div", {}, el("div", { class: "muted", text: "Notes" }), addNotes),
+        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+      );
+
+      addForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const controlId = Number(addSelect.value);
+        if (!controlId) {
+          toast({ title: "Select a control", message: "Choose a control to map." });
+          return;
+        }
+        addBtn.disabled = true;
+        try {
+          const control = (controlOptions || []).find((c) => c.id === controlId);
+          const nextControls = [
+            ...mappings,
+            {
+              id: control.id,
+              name: control.name,
+              framework: control.framework,
+              description: control.description,
+              implementation_status: addStatus.value,
+              notes: addNotes.value,
+            },
+          ];
+          detailData = await updateProduct(product.id, { controls: buildControlsPayload(nextControls) });
+          toast({ title: "Control added", message: `${control.name} mapped.` });
+          addNotes.value = "";
+          await reloadList();
+          renderDetails();
+        } catch (err) {
+          toast({ title: "Failed", message: err?.message || "Unable to map control" });
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+
+      const createName = el("input", { class: "input", placeholder: "Control name", required: "true" });
+      const createFramework = el("input", { class: "input", placeholder: "Framework (optional)" });
+      const createDescription = el("textarea", { class: "input", placeholder: "Description (optional)" });
+      const createBtn = el("button", { class: "btn", type: "submit" }, "Create control");
+
+      createForm = el(
+        "form",
+        { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
+        el("div", {}, el("div", { class: "muted", text: "New control" }), createName),
+        el("div", {}, el("div", { class: "muted", text: "Framework" }), createFramework),
+        el("div", {}, el("div", { class: "muted", text: "Description" }), createDescription),
+        el("div", { class: "row", style: "justify-content: flex-end;" }, createBtn),
+      );
+
+      createForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = createName.value.trim();
+        if (!name) {
+          toast({ title: "Name required", message: "Please enter a control name." });
+          return;
+        }
+        createBtn.disabled = true;
+        try {
+          const created = await createControl({
+            name,
+            framework: createFramework.value.trim() || undefined,
+            description: createDescription.value.trim() || undefined,
+          });
+          toast({ title: "Control created", message: `${created.name} added.` });
+          createName.value = "";
+          createFramework.value = "";
+          createDescription.value = "";
+          await loadControls(true);
+          refreshAddOptions();
+          addSelect.value = String(created.id);
+        } catch (err) {
+          toast({ title: "Failed", message: err?.message || "Unable to create control" });
+        } finally {
+          createBtn.disabled = false;
+        }
       });
     }
 
-    refreshAddOptions();
-
-    const addForm = el(
-      "form",
-      { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
-      el("div", {}, el("div", { class: "muted", text: "Control" }), addSelect),
-      el("div", {}, el("div", { class: "muted", text: "Implementation status" }), addStatus),
-      el("div", {}, el("div", { class: "muted", text: "Notes" }), addNotes),
-      el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
-    );
-
-    addForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const controlId = Number(addSelect.value);
-      if (!controlId) {
-        toast({ title: "Select a control", message: "Choose a control to map." });
-        return;
-      }
-      addBtn.disabled = true;
-      try {
-        const control = (controlOptions || []).find((c) => c.id === controlId);
-        const nextControls = [
-          ...mappings,
-          {
-            id: control.id,
-            name: control.name,
-            framework: control.framework,
-            description: control.description,
-            implementation_status: addStatus.value,
-            notes: addNotes.value,
-          },
-        ];
-        detailData = await updateProduct(product.id, { controls: buildControlsPayload(nextControls) });
-        toast({ title: "Control added", message: `${control.name} mapped.` });
-        addNotes.value = "";
-        await reloadList();
-        renderDetails();
-      } catch (err) {
-        toast({ title: "Failed", message: err?.message || "Unable to map control" });
-      } finally {
-        addBtn.disabled = false;
-      }
-    });
-
-    const createName = el("input", { class: "input", placeholder: "Control name", required: "true" });
-    const createFramework = el("input", { class: "input", placeholder: "Framework (optional)" });
-    const createDescription = el("textarea", { class: "input", placeholder: "Description (optional)" });
-    const createBtn = el("button", { class: "btn", type: "submit" }, "Create control");
-
-    const createForm = el(
-      "form",
-      { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
-      el("div", {}, el("div", { class: "muted", text: "New control" }), createName),
-      el("div", {}, el("div", { class: "muted", text: "Framework" }), createFramework),
-      el("div", {}, el("div", { class: "muted", text: "Description" }), createDescription),
-      el("div", { class: "row", style: "justify-content: flex-end;" }, createBtn),
-    );
-
-    createForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const name = createName.value.trim();
-      if (!name) {
-        toast({ title: "Name required", message: "Please enter a control name." });
-        return;
-      }
-      createBtn.disabled = true;
-      try {
-        const created = await createControl({
-          name,
-          framework: createFramework.value.trim() || undefined,
-          description: createDescription.value.trim() || undefined,
-        });
-        toast({ title: "Control created", message: `${created.name} added.` });
-        createName.value = "";
-        createFramework.value = "";
-        createDescription.value = "";
-        await loadControls(true);
-        refreshAddOptions();
-        addSelect.value = String(created.id);
-      } catch (err) {
-        toast({ title: "Failed", message: err?.message || "Unable to create control" });
-      } finally {
-        createBtn.disabled = false;
-      }
-    });
-
     content.append(
       list,
-      el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }),
+      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
       addForm,
-      el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }),
+      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
       createForm,
     );
 
@@ -412,7 +438,7 @@ function renderProductCard(product, reloadList) {
   }
 
   async function renderEditSection() {
-    if (!ownerOptions) {
+    if (isAdminUser && !ownerOptions) {
       try {
         ownerOptions = await listActiveUsers();
       } catch (err) {
@@ -423,13 +449,16 @@ function renderProductCard(product, reloadList) {
 
     const nameInput = el("input", { class: "input", value: detailData.name || "", required: "true" });
     const descInput = el("textarea", { class: "input", value: detailData.description || "" });
-    const ownerSelect = el("select", { class: "input", multiple: "true", size: "5" });
-    (ownerOptions || []).forEach((u) => {
-      const label = u.full_name || u.username || u.email;
-      const opt = el("option", { value: u.id, text: label });
-      if ((detailData.owner_ids || []).includes(u.id)) opt.selected = true;
-      ownerSelect.appendChild(opt);
-    });
+    let ownerSelect = null;
+    if (isAdminUser) {
+      ownerSelect = el("select", { class: "input", multiple: "true", size: "5" });
+      (ownerOptions || []).forEach((u) => {
+        const label = u.full_name || u.username || u.email;
+        const opt = el("option", { value: u.id, text: label });
+        if ((detailData.owner_ids || []).includes(u.id)) opt.selected = true;
+        ownerSelect.appendChild(opt);
+      });
+    }
 
     const cancelBtn = el("button", { class: "btn", type: "button" }, "Cancel");
     const saveBtn = el("button", { class: "btn primary", type: "submit" }, "Save changes");
@@ -439,7 +468,9 @@ function renderProductCard(product, reloadList) {
       { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 8px;" },
       el("div", {}, el("div", { class: "muted", text: "Name" }), nameInput),
       el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
-      el("div", {}, el("div", { class: "muted", text: "Owners" }), ownerSelect, el("div", { class: "muted", text: "Hold Ctrl/Cmd to select multiple" })),
+      isAdminUser
+        ? el("div", {}, el("div", { class: "muted", text: "Owners" }), ownerSelect, el("div", { class: "muted", text: "Hold Ctrl/Cmd to select multiple" }))
+        : el("div", { class: "muted", text: "Owner assignment is restricted to Admins." }),
       el(
         "div",
         { class: "row", style: "justify-content: flex-end; gap: 8px;" },
@@ -455,13 +486,17 @@ function renderProductCard(product, reloadList) {
         toast({ title: "Name required", message: "Please enter a product name." });
         return;
       }
-      const ownerIds = Array.from(ownerSelect.selectedOptions || []).map((o) => Number(o.value));
+      const ownerIds = isAdminUser ? Array.from(ownerSelect.selectedOptions || []).map((o) => Number(o.value)) : undefined;
 
       saveBtn.disabled = true;
       cancelBtn.disabled = true;
       saveBtn.textContent = "Saving...";
       try {
-        detailData = await updateProduct(product.id, { name, description: descInput.value, owner_ids: ownerIds });
+        const payload = { name, description: descInput.value };
+        if (isAdminUser && ownerIds) {
+          payload.owner_ids = ownerIds;
+        }
+        detailData = await updateProduct(product.id, payload);
         toast({ title: "Product updated", message: `${name} saved.` });
         isEditing = false;
         renderDetails();
@@ -508,25 +543,29 @@ function renderProductCard(product, reloadList) {
       : el("p", { class: "muted", text: "No description provided." });
 
     const deleteBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Delete product");
-    deleteBtn.addEventListener("click", async () => {
-      if (!confirm(`Delete ${detailData.name}? This cannot be undone.`)) return;
-      try {
-        await deleteProduct(product.id);
-        toast({ title: "Product deleted", message: `${detailData.name} removed.` });
-        header.remove();
-        detailCard.remove();
-        await reloadList();
-      } catch (err) {
-        toast({ title: "Failed", message: err?.message || "Unable to delete product" });
-      }
-    });
+    if (isAdminUser) {
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(`Delete ${detailData.name}? This cannot be undone.`)) return;
+        try {
+          await deleteProduct(product.id);
+          toast({ title: "Product deleted", message: `${detailData.name} removed.` });
+          header.remove();
+          detailCard.remove();
+          await reloadList();
+        } catch (err) {
+          toast({ title: "Failed", message: err?.message || "Unable to delete product" });
+        }
+      });
+    }
 
-    const actionRow = el(
-      "div",
-      { class: "row", style: "gap: 8px; justify-content: flex-end; flex-wrap: wrap;" },
-      el("button", { class: "btn", type: "button", onclick: async () => { isEditing = !isEditing; await loadDetails(); renderDetails(); } }, isEditing ? "Close editor" : "Edit product"),
-      deleteBtn,
-    );
+    const actionRow = canEdit
+      ? el(
+          "div",
+          { class: "row", style: "gap: 8px; justify-content: flex-end; flex-wrap: wrap;" },
+          el("button", { class: "btn", type: "button", onclick: async () => { isEditing = !isEditing; await loadDetails(); renderDetails(); } }, isEditing ? "Close editor" : "Edit product"),
+          isAdminUser ? deleteBtn : null,
+        )
+      : null;
 
     detailContent.append(
       el("h3", { text: detailData.name }),
@@ -562,18 +601,23 @@ function renderProductCard(product, reloadList) {
     }
   });
 
-  editBtn.addEventListener("click", async () => {
-    isEditing = true;
-    await loadDetails();
-    detailCard.style.display = "block";
-    renderDetails();
-    viewBtn.textContent = "Hide";
-  });
+  if (canEdit) {
+    editBtn.addEventListener("click", async () => {
+      isEditing = true;
+      await loadDetails();
+      detailCard.style.display = "block";
+      renderDetails();
+      viewBtn.textContent = "Hide";
+    });
+  }
 
   return el("div", {}, header, detailCard);
 }
 
 export async function ProductsView() {
+  const state = getState();
+  const editable = canWrite(state);
+  const adminUser = isAdmin(state);
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
     el("div", { class: "muted", text: "Loading products..." }),
   );
@@ -588,7 +632,7 @@ export async function ProductsView() {
         list.appendChild(el("div", { class: "muted", text: "No products found." }));
         return;
       }
-      products.forEach((p) => list.appendChild(renderProductCard(p, load)));
+      products.forEach((p) => list.appendChild(renderProductCard(p, load, { canEdit: editable, isAdminUser: adminUser })));
     } catch (e) {
       list.innerHTML = "";
       toast({ title: "Failed to load products", message: e?.message || "Unable to fetch products" });
@@ -653,24 +697,28 @@ export async function ProductsView() {
     }
   }
 
-  form.addEventListener("submit", submitProduct);
-  cancelBtn.addEventListener("click", () => {
-    formCard.style.display = "none";
-  });
+  if (editable) {
+    form.addEventListener("submit", submitProduct);
+    cancelBtn.addEventListener("click", () => {
+      formCard.style.display = "none";
+    });
+  }
 
   const controls = el(
     "div",
     { class: "row", style: "gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap;" },
     el("div", { class: "muted", text: "Product catalog" }),
     el("div", { class: "spacer" }),
-    (() => {
-      const btn = el("button", { class: "btn primary", type: "button" }, "Add product");
-      btn.addEventListener("click", () => {
-        formCard.style.display = "block";
-        nameInput.focus();
-      });
-      return btn;
-    })(),
+    editable
+      ? (() => {
+          const btn = el("button", { class: "btn primary", type: "button" }, "Add product");
+          btn.addEventListener("click", () => {
+            formCard.style.display = "block";
+            nameInput.focus();
+          });
+          return btn;
+        })()
+      : null,
   );
 
   load();
@@ -681,7 +729,7 @@ export async function ProductsView() {
     el("h1", { class: "page-title", text: "Products" }),
     el("p", { class: "muted", text: "Track products, owners, and supported versions." }),
     controls,
-    formCard,
+    editable ? formCard : null,
     list,
   );
 }
