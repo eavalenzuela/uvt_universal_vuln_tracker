@@ -8,12 +8,16 @@ import {
   deleteVulnerability,
   listProductVersions,
   listAttackVectors,
+  listTerminalImpacts,
   attachVulnerabilityVersions,
   updateVulnerabilityVersion,
   deleteVulnerabilityVersion,
   attachVulnerabilityAttackVectors,
   updateVulnerabilityAttackVector,
   deleteVulnerabilityAttackVector,
+  attachVulnerabilityTerminalImpacts,
+  updateVulnerabilityTerminalImpact,
+  deleteVulnerabilityTerminalImpact,
 } from "../../api/vulnerabilities.js";
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
@@ -25,6 +29,7 @@ const MITIGATION_OPTIONS = ["Not Started", "Investigating", "In Progress", "Miti
 
 let cachedProductVersions = null;
 let cachedAttackVectors = null;
+let cachedTerminalImpacts = null;
 
 function formatDate(value) {
   return value ? value.slice(0, 10) : "-";
@@ -88,6 +93,18 @@ async function ensureAttackVectors() {
     toast({ title: "Failed to load attack vectors", message: err?.message || "Unable to list attack vectors" });
     cachedAttackVectors = [];
     return cachedAttackVectors;
+  }
+}
+
+async function ensureTerminalImpacts() {
+  if (cachedTerminalImpacts) return cachedTerminalImpacts;
+  try {
+    cachedTerminalImpacts = await listTerminalImpacts();
+    return cachedTerminalImpacts;
+  } catch (err) {
+    toast({ title: "Failed to load terminal impacts", message: err?.message || "Unable to list terminal impacts" });
+    cachedTerminalImpacts = [];
+    return cachedTerminalImpacts;
   }
 }
 
@@ -415,6 +432,151 @@ function renderAttackVectorsSection(detailData, vulnId, reloadDetails, canEdit) 
   return container;
 }
 
+function renderTerminalImpactRow(mapping, vulnId, reloadDetails, canEdit) {
+  const impactSelect = el("select", { class: "input" });
+  const saveBtn = el("button", { class: "btn primary", type: "button" }, "Save");
+  const deleteBtn = el("button", { class: "btn", type: "button", style: "color: #b91c1c;" }, "Remove");
+
+  const fillImpactOptions = async () => {
+    const impacts = await ensureTerminalImpacts();
+    impactSelect.innerHTML = "";
+    impacts.forEach((impact) => {
+      impactSelect.appendChild(
+        el("option", { value: impact.id, text: impact.name, selected: impact.id === mapping.terminal_impact_id })
+      );
+    });
+  };
+
+  fillImpactOptions();
+
+  if (canEdit) {
+    saveBtn.addEventListener("click", async () => {
+      const terminalImpactId = impactSelect.value ? Number(impactSelect.value) : null;
+      if (!terminalImpactId) {
+        toast({ title: "Select impact", message: "Choose a terminal impact to save." });
+        return;
+      }
+      saveBtn.disabled = true;
+      deleteBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      try {
+        await updateVulnerabilityTerminalImpact(vulnId, mapping.id, { terminal_impact_id: terminalImpactId });
+        toast({ title: "Mapping updated", message: `${mapping.terminal_impact_name || "Terminal impact"} updated.` });
+        await reloadDetails();
+      } catch (err) {
+        toast({ title: "Failed", message: err?.message || "Unable to update mapping" });
+      } finally {
+        saveBtn.disabled = false;
+        deleteBtn.disabled = false;
+        saveBtn.textContent = "Save";
+      }
+    });
+
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm("Remove this terminal impact mapping?")) return;
+      saveBtn.disabled = true;
+      deleteBtn.disabled = true;
+      try {
+        await deleteVulnerabilityTerminalImpact(vulnId, mapping.id);
+        toast({ title: "Mapping removed", message: `${mapping.terminal_impact_name || "Terminal impact"} removed.` });
+        await reloadDetails();
+      } catch (err) {
+        toast({ title: "Failed", message: err?.message || "Unable to remove mapping" });
+      } finally {
+        saveBtn.disabled = false;
+        deleteBtn.disabled = false;
+      }
+    });
+  } else {
+    impactSelect.disabled = true;
+  }
+
+  return el(
+    "div",
+    { class: "card", style: "padding: 10px; display: flex; flex-direction: column; gap: 8px;" },
+    el(
+      "div",
+      { class: "row", style: "justify-content: space-between; gap: 8px;" },
+      el(
+        "div",
+        {},
+        el("div", { style: "font-weight: 600;", text: mapping.terminal_impact_name || "Terminal impact" }),
+        mapping.terminal_impact_description ? el("div", { class: "muted", text: mapping.terminal_impact_description }) : null,
+      ),
+      canEdit ? el("div", { class: "row", style: "gap: 6px; align-items: center;" }, deleteBtn, saveBtn) : null,
+    ),
+    el("div", { style: "flex: 1; min-width: 200px;" }, el("div", { class: "muted", text: "Terminal impact" }), impactSelect),
+  );
+}
+
+function renderTerminalImpactsSection(detailData, vulnId, reloadDetails, canEdit) {
+  const container = el("div", {});
+  const list = el("div", { style: "display: flex; flex-direction: column; gap: 8px;" });
+
+  if (!detailData.terminal_impacts?.length) {
+    list.appendChild(el("div", { class: "muted", text: "No terminal impacts linked." }));
+  } else {
+    detailData.terminal_impacts.forEach((m) => list.appendChild(renderTerminalImpactRow(m, vulnId, reloadDetails, canEdit)));
+  }
+
+  container.appendChild(el("h4", { text: "Terminal impacts" }));
+  container.appendChild(list);
+
+  if (canEdit) {
+    const impactSelect = el("select", { class: "input", multiple: "true", size: "6" });
+    const addBtn = el("button", { class: "btn primary", type: "button" }, "Attach terminal impacts");
+
+    const refreshOptions = async () => {
+      const impacts = await ensureTerminalImpacts();
+      const existingIds = new Set((detailData.terminal_impacts || []).map((m) => m.terminal_impact_id));
+      impactSelect.innerHTML = "";
+      if (!impacts.length) {
+        impactSelect.appendChild(el("option", { text: "No terminal impacts available", disabled: "true" }));
+      } else {
+        impacts
+          .filter((impact) => !existingIds.has(impact.id))
+          .forEach((impact) => impactSelect.appendChild(el("option", { value: impact.id, text: impact.name })));
+      }
+    };
+
+    addBtn.addEventListener("click", async () => {
+      const ids = Array.from(impactSelect.selectedOptions || []).map((o) => Number(o.value));
+      if (!ids.length) {
+        toast({ title: "Select terminal impacts", message: "Choose at least one terminal impact to attach." });
+        return;
+      }
+      addBtn.disabled = true;
+      addBtn.textContent = "Attaching...";
+      try {
+        await attachVulnerabilityTerminalImpacts(vulnId, ids);
+        toast({ title: "Attached", message: `${ids.length} terminal impact(s) linked.` });
+        await reloadDetails();
+        await refreshOptions();
+      } catch (err) {
+        toast({ title: "Failed", message: err?.message || "Unable to attach terminal impacts" });
+      } finally {
+        addBtn.disabled = false;
+        addBtn.textContent = "Attach terminal impacts";
+      }
+    });
+
+    refreshOptions();
+
+    container.appendChild(el("div", { class: "divider", style: "margin: 10px 0; height: 1px; background: #e5e7eb;" }));
+    container.appendChild(
+      el(
+        "div",
+        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        el("div", { class: "muted", text: "Link terminal impacts" }),
+        impactSelect,
+        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+      )
+    );
+  }
+
+  return container;
+}
+
 function renderVulnerabilityCard(vuln, reloadList) {
   const detailContent = el("div", {});
   const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
@@ -583,6 +745,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
       description,
       renderVersionsSection(detailData, vuln.id, () => loadDetails(true), canEdit),
       renderAttackVectorsSection(detailData, vuln.id, () => loadDetails(true), canEdit),
+      renderTerminalImpactsSection(detailData, vuln.id, () => loadDetails(true), canEdit),
       actionRow,
     );
 

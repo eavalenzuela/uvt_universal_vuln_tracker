@@ -49,6 +49,10 @@ export async function listAttackVectors() {
   return apiFetch("/api/attack_vectors", { method: "GET" });
 }
 
+export async function listTerminalImpacts() {
+  return apiFetch("/api/terminal_impacts", { method: "GET" });
+}
+
 export async function attachVulnerabilityVersions(id, productVersionIds) {
   return apiFetch(`/api/vulnerabilities/${id}/versions`, {
     method: "POST",
@@ -77,4 +81,19 @@ export async function updateVulnerabilityAttackVector(id, mappingId, data) {
 
 export async function deleteVulnerabilityAttackVector(id, mappingId) {
   return apiFetch(`/api/vulnerabilities/${id}/attack_vectors/${mappingId}`, { method: "DELETE" });
+}
+
+export async function attachVulnerabilityTerminalImpacts(id, terminalImpactIds) {
+  return apiFetch(`/api/vulnerabilities/${id}/terminal_impacts`, {
+    method: "POST",
+    body: { terminal_impact_ids: terminalImpactIds },
+  });
+}
+
+export async function updateVulnerabilityTerminalImpact(id, mappingId, data) {
+  return apiFetch(`/api/vulnerabilities/${id}/terminal_impacts/${mappingId}`, { method: "PATCH", body: data });
+}
+
+export async function deleteVulnerabilityTerminalImpact(id, mappingId) {
+  return apiFetch(`/api/vulnerabilities/${id}/terminal_impacts/${mappingId}`, { method: "DELETE" });
 }
