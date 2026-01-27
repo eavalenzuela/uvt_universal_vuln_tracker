@@ -7,6 +7,7 @@ from .database import init_database
 from .api import register_api
 from . import models  # ensures migrations can discover models
 from .cli import seed_admin
+from .plugins import init_plugin_registry
 
 def create_app():
     app = Flask(__name__)
@@ -33,6 +34,11 @@ def create_app():
     db_url = os.getenv("DATABASE_URL", "sqlite:///uvt.db")
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["PLUGIN_IMPORT_PATHS"] = [
+        path.strip()
+        for path in os.getenv("PLUGIN_IMPORT_PATHS", "").split(",")
+        if path.strip()
+    ]
     app.cli.add_command(seed_admin)
 
     # Logging
@@ -41,6 +47,9 @@ def create_app():
 
     # DB + migrations
     init_database(app)
+
+    # Plugin registry
+    init_plugin_registry(app)
 
     # API routes
     register_api(app)
