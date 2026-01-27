@@ -10,7 +10,46 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch(path, { method = "GET", headers = {}, body = null } = {}) {
+const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_RETRIES = 1;
+const RETRY_STATUS = new Set([502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(payload, status) {
+  return (
+    (payload && payload.error) ||
+    (payload && payload.message) ||
+    (typeof payload === "string" && payload) ||
+    `HTTP ${status}`
+  );
+}
+
+async function parsePayload(res) {
+  if (res.status === 204 || res.status === 205) return null;
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
+  if (isJson) {
+    return res.json().catch(() => null);
+  }
+  const text = await res.text().catch(() => null);
+  return text === "" ? null : text;
+}
+
+export async function apiFetch(
+  path,
+  {
+    method = "GET",
+    headers = {},
+    body = null,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    retryDelayMs = 500,
+    signal,
+  } = {},
+) {
   const url = `${CONFIG.API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
 
   const state = getState();
@@ -29,19 +68,73 @@ export async function apiFetch(path, { method = "GET", headers = {}, body = null
     finalBody = JSON.stringify(body);
   }
 
-  const res = await fetch(url, { method, headers: finalHeaders, body: finalBody });
+  let attempt = 0;
+  let lastError;
 
-  const contentType = res.headers.get("content-type") || "";
-  const isJson = contentType.includes("application/json");
-  const payload = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
+  while (attempt <= retries) {
+    attempt += 1;
+    const controller = new AbortController();
+    let didTimeout = false;
+    let timeoutId = null;
 
-  if (!res.ok) {
-    const msg =
-      (payload && payload.error) ||
-      (typeof payload === "string" && payload) ||
-      `HTTP ${res.status}`;
-    throw new ApiError(msg, res.status, payload);
+    if (timeoutMs) {
+      timeoutId = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+      }, timeoutMs);
+    }
+
+    if (signal) {
+      if (signal.aborted) {
+        throw new ApiError("Request cancelled", 0, null);
+      }
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: finalBody,
+        signal: controller.signal,
+      });
+
+      const payload = await parsePayload(res);
+
+      if (!res.ok) {
+        if (RETRY_STATUS.has(res.status) && attempt <= retries) {
+          await sleep(retryDelayMs * attempt);
+          continue;
+        }
+        throw new ApiError(getErrorMessage(payload, res.status), res.status, payload);
+      }
+
+      return payload;
+    } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+
+      if (err?.name === "AbortError") {
+        if (didTimeout) {
+          lastError = new ApiError("Request timed out", 408, null);
+        } else {
+          lastError = new ApiError("Request cancelled", 0, null);
+        }
+      } else if (err instanceof ApiError) {
+        lastError = err;
+      } else {
+        lastError = new ApiError("Network error", 0, null);
+      }
+
+      if (attempt <= retries && (lastError.status === 0 || RETRY_STATUS.has(lastError.status))) {
+        await sleep(retryDelayMs * attempt);
+        continue;
+      }
+
+      throw lastError;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 
-  return payload;
+  throw lastError || new ApiError("Request failed", 0, null);
 }

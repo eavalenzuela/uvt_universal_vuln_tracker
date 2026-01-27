@@ -25,16 +25,6 @@ function statCard(title, value, hint) {
   );
 }
 
-function improvementCard(index, improvement) {
-  return el("div", { class: "card", style: "flex:1; min-width: 220px; padding: 12px; display:flex; flex-direction:column; gap:6px;" },
-    el("div", { class: "row", style: "align-items: center; gap: 8px;" },
-      pill(`#${index + 1}`, "#2563eb", true),
-      el("div", { style: "font-weight: 700;", text: improvement.title }),
-    ),
-    el("div", { class: "muted", text: improvement.detail }),
-  );
-}
-
 function userCard(user, { onImpersonate, onToggle }) {
   const statusLabel = user.is_active ? "Active" : "Disabled";
   const statusColor = user.is_active ? "#16a34a" : "#dc2626";
@@ -67,21 +57,6 @@ function userCard(user, { onImpersonate, onToggle }) {
 }
 
 export async function AdminUsersView() {
-  const improvements = [
-    {
-      title: "Faster triage",
-      detail: "At-a-glance stats plus search and filtering make it quick to spot risk and onboarding gaps.",
-    },
-    {
-      title: "Actionable controls",
-      detail: "Inline admin actions (impersonate, toggle access, reset MFA) are now one click away from each user row.",
-    },
-    {
-      title: "Role clarity",
-      detail: "Clear badges for role, status, and MFA reduce ambiguity and make auditing conversations easier.",
-    },
-  ];
-
   const totalEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
   const activeEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
   const pendingEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
@@ -119,10 +94,6 @@ export async function AdminUsersView() {
     statCard("Active", activeEl, "Allowed to sign in"),
     statCard("Pending", pendingEl, "Awaiting activation"),
     statCard("Disabled", disabledEl, "Access revoked"),
-  );
-
-  const improvementsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
-    improvements.map((imp, idx) => improvementCard(idx, imp)),
   );
 
   const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" });
@@ -237,8 +208,6 @@ export async function AdminUsersView() {
     el("div", { class: "card" },
       el("h1", { class: "page-title", text: "Admin: Users" }),
       el("p", { class: "muted", text: "Manage account access, MFA posture, and onboarding from a single control plane." }),
-      el("div", { class: "muted", style: "font-weight: 600; margin-top: 8px;" }, "Top 3 improvements to the admin interface"),
-      improvementsRow,
     ),
     el("div", { class: "card" },
       el("div", { class: "row", style: "align-items: center; gap: 8px;" },
