@@ -119,6 +119,9 @@ class Vulnerability(db.Model):
     severity = db.Column(db.String(20), default="Medium", nullable=False)  # Critical/High/Medium/Low/None
     cvss_score = db.Column(db.Numeric(3, 1))
     attack_complexity = db.Column(db.String(20), default="Not Defined", nullable=False)
+    confidentiality_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
+    integrity_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
+    availability_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
 
     published_date = db.Column(db.Date)
     last_modified_date = db.Column(db.Date)

@@ -19,6 +19,7 @@ from ..auth import login_required, role_required
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
+IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
 
 
 def _parse_date(date_str):
@@ -43,6 +44,14 @@ def _normalize_attack_complexity(value):
     if value is None or value == "":
         return None
     if value not in ATTACK_COMPLEXITY_OPTIONS:
+        return False
+    return value
+
+
+def _normalize_impact(value):
+    if value is None or value == "":
+        return None
+    if value not in IMPACT_OPTIONS:
         return False
     return value
 
@@ -126,6 +135,9 @@ def list_vulnerabilities():
     status = request.args.get("status")
     search = request.args.get("search")
     attack_complexity = request.args.get("attack_complexity")
+    confidentiality_impact = request.args.get("confidentiality_impact")
+    integrity_impact = request.args.get("integrity_impact")
+    availability_impact = request.args.get("availability_impact")
 
     if severity:
         q = q.filter(Vulnerability.severity == severity)
@@ -133,6 +145,12 @@ def list_vulnerabilities():
         q = q.filter(Vulnerability.status == status)
     if attack_complexity:
         q = q.filter(Vulnerability.attack_complexity == attack_complexity)
+    if confidentiality_impact:
+        q = q.filter(Vulnerability.confidentiality_impact == confidentiality_impact)
+    if integrity_impact:
+        q = q.filter(Vulnerability.integrity_impact == integrity_impact)
+    if availability_impact:
+        q = q.filter(Vulnerability.availability_impact == availability_impact)
     if search:
         like = f"%{search}%"
         q = q.filter(or_(Vulnerability.title.ilike(like), Vulnerability.cve_id.ilike(like)))
@@ -155,6 +173,9 @@ def list_vulnerabilities():
             "severity": v.severity,
             "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
             "attack_complexity": v.attack_complexity,
+            "confidentiality_impact": v.confidentiality_impact,
+            "integrity_impact": v.integrity_impact,
+            "availability_impact": v.availability_impact,
             "status": v.status,
             "published_date": v.published_date.isoformat() if v.published_date else None,
             "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
@@ -180,6 +201,24 @@ def create_vulnerability():
     if attack_complexity is None:
         attack_complexity = "Not Defined"
 
+    confidentiality_impact = _normalize_impact(data.get("confidentiality_impact"))
+    if confidentiality_impact is False:
+        return jsonify({"error": f"Invalid confidentiality_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
+    if confidentiality_impact is None:
+        confidentiality_impact = "Not Defined"
+
+    integrity_impact = _normalize_impact(data.get("integrity_impact"))
+    if integrity_impact is False:
+        return jsonify({"error": f"Invalid integrity_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
+    if integrity_impact is None:
+        integrity_impact = "Not Defined"
+
+    availability_impact = _normalize_impact(data.get("availability_impact"))
+    if availability_impact is False:
+        return jsonify({"error": f"Invalid availability_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
+    if availability_impact is None:
+        availability_impact = "Not Defined"
+
     published_date = _parse_date(data.get("published_date"))
     if data.get("published_date") and published_date is None:
         return jsonify({"error": "Invalid published_date; expected ISO date"}), 400
@@ -195,6 +234,9 @@ def create_vulnerability():
         severity=data.get("severity", "Medium"),
         cvss_score=_parse_cvss(data.get("cvss_score")),
         attack_complexity=attack_complexity,
+        confidentiality_impact=confidentiality_impact,
+        integrity_impact=integrity_impact,
+        availability_impact=availability_impact,
         published_date=published_date,
         last_modified_date=last_modified_date,
         status=data.get("status", "Open"),
@@ -226,6 +268,9 @@ def create_vulnerability():
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
         "attack_complexity": v.attack_complexity,
+        "confidentiality_impact": v.confidentiality_impact,
+        "integrity_impact": v.integrity_impact,
+        "availability_impact": v.availability_impact,
     })
 
     try:
@@ -292,6 +337,9 @@ def get_vulnerability(vuln_id: int):
         "severity": v.severity,
         "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
         "attack_complexity": v.attack_complexity,
+        "confidentiality_impact": v.confidentiality_impact,
+        "integrity_impact": v.integrity_impact,
+        "availability_impact": v.availability_impact,
         "published_date": v.published_date.isoformat() if v.published_date else None,
         "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
         "status": v.status,
@@ -310,10 +358,20 @@ def update_vulnerability(vuln_id: int):
     v = Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
 
-    old = {"cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status, "attack_complexity": v.attack_complexity}
+    old = {
+        "cve_id": v.cve_id,
+        "title": v.title,
+        "severity": v.severity,
+        "status": v.status,
+        "attack_complexity": v.attack_complexity,
+        "confidentiality_impact": v.confidentiality_impact,
+        "integrity_impact": v.integrity_impact,
+        "availability_impact": v.availability_impact,
+    }
 
     for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
-                  "last_modified_date", "status", "assigned_to", "attack_complexity"]:
+                  "last_modified_date", "status", "assigned_to", "attack_complexity",
+                  "confidentiality_impact", "integrity_impact", "availability_impact"]:
         if field in data:
             if field == "title":
                 title_value = (data.get(field) or "").strip()
@@ -332,6 +390,11 @@ def update_vulnerability(vuln_id: int):
                 if normalized is False:
                     return jsonify({"error": f"Invalid attack_complexity; must be one of {sorted(ATTACK_COMPLEXITY_OPTIONS)}"}), 400
                 setattr(v, field, normalized if normalized is not None else "Not Defined")
+            elif field in {"confidentiality_impact", "integrity_impact", "availability_impact"}:
+                normalized = _normalize_impact(data.get(field))
+                if normalized is False:
+                    return jsonify({"error": f"Invalid {field}; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
+                setattr(v, field, normalized if normalized is not None else "Not Defined")
             else:
                 setattr(v, field, data[field])
 
@@ -344,6 +407,9 @@ def update_vulnerability(vuln_id: int):
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
         "attack_complexity": v.attack_complexity,
+        "confidentiality_impact": v.confidentiality_impact,
+        "integrity_impact": v.integrity_impact,
+        "availability_impact": v.availability_impact,
     })
 
     db.session.commit()

@@ -25,6 +25,7 @@ import { canWrite, isAdmin } from "../../state/permissions.js";
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
 const ATTACK_COMPLEXITY_OPTIONS = ["Not Defined", "Low", "High"];
+const IMPACT_OPTIONS = ["Not Defined", "None", "Low", "Medium", "High"];
 const MITIGATION_OPTIONS = ["Not Started", "Investigating", "In Progress", "Mitigated", "Not Applicable"];
 
 let cachedProductVersions = null;
@@ -616,6 +617,21 @@ function renderVulnerabilityCard(vuln, reloadList) {
       { class: "input" },
       ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === detailData.attack_complexity }))
     );
+    const confidentialitySelect = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((i) => el("option", { value: i, text: i, selected: i === detailData.confidentiality_impact }))
+    );
+    const integritySelect = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((i) => el("option", { value: i, text: i, selected: i === detailData.integrity_impact }))
+    );
+    const availabilitySelect = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((i) => el("option", { value: i, text: i, selected: i === detailData.availability_impact }))
+    );
     const statusSelect = el(
       "select",
       { class: "input" },
@@ -637,6 +653,9 @@ function renderVulnerabilityCard(vuln, reloadList) {
       el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severitySelect),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexitySelect),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialitySelect),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Integrity impact" }), integritySelect),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Availability impact" }), availabilitySelect),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusSelect),
         el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
@@ -664,6 +683,9 @@ function renderVulnerabilityCard(vuln, reloadList) {
           cve_id: cveInput.value.trim() || undefined,
           severity: severitySelect.value,
           attack_complexity: attackComplexitySelect.value,
+          confidentiality_impact: confidentialitySelect.value,
+          integrity_impact: integritySelect.value,
+          availability_impact: availabilitySelect.value,
           status: statusSelect.value,
           cvss_score: cvssInput.value || undefined,
           published_date: publishedInput.value || undefined,
@@ -704,6 +726,9 @@ function renderVulnerabilityCard(vuln, reloadList) {
         ? el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: detailData.cvss_score }))
         : null,
       el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: detailData.attack_complexity || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Confidentiality impact" }), el("div", { text: detailData.confidentiality_impact || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Integrity impact" }), el("div", { text: detailData.integrity_impact || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Availability impact" }), el("div", { text: detailData.availability_impact || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Published" }), el("div", { text: formatDate(detailData.published_date) })),
       el("div", {}, el("div", { class: "muted", text: "Last modified" }), el("div", { text: formatDate(detailData.last_modified_date) })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(detailData.updated_at) })),
@@ -799,6 +824,9 @@ function renderVulnerabilityCard(vuln, reloadList) {
       statusPill(vuln.status || "Open"),
       el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: vuln.cvss_score ?? "-" })),
       el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: vuln.attack_complexity || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Confidentiality impact" }), el("div", { text: vuln.confidentiality_impact || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Integrity impact" }), el("div", { text: vuln.integrity_impact || "Not Defined" })),
+      el("div", {}, el("div", { class: "muted", text: "Availability impact" }), el("div", { text: vuln.availability_impact || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(vuln.updated_at) })),
     ),
   );
@@ -829,6 +857,24 @@ export async function VulnListView() {
     el("option", { value: "", text: "Attack complexity" }),
     ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c }))
   );
+  const confidentialitySelect = el(
+    "select",
+    { class: "input" },
+    el("option", { value: "", text: "Confidentiality impact" }),
+    ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c }))
+  );
+  const integritySelect = el(
+    "select",
+    { class: "input" },
+    el("option", { value: "", text: "Integrity impact" }),
+    ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c }))
+  );
+  const availabilitySelect = el(
+    "select",
+    { class: "input" },
+    el("option", { value: "", text: "Availability impact" }),
+    ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c }))
+  );
 
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
@@ -843,6 +889,9 @@ export async function VulnListView() {
         status: statusSelect.value || undefined,
         severity: severitySelect.value || undefined,
         attack_complexity: attackComplexitySelect.value || undefined,
+        confidentiality_impact: confidentialitySelect.value || undefined,
+        integrity_impact: integritySelect.value || undefined,
+        availability_impact: availabilitySelect.value || undefined,
       });
 
       list.innerHTML = "";
@@ -867,6 +916,9 @@ export async function VulnListView() {
     statusSelect,
     severitySelect,
     attackComplexitySelect,
+    confidentialitySelect,
+    integritySelect,
+    availabilitySelect,
     applyBtn,
   );
 
@@ -883,6 +935,21 @@ export async function VulnListView() {
       "select",
       { class: "input" },
       ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
+    );
+    const confidentialityInput = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
+    );
+    const integrityInput = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
+    );
+    const availabilityInput = el(
+      "select",
+      { class: "input" },
+      ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const statusInput = el(
       "select",
@@ -916,6 +983,9 @@ export async function VulnListView() {
       el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severityInput),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexityInput),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialityInput),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Integrity impact" }), integrityInput),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Availability impact" }), availabilityInput),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusInput),
         el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
@@ -949,6 +1019,9 @@ export async function VulnListView() {
           cve_id: cveInput.value.trim() || undefined,
           severity: severityInput.value,
           attack_complexity: attackComplexityInput.value,
+          confidentiality_impact: confidentialityInput.value,
+          integrity_impact: integrityInput.value,
+          availability_impact: availabilityInput.value,
           status: statusInput.value,
           cvss_score: cvssInput.value || undefined,
           published_date: publishedInput.value || undefined,
@@ -964,6 +1037,9 @@ export async function VulnListView() {
         publishedInput.value = "";
         modifiedInput.value = "";
         attackComplexityInput.value = "Not Defined";
+        confidentialityInput.value = "Not Defined";
+        integrityInput.value = "Not Defined";
+        availabilityInput.value = "Not Defined";
         versionSelect.selectedIndex = -1;
         creationCard.style.display = "none";
         await load();
