@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
 from ..database import db
-from ..models import Product, ProductOwner, ProductVersion, User
+from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
 from ..auth import login_required, role_required
 
 bp = Blueprint("products_api", __name__, url_prefix="/api")
@@ -46,6 +46,15 @@ def _product_json(p: Product, include_details: bool = False):
                 "username": p.creator.username,
                 "full_name": " ".join(filter(None, [p.creator.first_name, p.creator.last_name])).strip() or p.creator.username,
             }
+        data["controls"] = [{
+            "id": link.control.id,
+            "name": link.control.name,
+            "framework": link.control.framework,
+            "description": link.control.description,
+            "implementation_status": link.implementation_status,
+            "notes": link.notes,
+            "mapping_id": link.id,
+        } for link in sorted(p.control_links, key=lambda x: (x.control.name or ""))]
 
     return data
 
@@ -126,6 +135,45 @@ def update_product(product_id: int):
                 link = ProductOwner(product=p, user=owner)
             new_links.append(link)
         p.owners = new_links
+
+    if "controls" in data:
+        controls_data = data.get("controls") or []
+        if not isinstance(controls_data, list):
+            return jsonify({"error": "controls must be a list"}), 400
+        control_ids = []
+        for entry in controls_data:
+            if not isinstance(entry, dict):
+                return jsonify({"error": "controls entries must be objects"}), 400
+            control_id = entry.get("control_id")
+            if not control_id:
+                return jsonify({"error": "control_id is required for each control"}), 400
+            control_ids.append(int(control_id))
+        if len(control_ids) != len(set(control_ids)):
+            return jsonify({"error": "Duplicate control_id values are not allowed"}), 400
+
+        controls = []
+        if control_ids:
+            controls = Control.query.filter(Control.id.in_(control_ids)).all()
+            found_ids = {c.id for c in controls}
+            missing = set(control_ids) - found_ids
+            if missing:
+                return jsonify({"error": f"Invalid controls: {', '.join(map(str, sorted(missing)))}"}), 400
+
+        control_map = {c.id: c for c in controls}
+        existing_links = {link.control_id: link for link in p.control_links}
+        new_links = []
+        for entry in controls_data:
+            control_id = int(entry["control_id"])
+            control = control_map.get(control_id)
+            if not control:
+                continue
+            link = existing_links.get(control_id)
+            if not link:
+                link = ProductControl(product=p, control=control)
+            link.implementation_status = entry.get("implementation_status") or link.implementation_status or "Not Started"
+            link.notes = entry.get("notes")
+            new_links.append(link)
+        p.control_links = new_links
 
     db.session.commit()
     return jsonify(_product_json(p, include_details=True))
