@@ -59,6 +59,11 @@ const SLA_DAYS = {
   Low: 60,
   None: 90,
 };
+const WIDGET_BORDER = "rgba(148, 163, 184, 0.25)";
+const WIDGET_BG = "rgba(15, 23, 42, 0.7)";
+const WIDGET_SURFACE = "rgba(30, 41, 59, 0.7)";
+const WIDGET_SUBTLE = "rgba(148, 163, 184, 0.18)";
+const WIDGET_BORDER_HIGHLIGHT = "rgba(106, 169, 255, 0.9)";
 
 function formatAge(value) {
   if (!value) return "-";
@@ -214,7 +219,7 @@ function severityBadge(severity) {
     "span",
     {
       class: "badge",
-      style: `background: ${bg[severity] || "#f8fafc"}; color: ${color}; border: 1px solid #e2e8f0;`,
+      style: `background: ${bg[severity] || "#f8fafc"}; color: ${color}; border: 1px solid ${WIDGET_BORDER};`,
     },
     severity || "Unknown",
   );
@@ -321,7 +326,7 @@ export async function DashboardView() {
       "div",
       {
         style:
-          "background:#fff; color:#0f172a; border-radius:12px; width:min(520px, 92vw); padding:20px; display:flex; flex-direction:column; gap:16px;",
+          "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(520px, 92vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
         role: "dialog",
         "aria-modal": "true",
         "aria-label": `Configure ${widget.title}`,
@@ -330,21 +335,21 @@ export async function DashboardView() {
     );
 
     const filterInput = el("input", {
+      class: "input",
       type: "text",
       value: currentSettings.filter,
       placeholder: "Filter",
-      style: "width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5f5;",
     });
     const rangeSelect = el(
       "select",
-      { style: "width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5f5;" },
+      { class: "input" },
       RANGE_OPTIONS.map((range) =>
         el("option", { value: range, text: range, selected: range === currentSettings.range }),
       ),
     );
     const groupingSelect = el(
       "select",
-      { style: "width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5f5;" },
+      { class: "input" },
       (widget.groupings || []).map((grouping) =>
         el("option", { value: grouping, text: grouping, selected: grouping === currentSettings.grouping }),
       ),
@@ -514,9 +519,9 @@ export async function DashboardView() {
             "div",
             {
               style:
-                "display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid #e2e8f0;",
+                `display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
             },
-            el("div", { style: "font-weight:600; color:#0f172a;", text: vulnId }),
+            el("div", { style: "font-weight:600; color:#e2e8f0;", text: vulnId }),
             el("div", { style: "font-weight:600;", text: item.title }),
             el("div", { class: "muted", text: assetLabel }),
             el("div", { text: item.cvss_score ?? "-" }),
@@ -595,15 +600,15 @@ export async function DashboardView() {
         const kpiRow = el(
           "div",
           { style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px;" },
-          el("div", { style: "padding:8px; border-radius:8px; background:#fff; border:1px solid #e2e8f0;" },
+          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "Total" }),
             el("div", { style: "font-size:20px; font-weight:600;", text: totalResponse.total ?? 0 }),
           ),
-          el("div", { style: "padding:8px; border-radius:8px; background:#fff; border:1px solid #e2e8f0;" },
+          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "Critical" }),
             el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: critical.total ?? 0 }),
           ),
-          el("div", { style: "padding:8px; border-radius:8px; background:#fff; border:1px solid #e2e8f0;" },
+          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "High" }),
             el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: high.total ?? 0 }),
           ),
@@ -611,7 +616,7 @@ export async function DashboardView() {
 
         const trendBlock = el(
           "div",
-          { style: "display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:#fff; border:1px solid #e2e8f0;" },
+          { style: `display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
           el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
             el("div", { class: "muted", text: `Updates (${widgetSettings.range})` }),
             el("div", { style: "font-size:16px; font-weight:600;", text: `${filteredTrendItems.length} updates` }),
@@ -662,7 +667,7 @@ export async function DashboardView() {
               "div",
               {
                 style:
-                  "display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid #e2e8f0;",
+                  `display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
               },
               el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
                 el("span", { style: "font-weight:600;", text: item.title }),
@@ -732,7 +737,7 @@ export async function DashboardView() {
               "div",
               {
                 style:
-                  "display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid #e2e8f0;",
+                  `display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
               },
               el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
                 el("span", { style: "font-weight:600;", text: item.title }),
@@ -816,12 +821,12 @@ export async function DashboardView() {
           list.append(
             el(
               "div",
-              { style: "display:flex; flex-direction:column; gap:4px; padding:6px 0; border-top:1px solid #e2e8f0;" },
+              { style: `display:flex; flex-direction:column; gap:4px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};` },
               el("div", { style: "display:flex; justify-content:space-between; align-items:center; gap:8px;" },
                 el("span", { style: "font-weight:600;", text: entry.label }),
                 el("span", { class: "muted", text: `${entry.count} vulns` }),
               ),
-              el("div", { style: "height:6px; border-radius:999px; background:#e2e8f0; overflow:hidden;" },
+              el("div", { style: `height:6px; border-radius:999px; background:${WIDGET_SUBTLE}; overflow:hidden;` },
                 el("div", {
                   style: `height:100%; width:${(entry.count / max) * 100}%; background:#2563eb;`,
                 }),
@@ -875,7 +880,7 @@ export async function DashboardView() {
               "div",
               {
                 style:
-                  "display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid #e2e8f0;",
+                  `display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
               },
               el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
                 el("span", { style: "font-weight:600;", text: item.title }),
@@ -912,17 +917,17 @@ export async function DashboardView() {
 
       const card = el("div", {
         style:
-          "border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#f8fafc; display:flex; flex-direction:column; gap:10px;",
+          `border:1px solid ${WIDGET_BORDER}; border-radius:12px; padding:12px; background:${WIDGET_BG}; display:flex; flex-direction:column; gap:10px;`,
         onDragOver: (event) => {
           event.preventDefault();
-          card.style.borderColor = "#3b82f6";
+          card.style.borderColor = WIDGET_BORDER_HIGHLIGHT;
         },
         onDragLeave: () => {
-          card.style.borderColor = "#e2e8f0";
+          card.style.borderColor = WIDGET_BORDER;
         },
         onDrop: (event) => {
           event.preventDefault();
-          card.style.borderColor = "#e2e8f0";
+          card.style.borderColor = WIDGET_BORDER;
           const draggedId = draggingId || event.dataTransfer?.getData("text/plain");
           if (!draggedId || draggedId === widgetId) return;
           const fromIndex = layoutState.order.indexOf(draggedId);

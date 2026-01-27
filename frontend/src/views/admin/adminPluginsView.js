@@ -74,6 +74,13 @@ export async function AdminPluginsView() {
       lastSync: "Today at 09:42",
       scopes: ["Alerts", "Incidents"],
       notes: "Default channel: #security-triage",
+      config: [
+        { label: "Webhook URL", value: "Configured", masked: true },
+        { label: "Default channel", value: "#security-triage" },
+        { label: "Minimum severity", value: "High" },
+        { label: "Mention group", value: "@sec-responders" },
+        { label: "Notify on status change", value: "Enabled" },
+      ],
     },
     {
       id: "jira",
@@ -86,6 +93,14 @@ export async function AdminPluginsView() {
       lastSync: "Never",
       scopes: ["Cases", "Assignments"],
       notes: "Project: UVT · Issue type: Bug",
+      config: [
+        { label: "Base URL", value: "https://jira.example.com" },
+        { label: "Project key", value: "UVT" },
+        { label: "Issue type", value: "Bug" },
+        { label: "API token", value: "Not configured", masked: true },
+        { label: "Default assignee", value: "Security Triage" },
+        { label: "Label prefix", value: "uvt-" },
+      ],
     },
     {
       id: "snyk",
