@@ -48,6 +48,15 @@ function pluginCard(plugin, { onToggle, onConfigure }) {
         ...plugin.scopes.map((scope) => pill(scope, "#2563eb", true)),
       )
       : null,
+    plugin.config?.length
+      ? el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+        el("div", { class: "muted", text: "Configuration:" }),
+        ...plugin.config.map((item) => el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
+          el("div", { style: "min-width: 140px; font-weight:600;", text: item.label }),
+          el("div", { class: "muted", text: item.masked ? "••••••••" : item.value }),
+        )),
+      )
+      : null,
     plugin.notes ? el("div", { class: "muted", text: plugin.notes }) : null,
   );
 }
@@ -89,6 +98,40 @@ export async function AdminPluginsView() {
       lastSync: "Yesterday at 16:10",
       scopes: ["SBOM", "Advisories"],
       notes: "Sync interval: Every 6 hours",
+    },
+    {
+      id: "nvd",
+      name: "NVD CVE Feed",
+      description: "Sync CVE data from the National Vulnerability Database feed.",
+      enabled: true,
+      version: "1.0.0",
+      category: "Threat Intel",
+      health: "Healthy",
+      lastSync: "Today at 06:30",
+      scopes: ["CVEs", "CPEs", "CWE"],
+      config: [
+        { label: "Feed URL", value: "https://nvd.nist.gov/vuln/data-feeds" },
+        { label: "API key", value: "Configured", masked: true },
+        { label: "Delta window", value: "7 days" },
+      ],
+      notes: "Sync interval: Daily at 02:00 UTC",
+    },
+    {
+      id: "exploitdb",
+      name: "ExploitDB Sync",
+      description: "Pull exploit references from ExploitDB to enrich findings.",
+      enabled: false,
+      version: "1.0.0",
+      category: "Threat Intel",
+      health: "Needs setup",
+      lastSync: "Never",
+      scopes: ["Exploits", "Proof of Concept"],
+      config: [
+        { label: "Mirror URL", value: "https://gitlab.com/exploit-database/exploitdb" },
+        { label: "API token", value: "Not configured", masked: true },
+        { label: "Sync mode", value: "Weekly snapshot" },
+      ],
+      notes: "Enable once a mirror is connected.",
     },
   ];
 
