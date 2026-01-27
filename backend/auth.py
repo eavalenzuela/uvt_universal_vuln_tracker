@@ -3,6 +3,7 @@ from functools import wraps
 
 import jwt
 from flask import current_app, request, jsonify
+from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from .database import db
@@ -113,6 +114,14 @@ def get_user_by_id(user_id: int):
 def get_user_by_username(username: str):
     return User.query.filter_by(username=username).first()
 
+def get_user_by_identity(identity: str):
+    return User.query.filter(
+        or_(
+            User.username == identity,
+            User.email == identity,
+        )
+    ).first()
+
 def create_user(username, email, password, role="Analyst"):
     if get_user_by_username(username):
         raise ValueError("Username already exists")
@@ -125,7 +134,7 @@ def create_user(username, email, password, role="Analyst"):
     return user
 
 def authenticate_user(username, password):
-    user = get_user_by_username(username)
+    user = get_user_by_identity(username)
     if not user or not user.is_active:
         return None
     if not verify_password(password, user.password_hash):
