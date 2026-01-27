@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from .database import db
 from .models import User
+from .permissions import role_has_scope, scope_for_request
 
 
 def revoke_tokens(user: User):
@@ -43,39 +44,51 @@ def _get_bearer_token():
         return auth.split(" ", 1)[1].strip()
     return None
 
+def authenticate_request():
+    token = _get_bearer_token()
+    if not token:
+        return None, None, (jsonify({"error": "Missing Bearer token"}), 401)
+    try:
+        claims = verify_token(token)
+    except jwt.ExpiredSignatureError:
+        return None, None, (jsonify({"error": "Token expired"}), 401)
+    except jwt.InvalidTokenError:
+        return None, None, (jsonify({"error": "Invalid token"}), 401)
+
+    user = User.query.get(int(claims["sub"]))
+    if not user or not user.is_active:
+        return None, None, (jsonify({"error": "User inactive or not found"}), 401)
+
+    token_version = int(claims.get("token_version", 0))
+    if token_version != int(user.token_version or 0):
+        return None, None, (jsonify({"error": "Token revoked"}), 401)
+
+    issued_at = claims.get("iat")
+    last_revoked_at = user.last_revoked_at
+    if issued_at and last_revoked_at:
+        try:
+            issued_dt = (
+                datetime.datetime.utcfromtimestamp(issued_at)
+                if isinstance(issued_at, (int, float))
+                else issued_at
+            )
+            if issued_dt <= last_revoked_at:
+                return None, None, (jsonify({"error": "Token revoked"}), 401)
+        except Exception:
+            return None, None, (jsonify({"error": "Invalid token"}), 401)
+
+    request.user = user  # simple attachment for downstream use
+    request.jwt_claims = claims
+    return user, claims, None
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        token = _get_bearer_token()
-        if not token:
-            return jsonify({"error": "Missing Bearer token"}), 401
-        try:
-            claims = verify_token(token)
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Token expired"}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid token"}), 401
-
-        user = User.query.get(int(claims["sub"]))
-        if not user or not user.is_active:
-            return jsonify({"error": "User inactive or not found"}), 401
-
-        token_version = int(claims.get("token_version", 0))
-        if token_version != int(user.token_version or 0):
-            return jsonify({"error": "Token revoked"}), 401
-
-        issued_at = claims.get("iat")
-        last_revoked_at = user.last_revoked_at
-        if issued_at and last_revoked_at:
-            try:
-                issued_dt = datetime.datetime.utcfromtimestamp(issued_at) if isinstance(issued_at, (int, float)) else issued_at
-                if issued_dt <= last_revoked_at:
-                    return jsonify({"error": "Token revoked"}), 401
-            except Exception:
-                return jsonify({"error": "Invalid token"}), 401
-
-        request.user = user  # simple attachment for downstream use
-        request.jwt_claims = claims
+        if getattr(request, "user", None) is None:
+            _, _, error = authenticate_request()
+            if error:
+                return error
         return f(*args, **kwargs)
     return wrapper
 
@@ -107,6 +120,26 @@ def role_required(*allowed_roles: str):
             return f(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def enforce_scopes(app):
+    @app.before_request
+    def _enforce_scopes():
+        if request.method == "OPTIONS":
+            return None
+        scope = scope_for_request(request.path, request.method)
+        if not scope:
+            return None
+        if getattr(request, "user", None) is None:
+            _, _, error = authenticate_request()
+            if error:
+                return error
+        user = getattr(request, "user", None)
+        if user is None:
+            return jsonify({"error": "Unauthorized"}), 401
+        if not role_has_scope(user.role, scope):
+            return jsonify({"error": "Forbidden"}), 403
+        return None
 
 def get_user_by_id(user_id: int):
     return User.query.get(user_id)

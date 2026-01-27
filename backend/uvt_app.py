@@ -7,6 +7,7 @@ from .database import init_database
 from .api import register_api
 from . import models  # ensures migrations can discover models
 from .cli import run_plugins_cli, seed_admin
+from .auth import enforce_scopes
 from .plugins import init_plugin_registry
 
 def create_app():
@@ -54,6 +55,9 @@ def create_app():
 
     # API routes
     register_api(app)
+
+    # Auth scope enforcement
+    enforce_scopes(app)
 
     # Simple health endpoint
     @app.get("/api/health")

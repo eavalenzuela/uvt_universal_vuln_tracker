@@ -10,10 +10,11 @@ from datetime import datetime
 from ..database import db
 from ..models import User, AuditLog
 from ..auth import role_required, hash_password, generate_token, revoke_tokens
+from ..permissions import ALL_ROLES
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
-_ALLOWED_ROLES = {"Admin", "Analyst", "Viewer"}
+_ALLOWED_ROLES = ALL_ROLES
 
 def _user_json(u: User):
     full_name = " ".join(filter(None, [u.first_name, u.last_name])).strip()
@@ -165,7 +166,7 @@ def invite_user():
 
 
 @bp.get("/users/active")
-@role_required("Admin", "Analyst")
+@role_required("Admin")
 def list_active_users():
     users = User.query.filter(User.is_active.is_(True)).order_by(User.username.asc()).all()
     return jsonify([_user_summary(u) for u in users])
