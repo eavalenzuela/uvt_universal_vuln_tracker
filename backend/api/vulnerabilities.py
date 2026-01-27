@@ -138,6 +138,7 @@ def list_vulnerabilities():
     confidentiality_impact = request.args.get("confidentiality_impact")
     integrity_impact = request.args.get("integrity_impact")
     availability_impact = request.args.get("availability_impact")
+    assigned_to = request.args.get("assigned_to")
 
     if severity:
         q = q.filter(Vulnerability.severity == severity)
@@ -151,6 +152,14 @@ def list_vulnerabilities():
         q = q.filter(Vulnerability.integrity_impact == integrity_impact)
     if availability_impact:
         q = q.filter(Vulnerability.availability_impact == availability_impact)
+    if assigned_to:
+        if assigned_to == "unassigned":
+            q = q.filter(Vulnerability.assigned_to.is_(None))
+        else:
+            try:
+                q = q.filter(Vulnerability.assigned_to == int(assigned_to))
+            except ValueError:
+                return jsonify({"error": "assigned_to must be a user id or 'unassigned'"}), 400
     if search:
         like = f"%{search}%"
         q = q.filter(or_(Vulnerability.title.ilike(like), Vulnerability.cve_id.ilike(like)))

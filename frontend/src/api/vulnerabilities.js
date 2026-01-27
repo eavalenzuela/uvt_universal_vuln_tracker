@@ -8,6 +8,7 @@ export async function listVulnerabilities({
   confidentiality_impact,
   integrity_impact,
   availability_impact,
+  assigned_to,
   sort = "updated_at",
   order = "desc",
   page = 1,
@@ -21,6 +22,7 @@ export async function listVulnerabilities({
   if (confidentiality_impact) params.set("confidentiality_impact", confidentiality_impact);
   if (integrity_impact) params.set("integrity_impact", integrity_impact);
   if (availability_impact) params.set("availability_impact", availability_impact);
+  if (assigned_to !== undefined && assigned_to !== null && assigned_to !== "") params.set("assigned_to", assigned_to);
   if (sort) params.set("sort", sort);
   if (order) params.set("order", order);
   params.set("page", page);
