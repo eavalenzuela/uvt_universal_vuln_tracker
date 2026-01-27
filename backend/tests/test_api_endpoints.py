@@ -324,3 +324,231 @@ def test_vulnerability_endpoints(app, client):
 
     delete_resp = client.delete(f"/api/vulnerabilities/{vuln_id}", headers=headers)
     assert delete_resp.status_code == 200
+
+
+def test_controls_endpoints(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    list_empty = client.get("/api/controls", headers=headers)
+    assert list_empty.status_code == 200
+    assert list_empty.get_json() == []
+
+    invalid_create = client.post("/api/controls", headers=headers, json={"name": " "})
+    assert invalid_create.status_code == 400
+
+    create_resp = client.post(
+        "/api/controls",
+        headers=headers,
+        json={"name": "AC-1", "framework": "NIST", "description": "Access control policy"},
+    )
+    assert create_resp.status_code == 201
+    control_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/controls", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(c["id"] == control_id for c in list_resp.get_json())
+
+    detail_resp = client.get(f"/api/controls/{control_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["name"] == "AC-1"
+
+    invalid_patch = client.patch(f"/api/controls/{control_id}", headers=headers, json={"name": ""})
+    assert invalid_patch.status_code == 400
+
+    patch_resp = client.patch(
+        f"/api/controls/{control_id}",
+        headers=headers,
+        json={"name": "AC-1 Updated", "framework": "NIST 800-53", "description": "Updated"},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.get_json()["framework"] == "NIST 800-53"
+
+    delete_resp = client.delete(f"/api/controls/{control_id}", headers=headers)
+    assert delete_resp.status_code == 200
+
+
+def test_attack_vectors_and_mappings(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+    product, pv1 = create_product_with_version(app, owner_id=admin.id, version="1.0")
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Vector vuln", "severity": "Low", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    invalid_create = client.post("/api/attack_vectors", headers=headers, json={"name": " "})
+    assert invalid_create.status_code == 400
+
+    create_resp = client.post(
+        "/api/attack_vectors",
+        headers=headers,
+        json={"name": "Network", "description": "Remote network access"},
+    )
+    assert create_resp.status_code == 201
+    vector_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/attack_vectors", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(v["id"] == vector_id for v in list_resp.get_json())
+
+    detail_resp = client.get(f"/api/attack_vectors/{vector_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["name"] == "Network"
+
+    invalid_mapping = client.post(
+        f"/api/vulnerabilities/{vuln_id}/attack_vectors",
+        headers=headers,
+        json={"mappings": [{}]},
+    )
+    assert invalid_mapping.status_code == 400
+
+    mapping_resp = client.post(
+        f"/api/vulnerabilities/{vuln_id}/attack_vectors",
+        headers=headers,
+        json={"mappings": [{"attack_vector_id": vector_id, "product_version_id": pv1.id}]},
+    )
+    assert mapping_resp.status_code == 200
+    assert mapping_resp.get_json()["added"] == 1
+
+    mappings = client.get(f"/api/vulnerabilities/{vuln_id}/attack_vectors", headers=headers)
+    assert mappings.status_code == 200
+    mapping_id = mappings.get_json()[0]["id"]
+
+    second_resp = client.post(
+        "/api/attack_vectors",
+        headers=headers,
+        json={"name": "Local", "description": "Local access"},
+    )
+    assert second_resp.status_code == 201
+    second_id = second_resp.get_json()["id"]
+
+    patch_resp = client.patch(
+        f"/api/vulnerabilities/{vuln_id}/attack_vectors/{mapping_id}",
+        headers=headers,
+        json={"attack_vector_id": second_id, "product_version_id": None},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.get_json()["attack_vector_id"] == second_id
+    assert patch_resp.get_json()["product_version_id"] is None
+
+    delete_mapping = client.delete(
+        f"/api/vulnerabilities/{vuln_id}/attack_vectors/{mapping_id}",
+        headers=headers,
+    )
+    assert delete_mapping.status_code == 200
+
+    delete_resp = client.delete(f"/api/attack_vectors/{vector_id}", headers=headers)
+    assert delete_resp.status_code == 200
+
+
+def test_terminal_impacts_and_mappings(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Impact vuln", "severity": "Medium", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    invalid_create = client.post("/api/terminal_impacts", headers=headers, json={"name": ""})
+    assert invalid_create.status_code == 400
+
+    create_resp = client.post(
+        "/api/terminal_impacts",
+        headers=headers,
+        json={"name": "Data Loss", "description": "Sensitive data loss"},
+    )
+    assert create_resp.status_code == 201
+    impact_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/terminal_impacts", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(i["id"] == impact_id for i in list_resp.get_json())
+
+    detail_resp = client.get(f"/api/terminal_impacts/{impact_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert detail_resp.get_json()["name"] == "Data Loss"
+
+    invalid_attach = client.post(
+        f"/api/vulnerabilities/{vuln_id}/terminal_impacts",
+        headers=headers,
+        json={"terminal_impact_ids": [None]},
+    )
+    assert invalid_attach.status_code == 400
+
+    attach_resp = client.post(
+        f"/api/vulnerabilities/{vuln_id}/terminal_impacts",
+        headers=headers,
+        json={"terminal_impact_ids": [impact_id]},
+    )
+    assert attach_resp.status_code == 200
+    assert attach_resp.get_json()["added"] == 1
+
+    mappings = client.get(f"/api/vulnerabilities/{vuln_id}/terminal_impacts", headers=headers)
+    assert mappings.status_code == 200
+    mapping_id = mappings.get_json()[0]["id"]
+
+    second_resp = client.post(
+        "/api/terminal_impacts",
+        headers=headers,
+        json={"name": "Service Disruption", "description": "Availability loss"},
+    )
+    assert second_resp.status_code == 201
+    second_id = second_resp.get_json()["id"]
+
+    patch_resp = client.patch(
+        f"/api/vulnerabilities/{vuln_id}/terminal_impacts/{mapping_id}",
+        headers=headers,
+        json={"terminal_impact_id": second_id},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.get_json()["terminal_impact_id"] == second_id
+
+    delete_mapping = client.delete(
+        f"/api/vulnerabilities/{vuln_id}/terminal_impacts/{mapping_id}",
+        headers=headers,
+    )
+    assert delete_mapping.status_code == 200
+
+    delete_resp = client.delete(f"/api/terminal_impacts/{impact_id}", headers=headers)
+    assert delete_resp.status_code == 200
+
+
+def test_plugin_endpoints(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    plugins_resp = client.get("/api/plugins", headers=headers)
+    assert plugins_resp.status_code == 200
+    plugins = plugins_resp.get_json()
+    assert any(p["plugin_id"] == "slack" for p in plugins)
+    assert any(p["plugin_id"] == "jira" for p in plugins)
+
+    configs_resp = client.get("/api/plugins/configs", headers=headers)
+    assert configs_resp.status_code == 200
+    assert configs_resp.get_json() == []
+
+    get_resp = client.get("/api/plugins/slack", headers=headers)
+    assert get_resp.status_code == 200
+    assert get_resp.get_json()["plugin_id"] == "slack"
+
+    missing_resp = client.get("/api/plugins/missing", headers=headers)
+    assert missing_resp.status_code == 404
+
+    run_resp = client.post(
+        "/api/plugins/slack/run",
+        headers=headers,
+        json={"config": {"webhook_url": "https://example.com/webhook"}},
+    )
+    assert run_resp.status_code == 201
+    run_payload = run_resp.get_json()
+    assert run_payload["status"] == "success"
+    assert run_payload["stats"]["items_processed"] == 1

@@ -43,8 +43,10 @@ flask seed-admin --username admin --email admin@example.com --password changeme
 ### API highlights
 - Auth endpoints under `/api/auth` for login, optional registration, and a `/me` user profile check
 - Product and version management under `/api/products`
-- Vulnerability CRUD under `/api/vulns`
-- Basic user listing under `/api/users`
+- Vulnerability CRUD under `/api/vulnerabilities`, plus attack vector and terminal impact mappings
+- Controls and attack-vector catalog management under `/api/controls` and `/api/attack_vectors`
+- Plugin catalog and run triggers under `/api/plugins`
+- User administration under `/api/users`
 
 ## Frontend quickstart
 The frontend is plain ES modules—no bundler required. Serve the `frontend/` directory with any static file server so the browser can resolve module imports:
