@@ -37,7 +37,11 @@ def run_plugin(
         plugin = registry.create(plugin_id, config=config)
         result = plugin.run()
         stats: dict[str, Any] | None = None
-        if isinstance(result, Sized) and not isinstance(result, (str, bytes)):
+        if isinstance(result, dict):
+            stats_payload = result.get("stats")
+            if isinstance(stats_payload, dict):
+                stats = stats_payload
+        if stats is None and isinstance(result, Sized) and not isinstance(result, (str, bytes)):
             stats = {"items_processed": len(result)}
         update_plugin_run(run, status="success", finished_at=datetime.utcnow(), stats=stats)
     except Exception as exc:  # noqa: BLE001 - record plugin errors and continue

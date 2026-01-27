@@ -522,7 +522,7 @@ def test_terminal_impacts_and_mappings(app, client):
     assert delete_resp.status_code == 200
 
 
-def test_plugin_endpoints(app, client):
+def test_plugin_endpoints(app, client, monkeypatch):
     admin = create_admin(app)
     headers = auth_header(admin)
 
@@ -543,6 +543,13 @@ def test_plugin_endpoints(app, client):
     missing_resp = client.get("/api/plugins/missing", headers=headers)
     assert missing_resp.status_code == 404
 
+    from backend.services.slack_alerts import SlackWebhookClient
+
+    def fake_send_message(self, *, text, channel=None, username=None, icon_emoji=None, blocks=None):
+        return None
+
+    monkeypatch.setattr(SlackWebhookClient, "send_message", fake_send_message)
+
     run_resp = client.post(
         "/api/plugins/slack/run",
         headers=headers,
@@ -551,4 +558,27 @@ def test_plugin_endpoints(app, client):
     assert run_resp.status_code == 201
     run_payload = run_resp.get_json()
     assert run_payload["status"] == "success"
-    assert run_payload["stats"]["items_processed"] == 1
+    assert run_payload["stats"]["sent"] == 1
+    assert run_payload["stats"]["failed"] == 0
+
+
+def test_plugin_run_records_failure(app, client, monkeypatch):
+    from backend.services.slack_alerts import SlackWebhookClient, SlackWebhookError
+
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    def fake_send_message(self, *, text, channel=None, username=None, icon_emoji=None, blocks=None):
+        raise SlackWebhookError("boom")
+
+    monkeypatch.setattr(SlackWebhookClient, "send_message", fake_send_message)
+
+    run_resp = client.post(
+        "/api/plugins/slack/run",
+        headers=headers,
+        json={"config": {"webhook_url": "https://example.com/webhook"}},
+    )
+    assert run_resp.status_code == 201
+    run_payload = run_resp.get_json()
+    assert run_payload["status"] == "failed"
+    assert run_payload["error"]
