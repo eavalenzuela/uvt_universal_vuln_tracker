@@ -1,5 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+import os
+
 from sqlalchemy import inspect, text
 
 db = SQLAlchemy()
@@ -13,6 +15,8 @@ def init_database(app):
 def ensure_sqlite_schema(app):
     with app.app_context():
         if not db.engine.url.drivername.startswith("sqlite"):
+            return
+        if os.path.isdir(os.path.join(app.root_path, "migrations")):
             return
 
         inspector = inspect(db.engine)
