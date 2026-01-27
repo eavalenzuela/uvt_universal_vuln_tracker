@@ -87,6 +87,34 @@ class Control(db.Model):
 
     product_links = db.relationship("ProductControl", back_populates="control", cascade="all, delete-orphan")
     products = db.relationship("Product", secondary="product_controls", viewonly=True)
+    sources = db.relationship("ControlSource", back_populates="control", cascade="all, delete-orphan")
+
+
+class ControlSource(db.Model):
+    __tablename__ = "control_sources"
+
+    id = db.Column(db.Integer, primary_key=True)
+    control_id = db.Column(db.Integer, db.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False, index=True)
+    source = db.Column(db.String(100), nullable=False, index=True)
+    source_control_id = db.Column(db.String(200), index=True)
+    version = db.Column(db.String(100))
+    source_url = db.Column(db.Text)
+    raw_json = db.Column(db.JSON)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    control = db.relationship("Control", back_populates="sources")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "control_id",
+            "source",
+            "source_control_id",
+            "version",
+            name="unique_control_source",
+        ),
+    )
 
 class ProductControl(db.Model):
     __tablename__ = "product_controls"
