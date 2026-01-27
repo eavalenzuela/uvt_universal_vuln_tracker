@@ -35,11 +35,7 @@ flask run --debug
 The server listens on port 5000 by default and exposes a simple health check at `/api/health`.
 
 ### Database & admin user
-The app uses Flask-Migrate for database management; new installs can start with a blank database by creating the SQLite file and running migrations:
-```bash
-flask db upgrade
-```
-Seed an admin account (safe to run multiple times):
+The default SQLite database initializes tables on first run when no migration scripts are present. If you use a different database backend, you can still wire up Flask-Migrate in your own environment. Seed an admin account (safe to run multiple times):
 ```bash
 flask seed-admin --username admin --email admin@example.com --password changeme
 ```
