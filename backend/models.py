@@ -252,3 +252,38 @@ class Notification(db.Model):
 
     user = db.relationship("User")
     vulnerability = db.relationship("Vulnerability")
+
+
+class PluginConfig(db.Model):
+    __tablename__ = "plugin_configs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    plugin_id = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    config_json = db.Column(db.JSON)
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+
+class PluginRun(db.Model):
+    __tablename__ = "plugin_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    plugin_id = db.Column(db.String(255), nullable=False, index=True)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    status = db.Column(db.String(30), nullable=False)
+    error = db.Column(db.Text)
+    stats_json = db.Column(db.JSON)
+
+
+class ExternalSourceState(db.Model):
+    __tablename__ = "external_source_states"
+
+    id = db.Column(db.Integer, primary_key=True)
+    plugin_id = db.Column(db.String(255), nullable=False, index=True)
+    source_key = db.Column(db.String(255), nullable=False, index=True)
+    last_cursor = db.Column(db.Text)
+    last_sync_at = db.Column(db.DateTime)
+
+    __table_args__ = (
+        db.UniqueConstraint("plugin_id", "source_key", name="unique_external_source_state"),
+    )
