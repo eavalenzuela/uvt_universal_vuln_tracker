@@ -47,6 +47,7 @@ export function renderSidebar() {
     nav.appendChild(el("div", { style: "height:10px" }));
     nav.appendChild(navLink("Admin: Users", "/admin/users"));
     nav.appendChild(navLink("Admin: Logs", "/admin/logs"));
+    nav.appendChild(navLink("Admin: Plugins", "/admin/plugins"));
   }
 
   root.appendChild(nav);
