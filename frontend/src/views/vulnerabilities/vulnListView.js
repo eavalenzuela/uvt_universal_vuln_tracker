@@ -710,7 +710,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
       renderDetails();
     });
 
-    return el("div", { class: "card", style: "background: #fafafa;" }, el("h4", { text: "Edit vulnerability" }), form);
+    return el("div", { class: "card" }, el("h4", { text: "Edit vulnerability" }), form);
   }
 
   function renderDetails() {

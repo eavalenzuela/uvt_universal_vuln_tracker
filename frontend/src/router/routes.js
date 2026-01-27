@@ -6,6 +6,7 @@ import { NotFoundView } from "../views/notFoundView.js";
 import { AdminUsersView } from "../views/admin/adminUsersView.js";
 import { AdminLogsView } from "../views/admin/adminLogsView.js";
 import { ProductsView } from "../views/products/productsView.js";
+import { ControlsView } from "../views/controls/controlsView.js";
 
 // Later you can add: VulnDetailView for "/vulnerabilities/:id"
 export const ROUTES = [
@@ -20,6 +21,7 @@ export const ROUTES = [
   { path: "/vulnerabilities/:id", view: VulnListView, guard: () => requireAuth() },
 
   // placeholders for later:
+  { path: "/controls", view: ControlsView, guard: () => requireAuth() },
   { path: "/products", view: ProductsView, guard: () => requireAuth() },
   { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
 

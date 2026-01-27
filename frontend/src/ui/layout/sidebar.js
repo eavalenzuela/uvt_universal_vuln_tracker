@@ -39,6 +39,7 @@ export function renderSidebar() {
   const nav = el("div", { class: "nav" },
     navLink("Dashboard", "/"),
     navLink("Vulnerabilities", "/vulnerabilities"),
+    navLink("Controls", "/controls"),
     navLink("Products", "/products"),
   );
 
