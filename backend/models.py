@@ -134,6 +134,7 @@ class Vulnerability(db.Model):
     assignee = db.relationship("User", foreign_keys=[assigned_to])
 
     versions = db.relationship("VulnerabilityVersion", back_populates="vulnerability", cascade="all, delete-orphan")
+    attack_vectors = db.relationship("VulnerabilityAttackVector", back_populates="vulnerability", cascade="all, delete-orphan")
 
 class VulnerabilityVersion(db.Model):
     __tablename__ = "vulnerability_versions"
@@ -156,6 +157,37 @@ class VulnerabilityVersion(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("vulnerability_id", "product_version_id", name="unique_vuln_version"),
+    )
+
+class AttackVector(db.Model):
+    __tablename__ = "attack_vectors"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    description = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    vulnerability_links = db.relationship("VulnerabilityAttackVector", back_populates="attack_vector", cascade="all, delete-orphan")
+
+class VulnerabilityAttackVector(db.Model):
+    __tablename__ = "vulnerability_attack_vectors"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    attack_vector_id = db.Column(db.Integer, db.ForeignKey("attack_vectors.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_version_id = db.Column(db.Integer, db.ForeignKey("product_versions.id", ondelete="SET NULL"), index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    vulnerability = db.relationship("Vulnerability", back_populates="attack_vectors")
+    attack_vector = db.relationship("AttackVector", back_populates="vulnerability_links")
+    product_version = db.relationship("ProductVersion")
+
+    __table_args__ = (
+        db.UniqueConstraint("vulnerability_id", "attack_vector_id", "product_version_id", name="unique_vuln_attack_vector"),
     )
 
 class AuditLog(db.Model):

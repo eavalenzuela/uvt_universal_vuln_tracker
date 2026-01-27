@@ -35,6 +35,10 @@ export async function listProductVersions({ includeInactive = false } = {}) {
   return apiFetch(`/api/product_versions?${params.toString()}`, { method: "GET" });
 }
 
+export async function listAttackVectors() {
+  return apiFetch("/api/attack_vectors", { method: "GET" });
+}
+
 export async function attachVulnerabilityVersions(id, productVersionIds) {
   return apiFetch(`/api/vulnerabilities/${id}/versions`, {
     method: "POST",
@@ -48,4 +52,19 @@ export async function updateVulnerabilityVersion(id, mappingId, data) {
 
 export async function deleteVulnerabilityVersion(id, mappingId) {
   return apiFetch(`/api/vulnerabilities/${id}/versions/${mappingId}`, { method: "DELETE" });
+}
+
+export async function attachVulnerabilityAttackVectors(id, mappings) {
+  return apiFetch(`/api/vulnerabilities/${id}/attack_vectors`, {
+    method: "POST",
+    body: { mappings },
+  });
+}
+
+export async function updateVulnerabilityAttackVector(id, mappingId, data) {
+  return apiFetch(`/api/vulnerabilities/${id}/attack_vectors/${mappingId}`, { method: "PATCH", body: data });
+}
+
+export async function deleteVulnerabilityAttackVector(id, mappingId) {
+  return apiFetch(`/api/vulnerabilities/${id}/attack_vectors/${mappingId}`, { method: "DELETE" });
 }
