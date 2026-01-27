@@ -37,6 +37,8 @@ class Product(db.Model):
 
     owners = db.relationship("ProductOwner", back_populates="product", cascade="all, delete-orphan")
     versions = db.relationship("ProductVersion", back_populates="product", cascade="all, delete-orphan")
+    control_links = db.relationship("ProductControl", back_populates="product", cascade="all, delete-orphan")
+    controls = db.relationship("Control", secondary="product_controls", viewonly=True)
 
 class ProductOwner(db.Model):
     __tablename__ = "product_owners"
@@ -70,6 +72,39 @@ class ProductVersion(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("product_id", "version", name="unique_product_version"),
+    )
+
+class Control(db.Model):
+    __tablename__ = "controls"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, index=True)
+    framework = db.Column(db.String(255), index=True)
+    description = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    product_links = db.relationship("ProductControl", back_populates="control", cascade="all, delete-orphan")
+    products = db.relationship("Product", secondary="product_controls", viewonly=True)
+
+class ProductControl(db.Model):
+    __tablename__ = "product_controls"
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    control_id = db.Column(db.Integer, db.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False, index=True)
+    implementation_status = db.Column(db.String(50), default="Not Started", nullable=False)
+    notes = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    product = db.relationship("Product", back_populates="control_links")
+    control = db.relationship("Control", back_populates="product_links")
+
+    __table_args__ = (
+        db.UniqueConstraint("product_id", "control_id", name="unique_product_control"),
     )
 
 class Vulnerability(db.Model):
