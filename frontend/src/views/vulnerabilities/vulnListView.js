@@ -583,7 +583,7 @@ function renderTerminalImpactsSection(detailData, vulnId, reloadDetails, canEdit
   return container;
 }
 
-function renderVulnerabilityCard(vuln, reloadList) {
+function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
   const detailContent = el("div", {});
   const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
   let detailData = null;
@@ -836,12 +836,23 @@ function renderVulnerabilityCard(vuln, reloadList) {
     ),
   );
 
-  return el("div", {}, header, detailCard);
+  const card = el("div", {}, header, detailCard);
+
+  if (autoOpen) {
+    loadDetails().then(() => {
+      detailCard.style.display = "block";
+      viewBtn.textContent = "Hide";
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }).catch(() => {});
+  }
+
+  return card;
 }
 
-export async function VulnListView() {
+export async function VulnListView(params = {}) {
   const state = getState();
   const writable = canWrite(state);
+  const targetId = params?.id ? Number(params.id) : null;
 
   const searchInput = el("input", { class: "input", type: "search", placeholder: "Search by title or CVE" });
   const statusSelect = el(
@@ -905,7 +916,7 @@ export async function VulnListView() {
         return;
       }
 
-      data.items.forEach((v) => list.appendChild(renderVulnerabilityCard(v, load)));
+      data.items.forEach((v) => list.appendChild(renderVulnerabilityCard(v, load, { autoOpen: targetId === v.id })));
     } catch (e) {
       list.innerHTML = "";
       toast({ title: "Failed to load", message: e?.message || "Unable to fetch vulnerabilities" });

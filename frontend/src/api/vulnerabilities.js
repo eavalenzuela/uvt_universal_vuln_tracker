@@ -29,6 +29,27 @@ export async function listVulnerabilities({
   return apiFetch(`/api/vulnerabilities?${params.toString()}`, { method: "GET" });
 }
 
+export async function listOpenHighCriticalVulnerabilities({ page = 1, page_size = 10, sort = "updated_at", order = "desc" } = {}) {
+  const [critical, high] = await Promise.all([
+    listVulnerabilities({ severity: "Critical", status: "Open", page, page_size, sort, order }),
+    listVulnerabilities({ severity: "High", status: "Open", page, page_size, sort, order }),
+  ]);
+
+  const items = [...(critical?.items || []), ...(high?.items || [])];
+  items.sort((a, b) => {
+    const left = a?.[sort] ? new Date(a[sort]).getTime() : 0;
+    const right = b?.[sort] ? new Date(b[sort]).getTime() : 0;
+    return order.toLowerCase() === "asc" ? left - right : right - left;
+  });
+
+  return {
+    items: items.slice(0, page_size),
+    page,
+    page_size,
+    total: (critical?.total || 0) + (high?.total || 0),
+  };
+}
+
 export async function createVulnerability(data) {
   return apiFetch("/api/vulnerabilities", { method: "POST", body: data });
 }
