@@ -4,7 +4,15 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import asc, desc, or_
 
 from ..database import db
-from ..models import Vulnerability, VulnerabilityVersion, ProductVersion, AuditLog, Product
+from ..models import (
+    Vulnerability,
+    VulnerabilityVersion,
+    VulnerabilityAttackVector,
+    AttackVector,
+    ProductVersion,
+    AuditLog,
+    Product,
+)
 from ..auth import login_required, role_required
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
@@ -36,6 +44,45 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
         old_values=old_values,
         new_values=new_values,
     ))
+
+def _attach_attack_vectors(vuln, items):
+    for item in items:
+        if isinstance(item, dict):
+            attack_vector_id = item.get("attack_vector_id") or item.get("id")
+            product_version_id = item.get("product_version_id")
+        else:
+            attack_vector_id = item
+            product_version_id = None
+
+        if not attack_vector_id:
+            db.session.rollback()
+            return jsonify({"error": "attack_vector_id is required"}), 400
+
+        attack_vector = AttackVector.query.get(int(attack_vector_id))
+        if not attack_vector:
+            db.session.rollback()
+            return jsonify({"error": f"Invalid attack vector {attack_vector_id}"}), 400
+
+        pv_id = int(product_version_id) if product_version_id is not None else None
+        if pv_id is not None:
+            pv = ProductVersion.query.get(pv_id)
+            if not pv:
+                db.session.rollback()
+                return jsonify({"error": f"Invalid product version {pv_id}"}), 400
+
+        existing = VulnerabilityAttackVector.query.filter_by(
+            vulnerability_id=vuln.id,
+            attack_vector_id=attack_vector.id,
+            product_version_id=pv_id,
+        ).first()
+        if existing:
+            continue
+        db.session.add(VulnerabilityAttackVector(
+            vulnerability_id=vuln.id,
+            attack_vector_id=attack_vector.id,
+            product_version_id=pv_id,
+        ))
+    return None
 
 @bp.get("/product_versions")
 @login_required
@@ -148,6 +195,12 @@ def create_vulnerability():
             affected=True
         ))
 
+    attack_vectors = data.get("attack_vectors") or []
+    if attack_vectors:
+        err = _attach_attack_vectors(v, attack_vectors)
+        if err:
+            return err
+
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status
     })
@@ -182,6 +235,22 @@ def get_vulnerability(vuln_id: int):
             "release_date": pv.release_date.isoformat() if getattr(pv, "release_date", None) else None,
         })
 
+    attack_vector_mappings = VulnerabilityAttackVector.query.filter_by(vulnerability_id=v.id).all()
+    attack_vector_rows = []
+    for mapping in attack_vector_mappings:
+        pv = ProductVersion.query.get(mapping.product_version_id) if mapping.product_version_id else None
+        attack_vector_rows.append({
+            "id": mapping.id,
+            "attack_vector_id": mapping.attack_vector_id,
+            "attack_vector_name": mapping.attack_vector.name if mapping.attack_vector else None,
+            "attack_vector_description": mapping.attack_vector.description if mapping.attack_vector else None,
+            "product_version_id": mapping.product_version_id,
+            "product_id": pv.product_id if pv else None,
+            "product_name": pv.product.name if getattr(pv, "product", None) else None,
+            "version": pv.version if pv else None,
+            "release_date": pv.release_date.isoformat() if getattr(pv, "release_date", None) else None,
+        })
+
     return jsonify({
         "id": v.id,
         "cve_id": v.cve_id,
@@ -196,7 +265,8 @@ def get_vulnerability(vuln_id: int):
         "assigned_to": v.assigned_to,
         "created_at": v.created_at.isoformat(),
         "updated_at": v.updated_at.isoformat(),
-        "affected_versions": version_rows
+        "affected_versions": version_rows,
+        "attack_vectors": attack_vector_rows,
     })
 
 @bp.put("/vulnerabilities/<int:vuln_id>")
@@ -224,6 +294,12 @@ def update_vulnerability(vuln_id: int):
                 setattr(v, field, _parse_cvss(data.get(field)))
             else:
                 setattr(v, field, data[field])
+
+    if "attack_vectors" in data:
+        VulnerabilityAttackVector.query.filter_by(vulnerability_id=v.id).delete(synchronize_session=False)
+        err = _attach_attack_vectors(v, data.get("attack_vectors") or [])
+        if err:
+            return err
 
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status
