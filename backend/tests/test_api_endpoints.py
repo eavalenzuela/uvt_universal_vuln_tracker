@@ -73,6 +73,13 @@ def test_auth_register_login_and_me(client):
     assert login.status_code == 200
     token = login.get_json()["token"]
 
+    email_login = client.post(
+        "/api/auth/login",
+        json={"username": "first@example.com", "password": "secret"},
+    )
+    assert email_login.status_code == 200
+    assert email_login.get_json()["user"]["username"] == "first"
+
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.get_json()["username"] == "first"
