@@ -1,5 +1,80 @@
+import { listPlugins, updatePluginConfig } from "../../api/plugins.js";
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+
+const MASKED_VALUES = new Set(["****", "******"]);
+
+function isMaskedValue(value) {
+  return typeof value === "string" && MASKED_VALUES.has(value.trim());
+}
+
+function normalizeFields(schema) {
+  if (!schema) return [];
+  const fields = schema.fields ?? schema;
+  if (Array.isArray(fields)) {
+    return fields.map((field) => ({
+      name: field.name,
+      label: field.label || field.name,
+      type: field.type || "string",
+      secret: Boolean(field.secret),
+      required: Boolean(field.required),
+      defaultValue: field.default,
+    }));
+  }
+  if (fields && typeof fields === "object") {
+    return Object.entries(fields).map(([name, value]) => {
+      const spec = typeof value === "object" ? value : { type: value };
+      return {
+        name,
+        label: spec.label || name,
+        type: spec.type || "string",
+        secret: Boolean(spec.secret),
+        required: Boolean(spec.required),
+        defaultValue: spec.default,
+      };
+    });
+  }
+  return [];
+}
+
+function formatFieldValue(field, value) {
+  if (value === undefined || value === null || value === "") {
+    if (field.defaultValue !== undefined) {
+      return `${field.defaultValue}`;
+    }
+    return "Not configured";
+  }
+  if (field.type === "boolean") {
+    return value ? "Enabled" : "Disabled";
+  }
+  if (field.secret || isMaskedValue(value)) {
+    return "••••••••";
+  }
+  return `${value}`;
+}
+
+function formatLastRun(lastRun) {
+  if (!lastRun) return "Not run yet";
+  if (lastRun.finished_at) {
+    const timestamp = new Date(lastRun.finished_at);
+    if (!Number.isNaN(timestamp.valueOf())) {
+      return `${lastRun.status || "Run"} · ${timestamp.toLocaleString()}`;
+    }
+  }
+  return lastRun.status || "Run in progress";
+}
+
+function healthLabel(lastRun) {
+  if (!lastRun) return "Not run";
+  return lastRun.status ? lastRun.status.replace(/_/g, " ") : "Unknown";
+}
+
+function healthColor(lastRun) {
+  if (!lastRun || !lastRun.status) return "#6b7280";
+  if (["success", "healthy", "ok"].includes(lastRun.status)) return "#059669";
+  if (["failed", "error"].includes(lastRun.status)) return "#dc2626";
+  return "#d97706";
+}
 
 function pill(label, color, subtle = false) {
   const baseColor = color || "#1f2937";
@@ -14,7 +89,9 @@ function pill(label, color, subtle = false) {
 function pluginCard(plugin, { onToggle, onConfigure }) {
   const statusLabel = plugin.enabled ? "Enabled" : "Disabled";
   const statusColor = plugin.enabled ? "#16a34a" : "#dc2626";
-  const healthColor = plugin.health === "Healthy" ? "#059669" : "#d97706";
+  const healthState = healthLabel(plugin.last_run);
+  const healthStateColor = healthColor(plugin.last_run);
+  const configFields = normalizeFields(plugin.config_schema);
 
   const toggleBtn = el("button", { class: "btn" }, plugin.enabled ? "Disable" : "Enable");
   toggleBtn.addEventListener("click", () => onToggle(plugin));
@@ -26,15 +103,14 @@ function pluginCard(plugin, { onToggle, onConfigure }) {
     el("div", { class: "row", style: "align-items:flex-start; gap:12px; flex-wrap:wrap;" },
       el("div", { style: "flex:1; min-width: 220px;" },
         el("div", { class: "row", style: "align-items:center; gap:8px; flex-wrap:wrap;" },
-          el("div", { style: "font-weight:700;", text: plugin.name }),
+          el("div", { style: "font-weight:700;", text: plugin.display_name || plugin.plugin_id }),
           pill(statusLabel, statusColor, true),
-          pill(plugin.health, healthColor, true),
+          pill(healthState, healthStateColor, true),
         ),
-        el("div", { class: "muted", style: "margin-top: 4px;", text: plugin.description }),
         el("div", { class: "row", style: "gap: 8px; margin-top: 8px; flex-wrap:wrap;" },
-          el("div", { class: "muted", text: `Version ${plugin.version}` }),
-          el("div", { class: "muted", text: `Category: ${plugin.category}` }),
-          plugin.lastSync ? el("div", { class: "muted", text: `Last sync: ${plugin.lastSync}` }) : null,
+          plugin.version ? el("div", { class: "muted", text: `Version ${plugin.version}` }) : null,
+          el("div", { class: "muted", text: `ID: ${plugin.plugin_id}` }),
+          el("div", { class: "muted", text: formatLastRun(plugin.last_run) }),
         ),
       ),
       el("div", { class: "row", style: "gap: 6px; flex-wrap:wrap;" },
@@ -42,137 +118,64 @@ function pluginCard(plugin, { onToggle, onConfigure }) {
         toggleBtn,
       ),
     ),
-    plugin.scopes?.length
+    plugin.capabilities?.length
       ? el("div", { class: "row", style: "gap: 6px; flex-wrap:wrap;" },
-        el("div", { class: "muted", text: "Scopes:" }),
-        ...plugin.scopes.map((scope) => pill(scope, "#2563eb", true)),
+        el("div", { class: "muted", text: "Capabilities:" }),
+        ...plugin.capabilities.map((scope) => pill(scope, "#2563eb", true)),
       )
       : null,
-    plugin.config?.length
+    configFields.length
       ? el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
         el("div", { class: "muted", text: "Configuration:" }),
-        ...plugin.config.map((item) => el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
-          el("div", { style: "min-width: 140px; font-weight:600;", text: item.label }),
-          el("div", { class: "muted", text: item.masked ? "••••••••" : item.value }),
+        ...configFields.map((field) => el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
+          el("div", { style: "min-width: 140px; font-weight:600;", text: field.label }),
+          el("div", { class: "muted", text: formatFieldValue(field, plugin.config?.[field.name]) }),
         )),
       )
       : null,
-    plugin.notes ? el("div", { class: "muted", text: plugin.notes }) : null,
+    plugin.schedule_cron || plugin.interval_minutes
+      ? el("div", { class: "muted", text: plugin.schedule_cron ? `Schedule: ${plugin.schedule_cron}` : `Interval: ${plugin.interval_minutes} minutes` })
+      : null,
   );
 }
 
 export async function AdminPluginsView() {
-  const plugins = [
-    {
-      id: "slack",
-      name: "Slack Alerts",
-      description: "Route high severity vulnerability alerts into Slack channels.",
-      enabled: true,
-      version: "1.4.2",
-      category: "Notifications",
-      health: "Healthy",
-      lastSync: "Today at 09:42",
-      scopes: ["Alerts", "Incidents"],
-      notes: "Default channel: #security-triage",
-      config: [
-        { label: "Webhook URL", value: "Configured", masked: true },
-        { label: "Default channel", value: "#security-triage" },
-        { label: "Minimum severity", value: "High" },
-        { label: "Mention group", value: "@sec-responders" },
-        { label: "Notify on status change", value: "Enabled" },
-      ],
-    },
-    {
-      id: "jira",
-      name: "Jira Sync",
-      description: "Create Jira issues automatically for confirmed vulnerabilities.",
-      enabled: false,
-      version: "2.1.0",
-      category: "Ticketing",
-      health: "Needs setup",
-      lastSync: "Never",
-      scopes: ["Cases", "Assignments"],
-      notes: "Project: UVT · Issue type: Bug",
-      config: [
-        { label: "Base URL", value: "https://jira.example.com" },
-        { label: "Project key", value: "UVT" },
-        { label: "Issue type", value: "Bug" },
-        { label: "API token", value: "Not configured", masked: true },
-        { label: "Default assignee", value: "Security Triage" },
-        { label: "Label prefix", value: "uvt-" },
-      ],
-    },
-    {
-      id: "snyk",
-      name: "Snyk Import",
-      description: "Import SBOM findings from Snyk to enrich vulnerability context.",
-      enabled: true,
-      version: "0.9.7",
-      category: "Integrations",
-      health: "Healthy",
-      lastSync: "Yesterday at 16:10",
-      scopes: ["SBOM", "Advisories"],
-      notes: "Sync interval: Every 6 hours",
-    },
-    {
-      id: "nvd",
-      name: "NVD CVE Feed",
-      description: "Sync CVE data from the National Vulnerability Database feed.",
-      enabled: true,
-      version: "1.0.0",
-      category: "Threat Intel",
-      health: "Healthy",
-      lastSync: "Today at 06:30",
-      scopes: ["CVEs", "CPEs", "CWE"],
-      config: [
-        { label: "Feed URL", value: "https://nvd.nist.gov/vuln/data-feeds" },
-        { label: "API key", value: "Configured", masked: true },
-        { label: "Delta window", value: "7 days" },
-      ],
-      notes: "Sync interval: Daily at 02:00 UTC",
-    },
-    {
-      id: "exploitdb",
-      name: "ExploitDB Sync",
-      description: "Pull exploit references from ExploitDB to enrich findings.",
-      enabled: false,
-      version: "1.0.0",
-      category: "Threat Intel",
-      health: "Needs setup",
-      lastSync: "Never",
-      scopes: ["Exploits", "Proof of Concept"],
-      config: [
-        { label: "Mirror URL", value: "https://gitlab.com/exploit-database/exploitdb" },
-        { label: "API token", value: "Not configured", masked: true },
-        { label: "Sync mode", value: "Weekly snapshot" },
-      ],
-      notes: "Enable once a mirror is connected.",
-    },
-  ];
+  let plugins = [];
+  let isLoading = true;
 
   const list = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
   const addBtn = el("button", { class: "btn primary" }, "Add plugin");
 
   function renderList() {
     list.innerHTML = "";
+    if (isLoading) {
+      list.appendChild(el("div", { class: "muted", text: "Loading plugins..." }));
+      return;
+    }
+    if (!plugins.length) {
+      list.appendChild(el("div", { class: "muted", text: "No plugins available." }));
+      return;
+    }
     plugins.forEach((plugin) => {
       list.appendChild(pluginCard(plugin, {
-        onToggle: (target) => {
-          target.enabled = !target.enabled;
-          toast({
-            title: target.enabled ? "Plugin enabled" : "Plugin disabled",
-            message: `${target.name} is now ${target.enabled ? "active" : "inactive"}.`,
-          });
-          renderList();
-        },
-        onConfigure: (target) => {
-          const nextNotes = window.prompt(`Update notes for ${target.name}`, target.notes || "") ?? target.notes;
-          if (nextNotes !== null) {
-            target.notes = nextNotes;
-            toast({ title: "Settings saved", message: `${target.name} configuration updated.` });
-            renderList();
+        onToggle: async (target) => {
+          const nextEnabled = !target.enabled;
+          try {
+            await updatePluginConfig(target.plugin_id, { enabled: nextEnabled });
+            toast({
+              title: nextEnabled ? "Plugin enabled" : "Plugin disabled",
+              message: `${target.display_name || target.plugin_id} is now ${nextEnabled ? "active" : "inactive"}.`,
+            });
+            await loadPlugins();
+          } catch (error) {
+            toast({
+              title: "Update failed",
+              message: error?.message || "Unable to update plugin status.",
+              variant: "error",
+            });
           }
         },
+        onConfigure: (target) => openConfigModal(target),
       }));
     });
   }
@@ -181,7 +184,143 @@ export async function AdminPluginsView() {
     toast({ title: "Coming soon", message: "Plugin marketplace access is not configured yet." });
   });
 
-  renderList();
+  async function loadPlugins() {
+    isLoading = true;
+    renderList();
+    try {
+      plugins = await listPlugins();
+    } catch (error) {
+      toast({
+        title: "Unable to load plugins",
+        message: error?.message || "Please try again later.",
+        variant: "error",
+      });
+    } finally {
+      isLoading = false;
+      renderList();
+    }
+  }
+
+  function openConfigModal(plugin) {
+    const fields = normalizeFields(plugin.config_schema);
+    const overlay = el("div", {
+      style:
+        "position:fixed; inset:0; background:rgba(15, 23, 42, 0.55); display:flex; align-items:center; justify-content:center; z-index:40;",
+      onClick: (event) => {
+        if (event.target === overlay) closeModal();
+      },
+    });
+
+    const modal = el(
+      "div",
+      {
+        style:
+          "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(560px, 92vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": `Configure ${plugin.display_name || plugin.plugin_id}`,
+      },
+      el("h2", { text: `Configure ${plugin.display_name || plugin.plugin_id}` }),
+    );
+
+    const fieldInputs = new Map();
+    const form = el("div", { style: "display:flex; flex-direction:column; gap:12px;" });
+
+    if (!fields.length) {
+      form.appendChild(el("div", { class: "muted", text: "This plugin does not expose configurable fields." }));
+    } else {
+      fields.forEach((field) => {
+        const currentValue = plugin.config?.[field.name];
+        if (field.type === "boolean") {
+          const checkbox = el("input", {
+            type: "checkbox",
+            checked: currentValue !== undefined ? Boolean(currentValue) : Boolean(field.defaultValue),
+          });
+          fieldInputs.set(field.name, { type: "boolean", input: checkbox, masked: false, secret: field.secret });
+          form.appendChild(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+            checkbox,
+            el("span", { text: field.label }),
+          ));
+          return;
+        }
+
+        const isMasked = isMaskedValue(currentValue);
+        const input = el("input", {
+          class: "input",
+          type: field.secret ? "password" : "text",
+          value: isMasked ? "" : (currentValue ?? field.defaultValue ?? ""),
+          placeholder: isMasked ? "Configured" : "",
+        });
+        fieldInputs.set(field.name, { type: "string", input, masked: isMasked, secret: field.secret });
+        form.appendChild(el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+          el("label", { text: field.label }),
+          input,
+        ));
+      });
+    }
+
+    const statusRow = el("div", { class: "muted" });
+    const saveBtn = el("button", { class: "btn primary", text: "Save" });
+    const cancelBtn = el("button", { class: "btn", text: "Cancel", onClick: closeModal });
+
+    saveBtn.addEventListener("click", async () => {
+      if (!fields.length) {
+        closeModal();
+        return;
+      }
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      statusRow.textContent = "Saving configuration...";
+      const configPayload = {};
+      fields.forEach((field) => {
+        const entry = fieldInputs.get(field.name);
+        if (!entry) return;
+        if (entry.type === "boolean") {
+          configPayload[field.name] = entry.input.checked;
+          return;
+        }
+        const rawValue = entry.input.value;
+        if (entry.secret && rawValue === "" && entry.masked) {
+          configPayload[field.name] = "****";
+        } else {
+          configPayload[field.name] = rawValue;
+        }
+      });
+      try {
+        await updatePluginConfig(plugin.plugin_id, { config: configPayload });
+        toast({ title: "Settings saved", message: `${plugin.display_name || plugin.plugin_id} updated.` });
+        closeModal();
+        await loadPlugins();
+      } catch (error) {
+        toast({
+          title: "Save failed",
+          message: error?.message || "Unable to update plugin configuration.",
+          variant: "error",
+        });
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        statusRow.textContent = "Save failed. Please review inputs and try again.";
+      }
+    });
+
+    modal.append(
+      form,
+      statusRow,
+      el("div", { style: "display:flex; justify-content:flex-end; gap:8px;" },
+        cancelBtn,
+        saveBtn,
+      ),
+    );
+
+    function closeModal() {
+      overlay.remove();
+    }
+
+    overlay.append(modal);
+    document.body.append(overlay);
+  }
+
+  await loadPlugins();
 
   return el("div", { style: "display:flex; flex-direction:column; gap:12px;" },
     el("div", { class: "card" },
