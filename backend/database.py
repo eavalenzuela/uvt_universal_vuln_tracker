@@ -28,6 +28,10 @@ def ensure_sqlite_schema(app):
             db.create_all()
             inspector = inspect(db.engine)
 
+        if "vulnerability_sources" not in inspector.get_table_names():
+            db.create_all()
+            inspector = inspect(db.engine)
+
         if "vulnerabilities" in inspector.get_table_names():
             existing_columns = {col["name"] for col in inspector.get_columns("vulnerabilities")}
             column_definitions = {

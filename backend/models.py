@@ -140,6 +140,7 @@ class Vulnerability(db.Model):
     versions = db.relationship("VulnerabilityVersion", back_populates="vulnerability", cascade="all, delete-orphan")
     attack_vectors = db.relationship("VulnerabilityAttackVector", back_populates="vulnerability", cascade="all, delete-orphan")
     terminal_impacts = db.relationship("VulnerabilityTerminalImpact", back_populates="vulnerability", cascade="all, delete-orphan")
+    sources = db.relationship("VulnerabilitySource", back_populates="vulnerability", cascade="all, delete-orphan")
 
 class VulnerabilityVersion(db.Model):
     __tablename__ = "vulnerability_versions"
@@ -222,6 +223,23 @@ class VulnerabilityTerminalImpact(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("vulnerability_id", "terminal_impact_id", name="unique_vuln_terminal_impact"),
+    )
+
+class VulnerabilitySource(db.Model):
+    __tablename__ = "vulnerability_sources"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    source = db.Column(db.String(100), nullable=False, index=True)
+    source_id = db.Column(db.String(200), index=True)
+    raw_json = db.Column(db.JSON)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    vulnerability = db.relationship("Vulnerability", back_populates="sources")
+
+    __table_args__ = (
+        db.UniqueConstraint("vulnerability_id", "source", "source_id", name="unique_vuln_source"),
     )
 
 class AuditLog(db.Model):
