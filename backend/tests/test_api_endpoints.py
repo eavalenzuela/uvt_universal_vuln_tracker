@@ -529,8 +529,27 @@ def test_plugin_endpoints(app, client, monkeypatch):
     plugins_resp = client.get("/api/plugins", headers=headers)
     assert plugins_resp.status_code == 200
     plugins = plugins_resp.get_json()
-    assert any(p["plugin_id"] == "slack" for p in plugins)
-    assert any(p["plugin_id"] == "jira" for p in plugins)
+    expected_schemas = {
+        "slack": {"webhook_url"},
+        "jira": {"base_url"},
+        "vuln-feed-nvd": {"feed_url"},
+        "vuln-feed-exploitdb": {"feed_url"},
+        "controls-import-cis": {"file_path"},
+        "controls-import-pci-dss": {"file_path"},
+        "controls-import-stig": {"file_path"},
+    }
+
+    def _schema_field_names(schema):
+        fields = schema.get("fields", schema)
+        if isinstance(fields, dict):
+            return set(fields.keys())
+        return {entry.get("name") for entry in fields if isinstance(entry, dict) and entry.get("name")}
+
+    for plugin_id, required_fields in expected_schemas.items():
+        plugin = next((item for item in plugins if item["plugin_id"] == plugin_id), None)
+        assert plugin is not None
+        field_names = _schema_field_names(plugin.get("config_schema") or {})
+        assert required_fields.issubset(field_names)
 
     configs_resp = client.get("/api/plugins/configs", headers=headers)
     assert configs_resp.status_code == 200
