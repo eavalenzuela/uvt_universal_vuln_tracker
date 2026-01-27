@@ -1,10 +1,20 @@
 import { apiFetch } from "./client.js";
 
-export async function listVulnerabilities({ search, severity, status, sort = "updated_at", order = "desc", page = 1, page_size = 25 } = {}) {
+export async function listVulnerabilities({
+  search,
+  severity,
+  status,
+  attack_complexity,
+  sort = "updated_at",
+  order = "desc",
+  page = 1,
+  page_size = 25,
+} = {}) {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (severity) params.set("severity", severity);
   if (status) params.set("status", status);
+  if (attack_complexity) params.set("attack_complexity", attack_complexity);
   if (sort) params.set("sort", sort);
   if (order) params.set("order", order);
   params.set("page", page);

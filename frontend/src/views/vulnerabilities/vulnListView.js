@@ -20,6 +20,7 @@ import { canWrite, isAdmin } from "../../state/permissions.js";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
+const ATTACK_COMPLEXITY_OPTIONS = ["Not Defined", "Low", "High"];
 const MITIGATION_OPTIONS = ["Not Started", "Investigating", "In Progress", "Mitigated", "Not Applicable"];
 
 let cachedProductVersions = null;
@@ -448,6 +449,11 @@ function renderVulnerabilityCard(vuln, reloadList) {
       { class: "input" },
       ...SEVERITY_OPTIONS.map((s) => el("option", { value: s, text: s, selected: s === detailData.severity }))
     );
+    const attackComplexitySelect = el(
+      "select",
+      { class: "input" },
+      ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === detailData.attack_complexity }))
+    );
     const statusSelect = el(
       "select",
       { class: "input" },
@@ -468,6 +474,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
       el("div", {}, el("div", { class: "muted", text: "CVE" }), cveInput),
       el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severitySelect),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexitySelect),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusSelect),
         el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
@@ -494,6 +501,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
           title,
           cve_id: cveInput.value.trim() || undefined,
           severity: severitySelect.value,
+          attack_complexity: attackComplexitySelect.value,
           status: statusSelect.value,
           cvss_score: cvssInput.value || undefined,
           published_date: publishedInput.value || undefined,
@@ -533,6 +541,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
       detailData.cvss_score !== null && detailData.cvss_score !== undefined
         ? el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: detailData.cvss_score }))
         : null,
+      el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: detailData.attack_complexity || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Published" }), el("div", { text: formatDate(detailData.published_date) })),
       el("div", {}, el("div", { class: "muted", text: "Last modified" }), el("div", { text: formatDate(detailData.last_modified_date) })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(detailData.updated_at) })),
@@ -626,6 +635,7 @@ function renderVulnerabilityCard(vuln, reloadList) {
       severityBadge(vuln.severity || "Medium"),
       statusPill(vuln.status || "Open"),
       el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: vuln.cvss_score ?? "-" })),
+      el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: vuln.attack_complexity || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(vuln.updated_at) })),
     ),
   );
@@ -650,6 +660,12 @@ export async function VulnListView() {
     el("option", { value: "", text: "Severity" }),
     ...SEVERITY_OPTIONS.map((s) => el("option", { value: s, text: s }))
   );
+  const attackComplexitySelect = el(
+    "select",
+    { class: "input" },
+    el("option", { value: "", text: "Attack complexity" }),
+    ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c }))
+  );
 
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
@@ -663,6 +679,7 @@ export async function VulnListView() {
         search: searchInput.value.trim() || undefined,
         status: statusSelect.value || undefined,
         severity: severitySelect.value || undefined,
+        attack_complexity: attackComplexitySelect.value || undefined,
       });
 
       list.innerHTML = "";
@@ -686,6 +703,7 @@ export async function VulnListView() {
     searchInput,
     statusSelect,
     severitySelect,
+    attackComplexitySelect,
     applyBtn,
   );
 
@@ -697,6 +715,11 @@ export async function VulnListView() {
       "select",
       { class: "input" },
       ...SEVERITY_OPTIONS.map((s) => el("option", { value: s, text: s, selected: s === "Medium" }))
+    );
+    const attackComplexityInput = el(
+      "select",
+      { class: "input" },
+      ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const statusInput = el(
       "select",
@@ -729,6 +752,7 @@ export async function VulnListView() {
       el("div", {}, el("div", { class: "muted", text: "CVE" }), cveInput),
       el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severityInput),
+        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexityInput),
         el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusInput),
         el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
@@ -761,6 +785,7 @@ export async function VulnListView() {
           title,
           cve_id: cveInput.value.trim() || undefined,
           severity: severityInput.value,
+          attack_complexity: attackComplexityInput.value,
           status: statusInput.value,
           cvss_score: cvssInput.value || undefined,
           published_date: publishedInput.value || undefined,
@@ -775,6 +800,7 @@ export async function VulnListView() {
         descInput.value = "";
         publishedInput.value = "";
         modifiedInput.value = "";
+        attackComplexityInput.value = "Not Defined";
         versionSelect.selectedIndex = -1;
         creationCard.style.display = "none";
         await load();

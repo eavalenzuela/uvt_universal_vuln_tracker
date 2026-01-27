@@ -17,6 +17,8 @@ from ..auth import login_required, role_required
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
+ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
+
 
 def _parse_date(date_str):
     if not date_str:
@@ -34,6 +36,14 @@ def _parse_cvss(score):
         return round(float(score), 1)
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_attack_complexity(value):
+    if value is None or value == "":
+        return None
+    if value not in ATTACK_COMPLEXITY_OPTIONS:
+        return False
+    return value
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
     db.session.add(AuditLog(
@@ -114,11 +124,14 @@ def list_vulnerabilities():
     severity = request.args.get("severity")
     status = request.args.get("status")
     search = request.args.get("search")
+    attack_complexity = request.args.get("attack_complexity")
 
     if severity:
         q = q.filter(Vulnerability.severity == severity)
     if status:
         q = q.filter(Vulnerability.status == status)
+    if attack_complexity:
+        q = q.filter(Vulnerability.attack_complexity == attack_complexity)
     if search:
         like = f"%{search}%"
         q = q.filter(or_(Vulnerability.title.ilike(like), Vulnerability.cve_id.ilike(like)))
@@ -140,6 +153,7 @@ def list_vulnerabilities():
             "title": v.title,
             "severity": v.severity,
             "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+            "attack_complexity": v.attack_complexity,
             "status": v.status,
             "published_date": v.published_date.isoformat() if v.published_date else None,
             "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
@@ -159,6 +173,12 @@ def create_vulnerability():
     if not title:
         return jsonify({"error": "title is required"}), 400
 
+    attack_complexity = _normalize_attack_complexity(data.get("attack_complexity"))
+    if attack_complexity is False:
+        return jsonify({"error": f"Invalid attack_complexity; must be one of {sorted(ATTACK_COMPLEXITY_OPTIONS)}"}), 400
+    if attack_complexity is None:
+        attack_complexity = "Not Defined"
+
     published_date = _parse_date(data.get("published_date"))
     if data.get("published_date") and published_date is None:
         return jsonify({"error": "Invalid published_date; expected ISO date"}), 400
@@ -173,6 +193,7 @@ def create_vulnerability():
         description=data.get("description"),
         severity=data.get("severity", "Medium"),
         cvss_score=_parse_cvss(data.get("cvss_score")),
+        attack_complexity=attack_complexity,
         published_date=published_date,
         last_modified_date=last_modified_date,
         status=data.get("status", "Open"),
@@ -202,7 +223,8 @@ def create_vulnerability():
             return err
 
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
-        "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status
+        "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
+        "attack_complexity": v.attack_complexity,
     })
 
     try:
@@ -258,6 +280,7 @@ def get_vulnerability(vuln_id: int):
         "description": v.description,
         "severity": v.severity,
         "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "attack_complexity": v.attack_complexity,
         "published_date": v.published_date.isoformat() if v.published_date else None,
         "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
         "status": v.status,
@@ -275,10 +298,10 @@ def update_vulnerability(vuln_id: int):
     v = Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
 
-    old = {"cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status}
+    old = {"cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status, "attack_complexity": v.attack_complexity}
 
     for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
-                  "last_modified_date", "status", "assigned_to"]:
+                  "last_modified_date", "status", "assigned_to", "attack_complexity"]:
         if field in data:
             if field == "title":
                 title_value = (data.get(field) or "").strip()
@@ -292,6 +315,11 @@ def update_vulnerability(vuln_id: int):
                 setattr(v, field, parsed)
             elif field == "cvss_score":
                 setattr(v, field, _parse_cvss(data.get(field)))
+            elif field == "attack_complexity":
+                normalized = _normalize_attack_complexity(data.get(field))
+                if normalized is False:
+                    return jsonify({"error": f"Invalid attack_complexity; must be one of {sorted(ATTACK_COMPLEXITY_OPTIONS)}"}), 400
+                setattr(v, field, normalized if normalized is not None else "Not Defined")
             else:
                 setattr(v, field, data[field])
 
@@ -302,7 +330,8 @@ def update_vulnerability(vuln_id: int):
             return err
 
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
-        "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status
+        "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
+        "attack_complexity": v.attack_complexity,
     })
 
     db.session.commit()
