@@ -16,15 +16,27 @@ def upsert_plugin_config(
     config: Mapping[str, Any] | None = None,
     *,
     enabled: bool = True,
+    schedule_cron: str | None = None,
+    interval_minutes: int | None = None,
 ) -> PluginConfig:
     config_row = get_plugin_config(plugin_id)
     if not config_row:
-        config_row = PluginConfig(plugin_id=plugin_id, config_json=dict(config or {}), enabled=enabled)
+        config_row = PluginConfig(
+            plugin_id=plugin_id,
+            config_json=dict(config or {}),
+            enabled=enabled,
+            schedule_cron=schedule_cron,
+            interval_minutes=interval_minutes,
+        )
         db.session.add(config_row)
     else:
         if config is not None:
             config_row.config_json = dict(config)
         config_row.enabled = enabled
+        if schedule_cron is not None:
+            config_row.schedule_cron = schedule_cron
+        if interval_minutes is not None:
+            config_row.interval_minutes = interval_minutes
     db.session.commit()
     return config_row
 

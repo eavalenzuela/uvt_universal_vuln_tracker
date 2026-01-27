@@ -6,7 +6,7 @@ from flask_cors import CORS
 from .database import init_database
 from .api import register_api
 from . import models  # ensures migrations can discover models
-from .cli import seed_admin
+from .cli import run_plugins_cli, seed_admin
 from .plugins import init_plugin_registry
 
 def create_app():
@@ -40,6 +40,7 @@ def create_app():
         if path.strip()
     ]
     app.cli.add_command(seed_admin)
+    app.cli.add_command(run_plugins_cli)
 
     # Logging
     logging.basicConfig(level=logging.INFO)

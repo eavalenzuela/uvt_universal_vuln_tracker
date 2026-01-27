@@ -307,6 +307,8 @@ class PluginConfig(db.Model):
     plugin_id = db.Column(db.String(255), unique=True, nullable=False, index=True)
     config_json = db.Column(db.JSON)
     enabled = db.Column(db.Boolean, default=True, nullable=False)
+    schedule_cron = db.Column(db.String(120))
+    interval_minutes = db.Column(db.Integer)
 
 
 class PluginRun(db.Model):
