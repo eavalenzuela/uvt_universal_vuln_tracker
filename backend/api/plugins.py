@@ -7,10 +7,10 @@ from sqlalchemy import asc
 
 from ..auth import login_required, role_required
 from ..models import PluginConfig
-from ..plugins.config import mask_config
+from ..plugins.config import is_masked_value, mask_config
 from ..plugins.registry import PluginRegistry
 from ..plugins.runner import get_latest_plugin_run, run_plugin
-from ..plugins.state import get_plugin_config
+from ..plugins.state import get_plugin_config, upsert_plugin_config
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
 
@@ -29,13 +29,18 @@ def _plugin_run_json(run):
     }
 
 
-def _plugin_config_json(config: PluginConfig | None, *, plugin_id: str | None = None):
+def _plugin_config_json(
+    config: PluginConfig | None,
+    *,
+    plugin_id: str | None = None,
+    schema: dict[str, Any] | None = None,
+):
     return {
         "plugin_id": plugin_id or (config.plugin_id if config else None),
         "enabled": config.enabled if config else True,
         "schedule_cron": config.schedule_cron if config else None,
         "interval_minutes": config.interval_minutes if config else None,
-        "config": mask_config(config.config_json or {}) if config else {},
+        "config": mask_config(config.config_json or {}, schema) if config else {},
     }
 
 
@@ -51,6 +56,24 @@ def _get_plugin_class(registry: PluginRegistry, plugin_id: str):
         if plugin_cls.plugin_id == plugin_id:
             return plugin_cls
     return None
+
+
+def _merge_plugin_config(existing: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing)
+    for key, value in updates.items():
+        if is_masked_value(value):
+            if key in existing:
+                merged[key] = existing[key]
+            continue
+        if isinstance(value, dict):
+            prior = existing.get(key)
+            if isinstance(prior, dict):
+                merged[key] = _merge_plugin_config(prior, value)
+            else:
+                merged[key] = _merge_plugin_config({}, value)
+            continue
+        merged[key] = value
+    return merged
 
 
 @bp.get("/plugins")
@@ -129,3 +152,55 @@ def run_plugin_now(plugin_id: str):
         config_payload.update(config_override)
     run = run_plugin(registry, plugin_id, config=config_payload)
     return jsonify(_plugin_run_json(run)), 201
+
+
+@bp.post("/plugins/<plugin_id>/config")
+@role_required("Admin", "Analyst")
+def update_plugin_config(plugin_id: str):
+    registry = _get_registry()
+    plugin_cls = _get_plugin_class(registry, plugin_id)
+    if not plugin_cls:
+        return jsonify({"error": "Plugin not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "payload must be an object"}), 400
+
+    if "config" in payload and not isinstance(payload.get("config"), dict):
+        return jsonify({"error": "config must be an object"}), 400
+    if "enabled" in payload and not isinstance(payload.get("enabled"), bool):
+        return jsonify({"error": "enabled must be a boolean"}), 400
+    if "schedule_cron" in payload and payload.get("schedule_cron") is not None:
+        if not isinstance(payload.get("schedule_cron"), str):
+            return jsonify({"error": "schedule_cron must be a string"}), 400
+    if "interval_minutes" in payload and payload.get("interval_minutes") is not None:
+        if not isinstance(payload.get("interval_minutes"), int):
+            return jsonify({"error": "interval_minutes must be an integer"}), 400
+
+    config_row = get_plugin_config(plugin_id)
+    existing_config = dict(config_row.config_json or {}) if config_row else {}
+    incoming_config = payload.get("config")
+    merged_config = existing_config
+    if incoming_config is not None:
+        merged_config = _merge_plugin_config(existing_config, incoming_config)
+
+    enabled = payload.get("enabled", config_row.enabled if config_row else True)
+    schedule_cron = (
+        payload.get("schedule_cron")
+        if "schedule_cron" in payload
+        else (config_row.schedule_cron if config_row else None)
+    )
+    interval_minutes = (
+        payload.get("interval_minutes")
+        if "interval_minutes" in payload
+        else (config_row.interval_minutes if config_row else None)
+    )
+
+    updated = upsert_plugin_config(
+        plugin_id,
+        merged_config if incoming_config is not None else None,
+        enabled=enabled,
+        schedule_cron=schedule_cron,
+        interval_minutes=interval_minutes,
+    )
+    return jsonify(_plugin_config_json(updated, schema=plugin_cls.config_schema)), 200
