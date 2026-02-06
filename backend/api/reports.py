@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import asc, desc, func
@@ -10,6 +10,7 @@ from ..database import db
 from ..models import ReportSchedule, Vulnerability
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..rate_limiter import rate_limit
+from .vulnerability_query import apply_vulnerability_filters, parse_vulnerability_filters
 
 bp = Blueprint("reports_api", __name__, url_prefix="/api")
 
@@ -37,47 +38,98 @@ ALLOWED_REPORT_TYPES = {"vulnerabilities", "dashboard_summary"}
 
 
 def _parse_filters(args):
-    return {
-        "severity": args.get("severity") or None,
-        "status": args.get("status") or None,
-        "search": args.get("search") or None,
-        "attack_complexity": args.get("attack_complexity") or None,
-        "confidentiality_impact": args.get("confidentiality_impact") or None,
-        "integrity_impact": args.get("integrity_impact") or None,
-        "availability_impact": args.get("availability_impact") or None,
-        "assigned_to": args.get("assigned_to") or None,
-        "sort": args.get("sort") or "updated_at",
-        "order": (args.get("order") or "desc").lower(),
-    }
+    filters = parse_vulnerability_filters(args)
+    filters["sort"] = args.get("sort") or "updated_at"
+    filters["order"] = (args.get("order") or "desc").lower()
+    return filters
 
 
 def _build_vulnerability_query(filters):
-    q = Vulnerability.query
-    if filters.get("severity"):
-        q = q.filter(Vulnerability.severity == filters["severity"])
-    if filters.get("status"):
-        q = q.filter(Vulnerability.status == filters["status"])
-    if filters.get("attack_complexity"):
-        q = q.filter(Vulnerability.attack_complexity == filters["attack_complexity"])
-    if filters.get("confidentiality_impact"):
-        q = q.filter(Vulnerability.confidentiality_impact == filters["confidentiality_impact"])
-    if filters.get("integrity_impact"):
-        q = q.filter(Vulnerability.integrity_impact == filters["integrity_impact"])
-    if filters.get("availability_impact"):
-        q = q.filter(Vulnerability.availability_impact == filters["availability_impact"])
-    if filters.get("assigned_to"):
-        if filters["assigned_to"] == "unassigned":
-            q = q.filter(Vulnerability.assigned_to.is_(None))
-        else:
-            q = q.filter(Vulnerability.assigned_to == int(filters["assigned_to"]))
-    if filters.get("search"):
-        like = f"%{filters['search']}%"
-        q = q.filter((Vulnerability.title.ilike(like)) | (Vulnerability.cve_id.ilike(like)))
-
+    q = apply_vulnerability_filters(Vulnerability.query, filters)
     sort = filters.get("sort") or "updated_at"
     sort_col = getattr(Vulnerability, sort, Vulnerability.updated_at)
     q = q.order_by(desc(sort_col) if filters.get("order") != "asc" else asc(sort_col))
     return q
+
+
+def _range_start(range_value):
+    now = datetime.utcnow()
+    if range_value == "Month to date":
+        return datetime(now.year, now.month, 1)
+    if range_value == "Quarter to date":
+        quarter_start_month = (now.month - 1) // 3 * 3 + 1
+        return datetime(now.year, quarter_start_month, 1)
+    if range_value:
+        import re
+
+        match = re.match(r"Last\s+(\d+)\s+days", range_value, flags=re.IGNORECASE)
+        if match:
+            return now - timedelta(days=int(match.group(1)))
+    return now - timedelta(days=14)
+
+
+def _dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 days"):
+    q = apply_vulnerability_filters(Vulnerability.query, filters)
+    total = q.count()
+
+    rows = q.with_entities(
+        Vulnerability.id,
+        Vulnerability.severity,
+        Vulnerability.status,
+        Vulnerability.assigned_to,
+        Vulnerability.updated_at,
+    ).all()
+
+    by_severity = {}
+    by_status = {}
+    group_totals = {}
+    group_attr = {
+        "Severity": "severity",
+        "Status": "status",
+        "Assignee": "assigned_to",
+    }.get(group_by, "severity")
+
+    start = _range_start(range_value)
+    end = datetime.utcnow()
+    days = max(1, (end.date() - start.date()).days + 1)
+    buckets = [
+        {"date": (start.date() + timedelta(days=i)).isoformat(), "count": 0}
+        for i in range(days)
+    ]
+
+    for _, severity, status, assigned_to, updated_at in rows:
+        severity_key = severity or "Unknown"
+        status_key = status or "Unknown"
+        by_severity[severity_key] = by_severity.get(severity_key, 0) + 1
+        by_status[status_key] = by_status.get(status_key, 0) + 1
+
+        group_value = {
+            "severity": severity_key,
+            "status": status_key,
+            "assigned_to": str(assigned_to) if assigned_to is not None else "Unassigned",
+        }[group_attr]
+        group_totals[group_value] = group_totals.get(group_value, 0) + 1
+
+        if updated_at:
+            updated_dt = updated_at if isinstance(updated_at, datetime) else datetime.fromisoformat(str(updated_at))
+            if start <= updated_dt <= end:
+                idx = (updated_dt.date() - start.date()).days
+                if 0 <= idx < len(buckets):
+                    buckets[idx]["count"] += 1
+
+    return {
+        "total": total,
+        "by_severity": by_severity,
+        "by_status": by_status,
+        "group_by": group_by,
+        "group_totals": group_totals,
+        "trend": {
+            "range": range_value,
+            "start_date": start.date().isoformat(),
+            "end_date": end.date().isoformat(),
+            "buckets": buckets,
+        },
+    }
 
 
 def _vuln_row(v):
@@ -145,7 +197,10 @@ def _summary_rows(summary):
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_vuln_export")
 def export_vulnerabilities():
     filters = _parse_filters(request.args)
-    items = _build_vulnerability_query(filters).all()
+    try:
+        items = _build_vulnerability_query(filters).all()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     rows = [_vuln_row(v) for v in items]
     return _csv_response("vulnerabilities_export.csv", EXPORT_FIELDS, rows)
 
@@ -155,8 +210,25 @@ def export_vulnerabilities():
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_dashboard_export")
 def export_dashboard_summary():
     filters = _parse_filters(request.args)
-    summary = _dashboard_summary(filters)
+    try:
+        summary = _dashboard_summary(filters)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     return _csv_response("dashboard_summary.csv", ["metric", "group", "value"], _summary_rows(summary))
+
+
+@bp.get("/dashboard/summary")
+@login_required
+@rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="dashboard_summary")
+def dashboard_summary():
+    filters = parse_vulnerability_filters(request.args)
+    group_by = request.args.get("group_by") or "Severity"
+    range_value = request.args.get("range") or "Last 14 days"
+    try:
+        payload = _dashboard_aggregate(filters, group_by=group_by, range_value=range_value)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(payload)
 
 
 @bp.post("/reports/schedules")
