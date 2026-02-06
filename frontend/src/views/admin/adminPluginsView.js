@@ -1,4 +1,10 @@
-import { listPlugins, updatePluginConfig } from "../../api/plugins.js";
+import {
+  listPluginImportSources,
+  listPlugins,
+  registerPluginImport,
+  updatePluginConfig,
+  validatePluginImport,
+} from "../../api/plugins.js";
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 
@@ -180,9 +186,7 @@ export async function AdminPluginsView() {
     });
   }
 
-  addBtn.addEventListener("click", () => {
-    toast({ title: "Coming soon", message: "Plugin marketplace access is not configured yet." });
-  });
+  addBtn.addEventListener("click", () => openImportWizard());
 
   async function loadPlugins() {
     isLoading = true;
@@ -199,6 +203,240 @@ export async function AdminPluginsView() {
       isLoading = false;
       renderList();
     }
+  }
+
+  function openImportWizard() {
+    const overlay = el("div", {
+      style:
+        "position:fixed; inset:0; background:rgba(15, 23, 42, 0.55); display:flex; align-items:center; justify-content:center; z-index:40;",
+      onClick: (event) => {
+        if (event.target === overlay) closeModal();
+      },
+    });
+
+    const modal = el("div", {
+      style:
+        "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(640px, 96vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Import plugin",
+    });
+
+    const title = el("h2", { text: "Import plugin" });
+    const stepHint = el("div", { class: "muted", text: "Step 1 of 3 · Select plugin source/type" });
+    const body = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
+    const statusRow = el("div", { class: "muted" });
+
+    const sourceSelect = el("select", { class: "input" });
+    const moduleInput = el("input", { class: "input", placeholder: "backend.plugins.my_plugin" });
+    const classInput = el("input", { class: "input", placeholder: "MyPluginClass" });
+    const enabledInput = el("input", { type: "checkbox", checked: true });
+
+    let currentStep = 1;
+    let importSources = [];
+    let introspection = null;
+    let configInputs = new Map();
+
+    const nextBtn = el("button", { class: "btn primary", text: "Validate" });
+    const backBtn = el("button", { class: "btn", text: "Back" });
+    const cancelBtn = el("button", { class: "btn", text: "Cancel", onClick: closeModal });
+
+    function setButtonsLoading(loading) {
+      nextBtn.disabled = loading;
+      backBtn.disabled = loading;
+      cancelBtn.disabled = loading;
+    }
+
+    function renderStep() {
+      body.innerHTML = "";
+      configInputs = new Map();
+      if (currentStep === 1) {
+        stepHint.textContent = "Step 1 of 3 · Select plugin source/type";
+        nextBtn.textContent = "Validate";
+        backBtn.style.display = "none";
+        body.append(
+          el("div", { class: "muted", text: "Choose an allowed import path and provide the module/class for the plugin." }),
+          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+            el("label", { text: "Plugin source root" }),
+            sourceSelect,
+          ),
+          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+            el("label", { text: "Module path" }),
+            moduleInput,
+          ),
+          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+            el("label", { text: "Class name" }),
+            classInput,
+          ),
+        );
+      } else if (currentStep === 2) {
+        stepHint.textContent = "Step 2 of 3 · Validate schema/capabilities";
+        nextBtn.textContent = "Continue";
+        backBtn.style.display = "";
+        body.append(
+          el("div", { class: "muted", text: introspection?.already_registered ? "Plugin already registered. Continuing will update initial config." : "Plugin validated and ready to import." }),
+          el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
+            pill(introspection.plugin_id, "#1d4ed8", true),
+            pill(introspection.version || "0.0.0", "#475569", true),
+            ...(introspection.capabilities || []).map((cap) => pill(cap, "#2563eb", true)),
+          ),
+          el("div", { class: "muted", text: `Name: ${introspection.display_name || introspection.plugin_id}` }),
+          el("div", { class: "muted", text: `Schema fields: ${normalizeFields(introspection.config_schema).map((f) => f.name).join(", ") || "none"}` }),
+        );
+      } else {
+        stepHint.textContent = "Step 3 of 3 · Save initial config and enable state";
+        nextBtn.textContent = "Import plugin";
+        backBtn.style.display = "";
+
+        const fields = normalizeFields(introspection?.config_schema);
+        body.append(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+          enabledInput,
+          el("span", { text: "Enable plugin after import" }),
+        ));
+
+        if (!fields.length) {
+          body.appendChild(el("div", { class: "muted", text: "No configurable fields exposed." }));
+        } else {
+          fields.forEach((field) => {
+            if (field.type === "boolean") {
+              const checkbox = el("input", { type: "checkbox", checked: Boolean(field.defaultValue) });
+              configInputs.set(field.name, { type: "boolean", input: checkbox, required: field.required });
+              body.append(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+                checkbox,
+                el("span", { text: `${field.label}${field.required ? " *" : ""}` }),
+              ));
+              return;
+            }
+            const input = el("input", {
+              class: "input",
+              type: field.secret ? "password" : "text",
+              value: field.defaultValue ?? "",
+              placeholder: field.required ? "Required" : "Optional",
+            });
+            configInputs.set(field.name, { type: "string", input, required: field.required });
+            body.append(el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+              el("label", { text: `${field.label}${field.required ? " *" : ""}` }),
+              input,
+            ));
+          });
+        }
+      }
+    }
+
+    async function initializeSources() {
+      try {
+        const payload = await listPluginImportSources();
+        importSources = payload?.paths || [];
+        sourceSelect.innerHTML = "";
+        importSources.forEach((source) => {
+          sourceSelect.appendChild(el("option", { value: source, text: source }));
+        });
+        if (importSources.length) {
+          moduleInput.value = importSources[0];
+        }
+      } catch (error) {
+        statusRow.textContent = error?.message || "Unable to load import paths.";
+      }
+    }
+
+    sourceSelect.addEventListener("change", () => {
+      if (!moduleInput.value.trim()) {
+        moduleInput.value = sourceSelect.value;
+      }
+    });
+
+    backBtn.addEventListener("click", () => {
+      if (currentStep <= 1) return;
+      currentStep -= 1;
+      statusRow.textContent = "";
+      renderStep();
+    });
+
+    nextBtn.addEventListener("click", async () => {
+      statusRow.textContent = "";
+      if (currentStep === 1) {
+        const modulePath = moduleInput.value.trim();
+        const className = classInput.value.trim();
+        if (!modulePath || !className) {
+          statusRow.textContent = "Module path and class name are required.";
+          return;
+        }
+        setButtonsLoading(true);
+        try {
+          introspection = await validatePluginImport({ module_path: modulePath, class_name: className });
+          currentStep = 2;
+          renderStep();
+          statusRow.textContent = "Validation successful.";
+        } catch (error) {
+          statusRow.textContent = error?.message || "Validation failed.";
+        } finally {
+          setButtonsLoading(false);
+        }
+        return;
+      }
+
+      if (currentStep === 2) {
+        currentStep = 3;
+        renderStep();
+        return;
+      }
+
+      const config = {};
+      for (const [name, entry] of configInputs.entries()) {
+        if (entry.type === "boolean") {
+          config[name] = entry.input.checked;
+          continue;
+        }
+        const value = entry.input.value;
+        if (entry.required && !String(value || "").trim()) {
+          statusRow.textContent = `Required field missing: ${name}`;
+          return;
+        }
+        config[name] = value;
+      }
+
+      setButtonsLoading(true);
+      statusRow.textContent = "Importing plugin...";
+      try {
+        const result = await registerPluginImport({
+          module_path: moduleInput.value.trim(),
+          class_name: classInput.value.trim(),
+          config,
+          enabled: enabledInput.checked,
+        });
+        await loadPlugins();
+        toast({
+          title: "Plugin imported",
+          message: result?.message || "Plugin registration completed.",
+        });
+        closeModal();
+      } catch (error) {
+        statusRow.textContent = error?.message || "Import failed.";
+      } finally {
+        setButtonsLoading(false);
+      }
+    });
+
+    modal.append(
+      title,
+      stepHint,
+      body,
+      statusRow,
+      el("div", { style: "display:flex; justify-content:flex-end; gap:8px;" },
+        backBtn,
+        cancelBtn,
+        nextBtn,
+      ),
+    );
+
+    function closeModal() {
+      overlay.remove();
+    }
+
+    overlay.append(modal);
+    document.body.append(overlay);
+    renderStep();
+    initializeSources();
   }
 
   function openConfigModal(plugin) {
