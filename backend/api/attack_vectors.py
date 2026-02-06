@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import AttackVector, Vulnerability, VulnerabilityAttackVector, ProductVersion
 from ..auth import login_required, role_required
+from .validation import ValidationError, error_response, parse_int, required_string
 
 bp = Blueprint("attack_vectors_api", __name__, url_prefix="/api")
 
@@ -45,9 +46,10 @@ def list_attack_vectors():
 @role_required("Admin", "Analyst")
 def create_attack_vector():
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
+    try:
+        name = required_string(data, "name")
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     attack_vector = AttackVector(
         name=name,
@@ -74,7 +76,7 @@ def update_attack_vector(vector_id: int):
     if "name" in data:
         name = (data.get("name") or "").strip()
         if not name:
-            return jsonify({"error": "name cannot be empty"}), 400
+            return error_response("name cannot be empty", field="name")
         vector.name = name
 
     if "description" in data:
@@ -119,17 +121,24 @@ def attach_vulnerability_attack_vectors(vuln_id: int):
         attack_vector_id = item.get("attack_vector_id")
         product_version_id = item.get("product_version_id")
         if not attack_vector_id:
-            return jsonify({"error": "attack_vector_id is required"}), 400
+            return error_response("attack_vector_id is required", field="attack_vector_id")
 
-        vector = AttackVector.query.get(int(attack_vector_id))
+        try:
+            parsed_attack_vector_id = parse_int(attack_vector_id, field="attack_vector_id", minimum=1, required=True)
+        except ValidationError as exc:
+            return error_response(exc.error, field=exc.field, details=exc.details)
+        vector = AttackVector.query.get(parsed_attack_vector_id)
         if not vector:
-            return jsonify({"error": f"Invalid attack vector {attack_vector_id}"}), 400
+            return error_response(f"Invalid attack vector {attack_vector_id}", field="attack_vector_id")
 
-        pv_id = int(product_version_id) if product_version_id is not None else None
+        try:
+            pv_id = parse_int(product_version_id, field="product_version_id", minimum=1) if product_version_id is not None else None
+        except ValidationError as exc:
+            return error_response(exc.error, field=exc.field, details=exc.details)
         if pv_id is not None:
             pv = ProductVersion.query.get(pv_id)
             if not pv:
-                return jsonify({"error": f"Invalid product version {pv_id}"}), 400
+                return error_response(f"Invalid product version {pv_id}", field="product_version_id")
 
         existing = VulnerabilityAttackVector.query.filter_by(
             vulnerability_id=vuln_id,
@@ -158,9 +167,13 @@ def update_vulnerability_attack_vector(vuln_id: int, mapping_id: int):
 
     if "attack_vector_id" in data:
         vector_id = data.get("attack_vector_id")
-        vector = AttackVector.query.get(int(vector_id)) if vector_id else None
+        try:
+            parsed_vector_id = parse_int(vector_id, field="attack_vector_id", minimum=1) if vector_id else None
+        except ValidationError as exc:
+            return error_response(exc.error, field=exc.field, details=exc.details)
+        vector = AttackVector.query.get(parsed_vector_id) if parsed_vector_id else None
         if not vector:
-            return jsonify({"error": f"Invalid attack vector {vector_id}"}), 400
+            return error_response(f"Invalid attack vector {vector_id}", field="attack_vector_id")
         mapping.attack_vector_id = vector.id
 
     if "product_version_id" in data:
@@ -168,9 +181,13 @@ def update_vulnerability_attack_vector(vuln_id: int, mapping_id: int):
         if pv_id is None:
             mapping.product_version_id = None
         else:
-            pv = ProductVersion.query.get(int(pv_id))
+            try:
+                parsed_pv_id = parse_int(pv_id, field="product_version_id", minimum=1, required=True)
+            except ValidationError as exc:
+                return error_response(exc.error, field=exc.field, details=exc.details)
+            pv = ProductVersion.query.get(parsed_pv_id)
             if not pv:
-                return jsonify({"error": f"Invalid product version {pv_id}"}), 400
+                return error_response(f"Invalid product version {pv_id}", field="product_version_id")
             mapping.product_version_id = pv.id
 
     db.session.commit()

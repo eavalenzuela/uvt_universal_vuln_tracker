@@ -1149,3 +1149,22 @@ def test_sla_policy_and_vulnerability_due_dates(app, client):
     due_at_low = datetime.fromisoformat(detail2["sla_due_at"])
     created_at_low = datetime.fromisoformat(detail2["created_at"])
     assert due_at_low - created_at_low > timedelta(days=30)
+
+
+def test_validation_error_payload_shape_consistent(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    responses = [
+        client.post('/api/attack_vectors', headers=headers, json={}),
+        client.post('/api/notification-rules', headers=headers, json={"name": "rule", "delivery_adapter": "invalid"}),
+        client.post('/api/vulnerabilities/filters', headers=headers, json={"name": "x", "filter_json": {}, "visibility": "bad"}),
+        client.get('/api/users?role=Unknown', headers=headers),
+    ]
+
+    for resp in responses:
+        assert resp.status_code == 400
+        payload = resp.get_json()
+        assert isinstance(payload, dict)
+        assert set(["error", "details", "field"]).issubset(payload.keys())
+        assert payload["error"]
