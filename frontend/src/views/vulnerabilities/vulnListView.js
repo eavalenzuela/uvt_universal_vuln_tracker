@@ -27,6 +27,7 @@ import {
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
 import { exportVulnerabilitiesCsv } from "../../api/reports.js";
+import { navigate } from "../../router/router.js";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
@@ -884,7 +885,11 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
         el("div", { class: "muted", text: vuln.cve_id || `VULN-${vuln.id}` }),
         el("div", { style: "font-weight: 600;", text: vuln.title }),
       ),
-      el("div", { class: "row", style: "gap: 6px;" }, viewBtn, editBtn),
+      el("div", { class: "row", style: "gap: 6px;" },
+        el("button", { class: "btn", type: "button", onClick: () => navigate(`/vulnerabilities/${vuln.id}`) }, "Open page"),
+        viewBtn,
+        editBtn
+      ),
     ),
     el(
       "div",

@@ -2,6 +2,7 @@ import { requireAuth, requireRole } from "./guards.js";
 import { LoginView } from "../views/login/loginView.js";
 import { DashboardView } from "../views/dashboard/dashboardView.js";
 import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
+import { VulnDetailView } from "../views/vulnerabilities/vulnDetailView.js";
 import { NotFoundView } from "../views/notFoundView.js";
 import { AdminUsersView } from "../views/admin/adminUsersView.js";
 import { AdminLogsView } from "../views/admin/adminLogsView.js";
@@ -10,7 +11,6 @@ import { AdminNotificationRulesView } from "../views/admin/adminNotificationRule
 import { ProductsView } from "../views/products/productsView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
 
-// Later you can add: VulnDetailView for "/vulnerabilities/:id"
 export const ROUTES = [
   { path: "/login", view: LoginView, public: true },
 
@@ -19,8 +19,7 @@ export const ROUTES = [
   // Base list
   { path: "/vulnerabilities", view: VulnListView, guard: () => requireAuth() },
 
-  // Example placeholder detail route (safe even if you don’t implement yet)
-  { path: "/vulnerabilities/:id", view: VulnListView, guard: () => requireAuth() },
+  { path: "/vulnerabilities/:id", view: VulnDetailView, guard: () => requireAuth() },
 
   // placeholders for later:
   { path: "/controls", view: ControlsView, guard: () => requireAuth() },
