@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from backend.uvt_app import create_app
 from backend.database import db
+from backend.rate_limiter import clear_rate_limit_state
 
 
 @pytest.fixture()
@@ -21,8 +22,10 @@ def app(monkeypatch):
 
     with app.app_context():
         db.create_all()
+        clear_rate_limit_state(app)
         yield app
         db.session.remove()
+        clear_rate_limit_state(app)
         db.drop_all()
 
 

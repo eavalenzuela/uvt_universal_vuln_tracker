@@ -3,10 +3,12 @@ from flask import Blueprint, jsonify, request, current_app
 from ..database import db
 from ..models import User
 from ..auth import authenticate_user, create_user, generate_token, login_required
+from ..rate_limiter import rate_limit
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
 
 @bp.post("/login")
+@rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
 def login():
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip()

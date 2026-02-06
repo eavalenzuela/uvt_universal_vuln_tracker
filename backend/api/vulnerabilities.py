@@ -17,6 +17,7 @@ from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
+from ..rate_limiter import rate_limit
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -122,6 +123,7 @@ def _attach_attack_vectors(vuln, items):
 
 @bp.get("/product_versions")
 @login_required
+@rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="product_versions")
 def list_product_versions():
     include_inactive = str(request.args.get("include_inactive", "")).lower() == "true"
     q = ProductVersion.query.join(Product, ProductVersion.product_id == Product.id)
@@ -144,6 +146,7 @@ def list_product_versions():
 
 @bp.get("/vulnerabilities")
 @login_required
+@rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="list_vulnerabilities")
 def list_vulnerabilities():
     q = Vulnerability.query
 
