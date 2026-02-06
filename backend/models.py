@@ -22,6 +22,22 @@ class User(db.Model):
     last_revoked_at = db.Column(db.DateTime)
 
 
+class SavedVulnerabilityFilter(db.Model):
+    __tablename__ = "saved_vulnerability_filters"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    filter_json = db.Column(db.JSON, nullable=False)
+    visibility = db.Column(db.String(20), default="private", nullable=False, index=True)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner = db.relationship("User", foreign_keys=[owner_id])
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class Product(db.Model):
     __tablename__ = "products"
 

@@ -874,3 +874,80 @@ def test_notification_trigger_on_vulnerability_status_change(app, client):
     assert logs_resp.status_code == 200
     logs = logs_resp.get_json()
     assert any(log["vulnerability_id"] == vuln_id and log["event_type"] == "status_change" for log in logs)
+
+
+def test_saved_vulnerability_filters_crud_and_visibility(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "analyst_filters", "analyst_filters@example.com", role="Analyst")
+    viewer = create_user_direct(app, "viewer_filters", "viewer_filters@example.com", role="Viewer")
+
+    analyst_headers = auth_header(analyst)
+    viewer_headers = auth_header(viewer)
+    admin_headers = auth_header(admin)
+
+    create_private = client.post(
+        "/api/vulnerabilities/filters",
+        headers=analyst_headers,
+        json={
+            "name": "My Open High",
+            "filter_json": {"status": "Open", "severity": "High"},
+            "visibility": "private",
+            "is_default": True,
+        },
+    )
+    assert create_private.status_code == 201
+    private_id = create_private.get_json()["id"]
+
+    create_shared = client.post(
+        "/api/vulnerabilities/filters",
+        headers=analyst_headers,
+        json={
+            "name": "Team Open",
+            "filter_json": {"status": "Open"},
+            "visibility": "shared",
+        },
+    )
+    assert create_shared.status_code == 201
+    shared_id = create_shared.get_json()["id"]
+
+    viewer_create_shared = client.post(
+        "/api/vulnerabilities/filters",
+        headers=viewer_headers,
+        json={
+            "name": "Viewer Shared",
+            "filter_json": {"status": "Open"},
+            "visibility": "shared",
+        },
+    )
+    assert viewer_create_shared.status_code == 403
+
+    viewer_list = client.get("/api/vulnerabilities/filters", headers=viewer_headers)
+    assert viewer_list.status_code == 200
+    viewer_ids = {item["id"] for item in viewer_list.get_json()}
+    assert shared_id in viewer_ids
+    assert private_id not in viewer_ids
+
+    default_resp = client.get("/api/vulnerabilities/filters/default", headers=analyst_headers)
+    assert default_resp.status_code == 200
+    assert default_resp.get_json()["default"]["id"] == private_id
+
+    viewer_set_default = client.put(
+        f"/api/vulnerabilities/filters/{shared_id}",
+        headers=viewer_headers,
+        json={"is_default": True},
+    )
+    assert viewer_set_default.status_code == 403
+
+    admin_set_default = client.put(
+        f"/api/vulnerabilities/filters/{shared_id}",
+        headers=admin_headers,
+        json={"is_default": True},
+    )
+    assert admin_set_default.status_code == 200
+
+    default_resp_after = client.get("/api/vulnerabilities/filters/default", headers=analyst_headers)
+    assert default_resp_after.status_code == 200
+    assert default_resp_after.get_json()["default"]["id"] == shared_id
+
+    delete_resp = client.delete(f"/api/vulnerabilities/filters/{private_id}", headers=analyst_headers)
+    assert delete_resp.status_code == 204

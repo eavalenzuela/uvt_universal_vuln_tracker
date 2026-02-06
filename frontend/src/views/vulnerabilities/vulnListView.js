@@ -18,6 +18,11 @@ import {
   attachVulnerabilityTerminalImpacts,
   updateVulnerabilityTerminalImpact,
   deleteVulnerabilityTerminalImpact,
+  listSavedVulnerabilityFilters,
+  getDefaultVulnerabilityFilter,
+  createSavedVulnerabilityFilter,
+  updateSavedVulnerabilityFilter,
+  deleteSavedVulnerabilityFilter,
 } from "../../api/vulnerabilities.js";
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
@@ -28,6 +33,44 @@ const ATTACK_COMPLEXITY_OPTIONS = ["Not Defined", "Low", "High"];
 const IMPACT_OPTIONS = ["Not Defined", "None", "Low", "Medium", "High"];
 const MITIGATION_OPTIONS = ["Not Started", "Investigating", "In Progress", "Mitigated", "Not Applicable"];
 
+
+function collectFilterValues({
+  searchInput,
+  statusSelect,
+  severitySelect,
+  attackComplexitySelect,
+  confidentialitySelect,
+  integritySelect,
+  availabilitySelect,
+}) {
+  return {
+    search: searchInput.value.trim() || undefined,
+    status: statusSelect.value || undefined,
+    severity: severitySelect.value || undefined,
+    attack_complexity: attackComplexitySelect.value || undefined,
+    confidentiality_impact: confidentialitySelect.value || undefined,
+    integrity_impact: integritySelect.value || undefined,
+    availability_impact: availabilitySelect.value || undefined,
+  };
+}
+
+function applyFilterValues(values, {
+  searchInput,
+  statusSelect,
+  severitySelect,
+  attackComplexitySelect,
+  confidentialitySelect,
+  integritySelect,
+  availabilitySelect,
+}) {
+  searchInput.value = values?.search || "";
+  statusSelect.value = values?.status || "";
+  severitySelect.value = values?.severity || "";
+  attackComplexitySelect.value = values?.attack_complexity || "";
+  confidentialitySelect.value = values?.confidentiality_impact || "";
+  integritySelect.value = values?.integrity_impact || "";
+  availabilitySelect.value = values?.availability_impact || "";
+}
 let cachedProductVersions = null;
 let cachedAttackVectors = null;
 let cachedTerminalImpacts = null;
@@ -900,15 +943,15 @@ export async function VulnListView(params = {}) {
     list.innerHTML = "";
     list.appendChild(el("div", { class: "muted", text: "Loading vulnerabilities..." }));
     try {
-      const data = await listVulnerabilities({
-        search: searchInput.value.trim() || undefined,
-        status: statusSelect.value || undefined,
-        severity: severitySelect.value || undefined,
-        attack_complexity: attackComplexitySelect.value || undefined,
-        confidentiality_impact: confidentialitySelect.value || undefined,
-        integrity_impact: integritySelect.value || undefined,
-        availability_impact: availabilitySelect.value || undefined,
-      });
+      const data = await listVulnerabilities(collectFilterValues({
+        searchInput,
+        statusSelect,
+        severitySelect,
+        attackComplexitySelect,
+        confidentialitySelect,
+        integritySelect,
+        availabilitySelect,
+      }));
 
       list.innerHTML = "";
       if (!data?.items?.length) {
@@ -927,6 +970,103 @@ export async function VulnListView(params = {}) {
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
   applyBtn.addEventListener("click", load);
 
+  const savedFiltersSelect = el("select", { class: "input" },
+    el("option", { value: "", text: "Saved filters" }),
+  );
+  const saveCurrentBtn = el("button", { class: "btn", type: "button" }, "Save current filter");
+  const setDefaultBtn = el("button", { class: "btn", type: "button" }, "Set default");
+  const deleteSavedBtn = el("button", { class: "btn", type: "button" }, "Delete saved");
+
+  let savedFilters = [];
+  const refreshSavedFilters = async () => {
+    savedFilters = await listSavedVulnerabilityFilters();
+    const selected = savedFiltersSelect.value;
+    savedFiltersSelect.innerHTML = "";
+    savedFiltersSelect.appendChild(el("option", { value: "", text: "Saved filters" }));
+    savedFilters.forEach((item) => {
+      const owner = item?.owner?.username ? ` (${item.owner.username})` : "";
+      const sharedFlag = item.visibility === "shared" ? " [shared]" : "";
+      savedFiltersSelect.appendChild(el("option", { value: String(item.id), text: `${item.name}${sharedFlag}${owner}` }));
+    });
+    if (savedFilters.some((item) => String(item.id) === selected)) {
+      savedFiltersSelect.value = selected;
+    }
+  };
+
+  saveCurrentBtn.addEventListener("click", async () => {
+    const name = window.prompt("Name for this saved filter:");
+    if (!name || !name.trim()) return;
+    const visibility = (window.prompt("Visibility: private or shared", "private") || "private").toLowerCase();
+    try {
+      await createSavedVulnerabilityFilter({
+        name: name.trim(),
+        filter_json: collectFilterValues({
+          searchInput,
+          statusSelect,
+          severitySelect,
+          attackComplexitySelect,
+          confidentialitySelect,
+          integritySelect,
+          availabilitySelect,
+        }),
+        visibility,
+      });
+      await refreshSavedFilters();
+      toast({ title: "Saved", message: "Filter preset saved." });
+    } catch (e) {
+      toast({ title: "Save failed", message: e?.message || "Unable to save filter preset" });
+    }
+  });
+
+  savedFiltersSelect.addEventListener("change", async () => {
+    const id = Number(savedFiltersSelect.value);
+    if (!id) return;
+    const selected = savedFilters.find((f) => f.id === id);
+    if (!selected) return;
+    applyFilterValues(selected.filter_json || {}, {
+      searchInput,
+      statusSelect,
+      severitySelect,
+      attackComplexitySelect,
+      confidentialitySelect,
+      integritySelect,
+      availabilitySelect,
+    });
+    await load();
+  });
+
+  setDefaultBtn.addEventListener("click", async () => {
+    const id = Number(savedFiltersSelect.value);
+    if (!id) {
+      toast({ title: "Select filter", message: "Choose a saved filter first." });
+      return;
+    }
+    try {
+      await updateSavedVulnerabilityFilter(id, { is_default: true });
+      await refreshSavedFilters();
+      toast({ title: "Default updated", message: "This filter is now your default." });
+    } catch (e) {
+      toast({ title: "Update failed", message: e?.message || "Unable to set default filter" });
+    }
+  });
+
+  deleteSavedBtn.addEventListener("click", async () => {
+    const id = Number(savedFiltersSelect.value);
+    if (!id) {
+      toast({ title: "Select filter", message: "Choose a saved filter first." });
+      return;
+    }
+    if (!window.confirm("Delete selected saved filter?")) return;
+    try {
+      await deleteSavedVulnerabilityFilter(id);
+      savedFiltersSelect.value = "";
+      await refreshSavedFilters();
+      toast({ title: "Deleted", message: "Saved filter deleted." });
+    } catch (e) {
+      toast({ title: "Delete failed", message: e?.message || "Unable to delete saved filter" });
+    }
+  });
+
   const controls = el("div", { class: "row", style: "gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap;" },
     searchInput,
     statusSelect,
@@ -936,6 +1076,10 @@ export async function VulnListView(params = {}) {
     integritySelect,
     availabilitySelect,
     applyBtn,
+    savedFiltersSelect,
+    saveCurrentBtn,
+    setDefaultBtn,
+    deleteSavedBtn,
   );
 
   let creationCard = null;
@@ -1091,7 +1235,26 @@ export async function VulnListView(params = {}) {
     controls.appendChild(addBtn);
   }
 
-  load();
+  await refreshSavedFilters();
+  try {
+    const defaultPayload = await getDefaultVulnerabilityFilter();
+    const defaultFilter = defaultPayload?.default;
+    if (defaultFilter?.id) {
+      savedFiltersSelect.value = String(defaultFilter.id);
+      applyFilterValues(defaultFilter.filter_json || {}, {
+        searchInput,
+        statusSelect,
+        severitySelect,
+        attackComplexitySelect,
+        confidentialitySelect,
+        integritySelect,
+        availabilitySelect,
+      });
+    }
+  } catch (_e) {
+    // Non-fatal
+  }
+  await load();
 
   return el(
     "div",

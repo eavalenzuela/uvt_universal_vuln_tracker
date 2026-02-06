@@ -126,3 +126,23 @@ export async function updateVulnerabilityTerminalImpact(id, mappingId, data) {
 export async function deleteVulnerabilityTerminalImpact(id, mappingId) {
   return apiFetch(`/api/vulnerabilities/${id}/terminal_impacts/${mappingId}`, { method: "DELETE" });
 }
+
+export async function listSavedVulnerabilityFilters() {
+  return apiFetch("/api/vulnerabilities/filters", { method: "GET" });
+}
+
+export async function getDefaultVulnerabilityFilter() {
+  return apiFetch("/api/vulnerabilities/filters/default", { method: "GET" });
+}
+
+export async function createSavedVulnerabilityFilter(data) {
+  return apiFetch("/api/vulnerabilities/filters", { method: "POST", body: data });
+}
+
+export async function updateSavedVulnerabilityFilter(id, data) {
+  return apiFetch(`/api/vulnerabilities/filters/${id}`, { method: "PUT", body: data });
+}
+
+export async function deleteSavedVulnerabilityFilter(id) {
+  return apiFetch(`/api/vulnerabilities/filters/${id}`, { method: "DELETE" });
+}
