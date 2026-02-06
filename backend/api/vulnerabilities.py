@@ -20,6 +20,20 @@ bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
 IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
+VULNERABILITY_SORT_FIELDS = {
+    "id",
+    "cve_id",
+    "title",
+    "severity",
+    "cvss_score",
+    "status",
+    "published_date",
+    "last_modified_date",
+    "created_at",
+    "updated_at",
+    "assigned_to",
+}
+MAX_PAGE_SIZE = 100
 
 
 def _parse_date(date_str):
@@ -165,12 +179,33 @@ def list_vulnerabilities():
         q = q.filter(or_(Vulnerability.title.ilike(like), Vulnerability.cve_id.ilike(like)))
 
     sort = request.args.get("sort", "updated_at")
-    order = request.args.get("order", "desc")
-    sort_col = getattr(Vulnerability, sort, Vulnerability.updated_at)
-    q = q.order_by(desc(sort_col) if order.lower() == "desc" else asc(sort_col))
+    if sort not in VULNERABILITY_SORT_FIELDS:
+        return jsonify({
+            "error": f"sort must be one of {sorted(VULNERABILITY_SORT_FIELDS)}"
+        }), 400
 
-    page = int(request.args.get("page", 1))
-    page_size = min(int(request.args.get("page_size", 25)), 100)
+    order = request.args.get("order", "desc").lower()
+    if order not in {"asc", "desc"}:
+        return jsonify({"error": "order must be 'asc' or 'desc'"}), 400
+
+    page_raw = request.args.get("page", 1)
+    try:
+        page = int(page_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "page must be a positive integer"}), 400
+    if page < 1:
+        return jsonify({"error": "page must be a positive integer"}), 400
+
+    page_size_raw = request.args.get("page_size", 25)
+    try:
+        page_size = int(page_size_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": f"page_size must be an integer between 1 and {MAX_PAGE_SIZE}"}), 400
+    if page_size < 1 or page_size > MAX_PAGE_SIZE:
+        return jsonify({"error": f"page_size must be an integer between 1 and {MAX_PAGE_SIZE}"}), 400
+
+    sort_col = getattr(Vulnerability, sort)
+    q = q.order_by(desc(sort_col) if order == "desc" else asc(sort_col))
 
     items = q.paginate(page=page, per_page=page_size, error_out=False)
 

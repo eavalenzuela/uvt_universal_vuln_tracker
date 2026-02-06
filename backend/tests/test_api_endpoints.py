@@ -326,6 +326,27 @@ def test_vulnerability_endpoints(app, client):
     assert delete_resp.status_code == 200
 
 
+def test_vulnerability_list_validation_errors(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    invalid_page = client.get("/api/vulnerabilities?page=abc", headers=headers)
+    assert invalid_page.status_code == 400
+    assert "page" in invalid_page.get_json()["error"]
+
+    invalid_page_size = client.get("/api/vulnerabilities?page_size=0", headers=headers)
+    assert invalid_page_size.status_code == 400
+    assert "page_size" in invalid_page_size.get_json()["error"]
+
+    invalid_sort = client.get("/api/vulnerabilities?sort=unknown_field", headers=headers)
+    assert invalid_sort.status_code == 400
+    assert "sort" in invalid_sort.get_json()["error"]
+
+    invalid_order = client.get("/api/vulnerabilities?order=sideways", headers=headers)
+    assert invalid_order.status_code == 400
+    assert "order" in invalid_order.get_json()["error"]
+
+
 def test_controls_endpoints(app, client):
     admin = create_admin(app)
     headers = auth_header(admin)
