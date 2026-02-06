@@ -168,6 +168,10 @@ class Vulnerability(db.Model):
 
     severity = db.Column(db.String(20), default="Medium", nullable=False)  # Critical/High/Medium/Low/None
     cvss_score = db.Column(db.Numeric(3, 1))
+    cvss_vector = db.Column(db.String(255))
+    cvss_version = db.Column(db.String(16))
+    cwe_id = db.Column(db.String(32), index=True)
+    references_json = db.Column(db.JSON, default=list, nullable=False)
     attack_complexity = db.Column(db.String(20), default="Not Defined", nullable=False)
     confidentiality_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
     integrity_impact = db.Column(db.String(20), default="Not Defined", nullable=False)

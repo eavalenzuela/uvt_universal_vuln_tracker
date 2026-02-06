@@ -1817,3 +1817,135 @@ def test_vulnerability_comment_permissions_author_or_admin(app, client):
         headers=auth_header(admin),
     )
     assert admin_delete.status_code == 200
+
+
+def test_vulnerability_enrich_success(app, client, monkeypatch):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Needs enrichment", "cve_id": "CVE-2024-1234", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    class DummyEnrichment:
+        title = "NVD Title"
+        description = "NVD description"
+        severity = "Critical"
+        cvss_score = 9.8
+        cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+        cvss_version = "3.1"
+        cwe_id = "CWE-79"
+        references_json = [{"url": "https://example.com/ref", "title": "ref"}]
+        published_date = date(2024, 1, 1)
+        last_modified_date = date(2024, 1, 20)
+
+    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
+
+    resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich?force=true", headers=headers)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["enrichment"]["status"] == "enriched"
+    assert "severity" in payload["enrichment"]["applied_fields"]
+    assert payload["vulnerability"]["severity"] == "Critical"
+    assert payload["vulnerability"]["cvss_score"] == 9.8
+    assert payload["vulnerability"]["cwe_id"] == "CWE-79"
+    assert payload["vulnerability"]["references_json"][0]["url"] == "https://example.com/ref"
+
+    log = _latest_audit(app, action="ENRICH", table_name="vulnerabilities")
+    assert log is not None
+    assert log.record_id == vuln_id
+
+
+def test_vulnerability_enrich_missing_cve_id(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "No cve", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["enrichment"]["status"] == "error"
+
+
+def test_vulnerability_enrich_upstream_not_found_and_timeout(app, client, monkeypatch):
+    from backend.services.cve_enrichment import CveNotFoundError, CveUpstreamTimeoutError
+
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Upstream failures", "cve_id": "CVE-2024-9999", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    def raise_not_found(_cve_id):
+        raise CveNotFoundError("not found")
+
+    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", raise_not_found)
+    not_found_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
+    assert not_found_resp.status_code == 404
+    assert not_found_resp.get_json()["enrichment"]["status"] == "not_found"
+
+    def raise_timeout(_cve_id):
+        raise CveUpstreamTimeoutError("timed out")
+
+    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", raise_timeout)
+    timeout_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
+    assert timeout_resp.status_code == 504
+    assert timeout_resp.get_json()["enrichment"]["status"] == "timeout"
+
+
+def test_vulnerability_enrich_merge_vs_force(app, client, monkeypatch):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Keep my title", "cve_id": "CVE-2024-5555", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    class DummyEnrichment:
+        title = "External title"
+        description = "External description"
+        severity = "High"
+        cvss_score = 8.1
+        cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"
+        cvss_version = "3.1"
+        cwe_id = "CWE-89"
+        references_json = [{"url": "https://example.com/advisory", "title": "adv"}]
+        published_date = date(2023, 3, 1)
+        last_modified_date = date(2023, 3, 2)
+
+    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
+
+    merge_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
+    assert merge_resp.status_code == 200
+    merge_payload = merge_resp.get_json()
+    assert merge_payload["vulnerability"]["severity"] == "Low"
+    assert merge_payload["vulnerability"]["cwe_id"] == "CWE-89"
+    assert "severity" not in merge_payload["enrichment"]["applied_fields"]
+
+    force_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich?force=true", headers=headers)
+    assert force_resp.status_code == 200
+    force_payload = force_resp.get_json()
+    assert force_payload["vulnerability"]["severity"] == "High"
+    assert "severity" in force_payload["enrichment"]["applied_fields"]
