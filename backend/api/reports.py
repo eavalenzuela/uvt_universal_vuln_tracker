@@ -10,6 +10,7 @@ from ..database import db
 from ..models import ReportSchedule, Vulnerability
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..rate_limiter import rate_limit
+from .validation import ValidationError, enum_value, error_response, required_string
 from .vulnerability_query import apply_vulnerability_filters, parse_vulnerability_filters
 
 bp = Blueprint("reports_api", __name__, url_prefix="/api")
@@ -200,7 +201,7 @@ def export_vulnerabilities():
     try:
         items = _build_vulnerability_query(filters).all()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), status_code=400)
     rows = [_vuln_row(v) for v in items]
     return _csv_response("vulnerabilities_export.csv", EXPORT_FIELDS, rows)
 
@@ -213,7 +214,7 @@ def export_dashboard_summary():
     try:
         summary = _dashboard_summary(filters)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), status_code=400)
     return _csv_response("dashboard_summary.csv", ["metric", "group", "value"], _summary_rows(summary))
 
 
@@ -227,7 +228,7 @@ def dashboard_summary():
     try:
         payload = _dashboard_aggregate(filters, group_by=group_by, range_value=range_value)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), status_code=400)
     return jsonify(payload)
 
 
@@ -236,25 +237,14 @@ def dashboard_summary():
 def create_report_schedule():
     payload = request.get_json(silent=True) or {}
 
-    name = (payload.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
-
-    report_type = payload.get("report_type") or "vulnerabilities"
-    if report_type not in ALLOWED_REPORT_TYPES:
-        return jsonify({"error": f"report_type must be one of {sorted(ALLOWED_REPORT_TYPES)}"}), 400
-
-    frequency = (payload.get("frequency") or "daily").lower()
-    if frequency not in ALLOWED_FREQUENCIES:
-        return jsonify({"error": f"frequency must be one of {sorted(ALLOWED_FREQUENCIES)}"}), 400
-
-    delivery_channel = (payload.get("delivery_channel") or "email").lower()
-    if delivery_channel not in ALLOWED_CHANNELS:
-        return jsonify({"error": f"delivery_channel must be one of {sorted(ALLOWED_CHANNELS)}"}), 400
-
-    recipient = (payload.get("recipient") or "").strip()
-    if not recipient:
-        return jsonify({"error": "recipient is required"}), 400
+    try:
+        name = required_string(payload, "name")
+        report_type = enum_value(payload.get("report_type") or "vulnerabilities", field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
+        frequency = enum_value((payload.get("frequency") or "daily").lower(), field="frequency", options=ALLOWED_FREQUENCIES, required=True)
+        delivery_channel = enum_value((payload.get("delivery_channel") or "email").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
+        recipient = required_string(payload, "recipient")
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     schedule = ReportSchedule(
         name=name,
@@ -285,7 +275,7 @@ def list_report_schedules():
 def run_report_schedule(schedule_id):
     schedule = ReportSchedule.query.get_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", status_code=403)
 
     filters = schedule.filters_json or {}
     if schedule.report_type == "dashboard_summary":
