@@ -28,3 +28,7 @@ export function createReportSchedule(payload) {
 export function runReportSchedule(id) {
   return apiFetch(`/api/reports/schedules/${id}/run`, { method: "POST" });
 }
+
+export function getDashboardSummary(params = {}) {
+  return apiFetch(withParams("/api/dashboard/summary", params), { method: "GET" });
+}

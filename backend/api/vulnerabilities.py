@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import asc, desc, or_
+from sqlalchemy import asc
 
 from ..database import db
 from ..models import (
@@ -18,24 +18,12 @@ from ..services.audit import log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
+from .vulnerability_query import apply_vulnerability_filters, apply_vulnerability_sort, parse_vulnerability_filters
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
 IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
-VULNERABILITY_SORT_FIELDS = {
-    "id",
-    "cve_id",
-    "title",
-    "severity",
-    "cvss_score",
-    "status",
-    "published_date",
-    "last_modified_date",
-    "created_at",
-    "updated_at",
-    "assigned_to",
-}
 MAX_PAGE_SIZE = 100
 
 
@@ -150,48 +138,13 @@ def list_product_versions():
 def list_vulnerabilities():
     q = Vulnerability.query
 
-    severity = request.args.get("severity")
-    status = request.args.get("status")
-    search = request.args.get("search")
-    attack_complexity = request.args.get("attack_complexity")
-    confidentiality_impact = request.args.get("confidentiality_impact")
-    integrity_impact = request.args.get("integrity_impact")
-    availability_impact = request.args.get("availability_impact")
-    assigned_to = request.args.get("assigned_to")
-
-    if severity:
-        q = q.filter(Vulnerability.severity == severity)
-    if status:
-        q = q.filter(Vulnerability.status == status)
-    if attack_complexity:
-        q = q.filter(Vulnerability.attack_complexity == attack_complexity)
-    if confidentiality_impact:
-        q = q.filter(Vulnerability.confidentiality_impact == confidentiality_impact)
-    if integrity_impact:
-        q = q.filter(Vulnerability.integrity_impact == integrity_impact)
-    if availability_impact:
-        q = q.filter(Vulnerability.availability_impact == availability_impact)
-    if assigned_to:
-        if assigned_to == "unassigned":
-            q = q.filter(Vulnerability.assigned_to.is_(None))
-        else:
-            try:
-                q = q.filter(Vulnerability.assigned_to == int(assigned_to))
-            except ValueError:
-                return jsonify({"error": "assigned_to must be a user id or 'unassigned'"}), 400
-    if search:
-        like = f"%{search}%"
-        q = q.filter(or_(Vulnerability.title.ilike(like), Vulnerability.cve_id.ilike(like)))
+    try:
+        q = apply_vulnerability_filters(q, parse_vulnerability_filters(request.args))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     sort = request.args.get("sort", "updated_at")
-    if sort not in VULNERABILITY_SORT_FIELDS:
-        return jsonify({
-            "error": f"sort must be one of {sorted(VULNERABILITY_SORT_FIELDS)}"
-        }), 400
-
-    order = request.args.get("order", "desc").lower()
-    if order not in {"asc", "desc"}:
-        return jsonify({"error": "order must be 'asc' or 'desc'"}), 400
+    order = request.args.get("order", "desc")
 
     page_raw = request.args.get("page", 1)
     try:
@@ -209,8 +162,10 @@ def list_vulnerabilities():
     if page_size < 1 or page_size > MAX_PAGE_SIZE:
         return jsonify({"error": f"page_size must be an integer between 1 and {MAX_PAGE_SIZE}"}), 400
 
-    sort_col = getattr(Vulnerability, sort)
-    q = q.order_by(desc(sort_col) if order == "desc" else asc(sort_col))
+    try:
+        q = apply_vulnerability_sort(q, sort=sort, order=order)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     items = q.paginate(page=page, per_page=page_size, error_out=False)
     policy = get_sla_policy()

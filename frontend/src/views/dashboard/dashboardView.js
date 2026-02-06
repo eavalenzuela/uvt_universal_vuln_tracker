@@ -9,7 +9,7 @@ import {
 import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
-import { exportDashboardSummaryCsv } from "../../api/reports.js";
+import { exportDashboardSummaryCsv, getDashboardSummary } from "../../api/reports.js";
 import { toast } from "../../ui/components/toast.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
@@ -134,36 +134,11 @@ function parseFilterList(filter, options) {
 }
 
 async function listVulnerabilitiesWithFilters({ statusFilters, severityFilters, ...params }) {
-  const statusList = statusFilters?.length ? statusFilters : [null];
-  const severityList = severityFilters?.length ? severityFilters : [null];
-  const requests = [];
-
-  statusList.forEach((status) => {
-    severityList.forEach((severity) => {
-      requests.push(
-        listVulnerabilities({
-          ...params,
-          status: status || undefined,
-          severity: severity || undefined,
-        }),
-      );
-    });
+  return listVulnerabilities({
+    ...params,
+    status: statusFilters?.length ? statusFilters.join(",") : undefined,
+    severity: severityFilters?.length ? severityFilters.join(",") : undefined,
   });
-
-  const results = await Promise.all(requests);
-  const items = results.flatMap((result) => result?.items || []);
-  const total = results.reduce((sum, result) => sum + (result?.total || 0), 0);
-  const sortKey = params.sort || "updated_at";
-  const order = (params.order || "desc").toLowerCase();
-  items.sort((a, b) => {
-    const left = a?.[sortKey] ? new Date(a[sortKey]).getTime() : 0;
-    const right = b?.[sortKey] ? new Date(b[sortKey]).getTime() : 0;
-    return order === "asc" ? left - right : right - left;
-  });
-  return {
-    items: items.slice(0, params.page_size || 25),
-    total,
-  };
 }
 
 function renderSparkline(values) {
@@ -584,46 +559,13 @@ export async function DashboardView() {
       content.appendChild(el("div", { class: "muted", text: "Loading risk overview..." }));
       try {
         const statusFilters = parseFilterList(widgetSettings.filter, STATUS_OPTIONS);
-        const totalResponse = await listVulnerabilitiesWithFilters({
-          statusFilters,
-          sort: "updated_at",
-          order: "desc",
-          page_size: 1,
+        const summary = await getDashboardSummary({
+          status: statusFilters?.length ? statusFilters.join(",") : undefined,
+          group_by: widgetSettings.grouping || "Severity",
+          range: widgetSettings.range,
         });
-        const [critical, high] = await Promise.all([
-          listVulnerabilitiesWithFilters({
-            statusFilters,
-            severityFilters: ["Critical"],
-            sort: "updated_at",
-            order: "desc",
-            page_size: 1,
-          }),
-          listVulnerabilitiesWithFilters({
-            statusFilters,
-            severityFilters: ["High"],
-            sort: "updated_at",
-            order: "desc",
-            page_size: 1,
-          }),
-        ]);
-
-        const trendResponse = await listVulnerabilitiesWithFilters({
-          statusFilters,
-          sort: "updated_at",
-          order: "desc",
-          page_size: 80,
-        });
-        const filteredTrendItems = filterByRange(trendResponse.items || [], widgetSettings.range, "updated_at");
-        const start = parseRange(widgetSettings.range) || new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-        const end = new Date();
-        const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1);
-        const counts = Array.from({ length: days }, () => 0);
-        filteredTrendItems.forEach((item) => {
-          const date = new Date(item.updated_at);
-          if (Number.isNaN(date.getTime()) || date < start || date > end) return;
-          const index = Math.min(days - 1, Math.floor((date - start) / (1000 * 60 * 60 * 24)));
-          counts[index] += 1;
-        });
+        const counts = (summary?.trend?.buckets || []).map((bucket) => bucket.count || 0);
+        const totalUpdates = counts.reduce((sum, value) => sum + value, 0);
 
         content.innerHTML = "";
         const kpiRow = el(
@@ -631,15 +573,15 @@ export async function DashboardView() {
           { style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px;" },
           el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "Total" }),
-            el("div", { style: "font-size:20px; font-weight:600;", text: totalResponse.total ?? 0 }),
+            el("div", { style: "font-size:20px; font-weight:600;", text: summary.total ?? 0 }),
           ),
           el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "Critical" }),
-            el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: critical.total ?? 0 }),
+            el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: summary.by_severity?.Critical ?? 0 }),
           ),
           el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
             el("div", { class: "muted", text: "High" }),
-            el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: high.total ?? 0 }),
+            el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: summary.by_severity?.High ?? 0 }),
           ),
         );
 
@@ -648,7 +590,7 @@ export async function DashboardView() {
           { style: `display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
           el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
             el("div", { class: "muted", text: `Updates (${widgetSettings.range})` }),
-            el("div", { style: "font-size:16px; font-weight:600;", text: `${filteredTrendItems.length} updates` }),
+            el("div", { style: "font-size:16px; font-weight:600;", text: `${totalUpdates} updates` }),
           ),
           renderSparkline(counts),
         );
