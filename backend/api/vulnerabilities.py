@@ -15,6 +15,7 @@ from ..models import (
 )
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
+from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -317,6 +318,14 @@ def create_vulnerability():
         "availability_impact": v.availability_impact,
     })
 
+    trigger_notifications_for_event(NotificationEvent(
+        event_type="created",
+        vulnerability_id=v.id,
+        actor_id=request.user.id,
+        old_values=None,
+        new_values={"status": v.status, "assigned_to": v.assigned_to},
+    ))
+
     try:
         db.session.commit()
     except Exception:
@@ -407,6 +416,7 @@ def update_vulnerability(vuln_id: int):
         "title": v.title,
         "severity": v.severity,
         "status": v.status,
+        "assigned_to": v.assigned_to,
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
@@ -456,6 +466,24 @@ def update_vulnerability(vuln_id: int):
         "availability_impact": v.availability_impact,
     })
 
+    event_type = "updated"
+    status_changed = old.get("status") != v.status
+    assignment_changed = data.get("assigned_to", old.get("assigned_to")) != old.get("assigned_to") if "assigned_to" in data else False
+    if status_changed:
+        event_type = "status_change"
+    elif assignment_changed:
+        event_type = "assignment_change"
+
+    trigger_notifications_for_event(NotificationEvent(
+        event_type=event_type,
+        vulnerability_id=v.id,
+        actor_id=request.user.id,
+        old_values=old,
+        new_values={"status": v.status, "assigned_to": v.assigned_to},
+        status_changed=status_changed,
+        assignment_changed=assignment_changed,
+    ))
+
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -466,6 +494,14 @@ def delete_vulnerability(vuln_id: int):
     old = model_snapshot(v)
 
     _audit(request.user.id, "DELETE", "vulnerabilities", v.id, old_values=old, new_values=None)
+
+    trigger_notifications_for_event(NotificationEvent(
+        event_type="deleted",
+        vulnerability_id=v.id,
+        actor_id=request.user.id,
+        old_values=old,
+        new_values=None,
+    ))
 
     db.session.delete(v)
     db.session.commit()
@@ -496,6 +532,14 @@ def attach_versions(vuln_id: int):
     _audit(request.user.id, "ATTACH", "vulnerability_versions", v.id, old_values=None, new_values={
         "added": added, "product_version_ids": pv_ids
     })
+
+    if added > 0:
+        trigger_notifications_for_event(NotificationEvent(
+            event_type="product_scope_change",
+            vulnerability_id=v.id,
+            actor_id=request.user.id,
+            new_values={"added_product_version_ids": pv_ids},
+        ))
 
     db.session.commit()
     return jsonify({"ok": True, "added": added})
@@ -532,6 +576,14 @@ def update_vulnerability_version(vuln_id: int, mapping_id: int):
         "notes": mapping.notes,
     })
 
+    trigger_notifications_for_event(NotificationEvent(
+        event_type="product_scope_change",
+        vulnerability_id=vuln_id,
+        actor_id=request.user.id,
+        old_values=old_values,
+        new_values={"affected": mapping.affected, "mitigation_status": mapping.mitigation_status},
+    ))
+
     db.session.commit()
 
     return jsonify({
@@ -556,6 +608,14 @@ def delete_vulnerability_version(vuln_id: int, mapping_id: int):
         "affected": mapping.affected,
         "fixed_in_version": mapping.fixed_in_version,
     }, new_values=None)
+
+    trigger_notifications_for_event(NotificationEvent(
+        event_type="product_scope_change",
+        vulnerability_id=vuln_id,
+        actor_id=request.user.id,
+        old_values={"product_version_id": mapping.product_version_id},
+        new_values=None,
+    ))
 
     db.session.delete(mapping)
     db.session.commit()

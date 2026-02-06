@@ -32,6 +32,12 @@ def ensure_sqlite_schema(app):
             db.create_all()
             inspector = inspect(db.engine)
 
+
+        required_tables = {"notification_rules", "notification_delivery_logs"}
+        if any(table not in inspector.get_table_names() for table in required_tables):
+            db.create_all()
+            inspector = inspect(db.engine)
+
         if "vulnerabilities" in inspector.get_table_names():
             existing_columns = {col["name"] for col in inspector.get_columns("vulnerabilities")}
             column_definitions = {

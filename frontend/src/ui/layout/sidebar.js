@@ -48,6 +48,7 @@ export function renderSidebar() {
     nav.appendChild(navLink("Admin: Users", "/admin/users"));
     nav.appendChild(navLink("Admin: Logs", "/admin/logs"));
     nav.appendChild(navLink("Admin: Plugins", "/admin/plugins"));
+    nav.appendChild(navLink("Admin: Notification Rules", "/admin/notification-rules"));
   }
 
   root.appendChild(nav);

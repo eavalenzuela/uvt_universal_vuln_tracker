@@ -6,6 +6,7 @@ from .plugins import bp as plugins_bp
 from .terminal_impacts import bp as terminal_impacts_bp
 from .vulnerabilities import bp as vulns_bp
 from .users import bp as users_bp
+from .notification_rules import bp as notification_rules_bp
 
 
 def register_api(app):
@@ -17,3 +18,4 @@ def register_api(app):
     app.register_blueprint(terminal_impacts_bp)
     app.register_blueprint(vulns_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(notification_rules_bp)
