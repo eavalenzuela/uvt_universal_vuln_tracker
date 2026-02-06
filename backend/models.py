@@ -171,6 +171,7 @@ class Vulnerability(db.Model):
     last_modified_date = db.Column(db.Date)
 
     status = db.Column(db.String(20), default="Open", nullable=False)  # Open/In Progress/Resolved/Closed
+    sla_due_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -390,3 +391,15 @@ class ExternalSourceState(db.Model):
     __table_args__ = (
         db.UniqueConstraint("plugin_id", "source_key", name="unique_external_source_state"),
     )
+
+
+class SlaPolicy(db.Model):
+    __tablename__ = "sla_policies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    policy_json = db.Column(db.JSON, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    updater = db.relationship("User", foreign_keys=[updated_by])

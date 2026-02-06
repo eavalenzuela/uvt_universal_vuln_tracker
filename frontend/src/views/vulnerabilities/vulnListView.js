@@ -105,6 +105,24 @@ function severityBadge(severity) {
   );
 }
 
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
+function slaBadge(state) {
+  const palette = {
+    breached: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "SLA breached" },
+    due_soon: { bg: "#fffbeb", color: "#92400e", border: "#fde68a", label: "Due soon" },
+    on_track: { bg: "#ecfeff", color: "#155e75", border: "#a5f3fc", label: "On track" },
+  };
+  const cfg = palette[state] || palette.on_track;
+  return el("span", { class: "badge", style: `background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.border};` }, cfg.label);
+}
+
 function statusPill(status) {
   return el(
     "span",
@@ -770,6 +788,7 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
       { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;" },
       severityBadge(detailData.severity || "Unknown"),
       statusPill(detailData.status || "Open"),
+      slaBadge(detailData.sla_state),
       detailData.cvss_score !== null && detailData.cvss_score !== undefined
         ? el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: detailData.cvss_score }))
         : null,
@@ -780,6 +799,7 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
       el("div", {}, el("div", { class: "muted", text: "Published" }), el("div", { text: formatDate(detailData.published_date) })),
       el("div", {}, el("div", { class: "muted", text: "Last modified" }), el("div", { text: formatDate(detailData.last_modified_date) })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(detailData.updated_at) })),
+      el("div", {}, el("div", { class: "muted", text: "SLA due" }), el("div", { text: formatDateTime(detailData.sla_due_at) })),
     );
 
     const description = detailData.description
@@ -870,6 +890,7 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
       { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-top: 6px; align-items: center;" },
       severityBadge(vuln.severity || "Medium"),
       statusPill(vuln.status || "Open"),
+      slaBadge(vuln.sla_state),
       el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: vuln.cvss_score ?? "-" })),
       el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: vuln.attack_complexity || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Confidentiality impact" }), el("div", { text: vuln.confidentiality_impact || "Not Defined" })),

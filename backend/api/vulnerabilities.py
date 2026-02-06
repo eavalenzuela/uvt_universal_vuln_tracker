@@ -16,6 +16,7 @@ from ..models import (
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -209,6 +210,7 @@ def list_vulnerabilities():
     q = q.order_by(desc(sort_col) if order == "desc" else asc(sort_col))
 
     items = q.paginate(page=page, per_page=page_size, error_out=False)
+    policy = get_sla_policy()
 
     return jsonify({
         "items": [{
@@ -222,10 +224,13 @@ def list_vulnerabilities():
             "integrity_impact": v.integrity_impact,
             "availability_impact": v.availability_impact,
             "status": v.status,
+            "assigned_to": v.assigned_to,
             "published_date": v.published_date.isoformat() if v.published_date else None,
             "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
             "created_at": v.created_at.isoformat(),
             "updated_at": v.updated_at.isoformat(),
+            "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
+            "sla_state": compute_sla_state(v, policy),
         } for v in items.items],
         "page": page,
         "page_size": page_size,
@@ -309,6 +314,8 @@ def create_vulnerability():
         err = _attach_attack_vectors(v, attack_vectors)
         if err:
             return err
+
+    recompute_vulnerability_sla(v)
 
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
@@ -400,6 +407,8 @@ def get_vulnerability(vuln_id: int):
         "assigned_to": v.assigned_to,
         "created_at": v.created_at.isoformat(),
         "updated_at": v.updated_at.isoformat(),
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
+        "sla_state": compute_sla_state(v),
         "affected_versions": version_rows,
         "attack_vectors": attack_vector_rows,
         "terminal_impacts": terminal_impact_rows,
@@ -457,6 +466,8 @@ def update_vulnerability(vuln_id: int):
         err = _attach_attack_vectors(v, data.get("attack_vectors") or [])
         if err:
             return err
+
+    recompute_vulnerability_sla(v)
 
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
