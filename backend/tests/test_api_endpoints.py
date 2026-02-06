@@ -433,6 +433,43 @@ def test_vulnerability_list_validation_errors(app, client):
     assert "order" in invalid_order.get_json()["error"]
 
 
+
+
+def test_uniform_validation_error_shape(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    invalid_login = client.post("/api/auth/login", json={"username": "admin"})
+    assert invalid_login.status_code == 400
+    login_payload = invalid_login.get_json()
+    assert login_payload["error"] == "password is required"
+    assert login_payload["field"] == "password"
+    assert login_payload["details"] is None
+    assert login_payload["status"] == 400
+
+    invalid_page = client.get("/api/vulnerabilities?page=abc", headers=headers)
+    assert invalid_page.status_code == 400
+    page_payload = invalid_page.get_json()
+    assert page_payload["field"] == "page"
+    assert page_payload["status"] == 400
+
+    invalid_schedule = client.post(
+        "/api/reports/schedules",
+        headers=headers,
+        json={
+            "name": "bad",
+            "report_type": "invalid",
+            "frequency": "daily",
+            "delivery_channel": "email",
+            "recipient": "a@example.com",
+        },
+    )
+    assert invalid_schedule.status_code == 400
+    schedule_payload = invalid_schedule.get_json()
+    assert schedule_payload["field"] == "report_type"
+    assert sorted(schedule_payload["details"]["allowed"]) == ["dashboard_summary", "vulnerabilities"]
+    assert schedule_payload["status"] == 400
+
 def test_controls_endpoints(app, client):
     admin = create_admin(app)
     headers = auth_header(admin)

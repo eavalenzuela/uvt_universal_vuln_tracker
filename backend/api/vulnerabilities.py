@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
@@ -18,6 +16,7 @@ from ..services.audit import log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
+from .validation import ValidationError, enum_value, error_response, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from .vulnerability_query import apply_vulnerability_filters, apply_vulnerability_sort, parse_vulnerability_filters
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
@@ -26,39 +25,6 @@ ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
 IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
 MAX_PAGE_SIZE = 100
 
-
-def _parse_date(date_str):
-    if not date_str:
-        return None
-    try:
-        return datetime.fromisoformat(date_str).date()
-    except ValueError:
-        return None
-
-
-def _parse_cvss(score):
-    if score is None or score == "":
-        return None
-    try:
-        return round(float(score), 1)
-    except (TypeError, ValueError):
-        return None
-
-
-def _normalize_attack_complexity(value):
-    if value is None or value == "":
-        return None
-    if value not in ATTACK_COMPLEXITY_OPTIONS:
-        return False
-    return value
-
-
-def _normalize_impact(value):
-    if value is None or value == "":
-        return None
-    if value not in IMPACT_OPTIONS:
-        return False
-    return value
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
     db.session.add(log_audit_event(
@@ -79,21 +45,23 @@ def _attach_attack_vectors(vuln, items):
             attack_vector_id = item
             product_version_id = None
 
-        if not attack_vector_id:
+        try:
+            parsed_attack_vector_id = parse_int(attack_vector_id, field="attack_vector_id", minimum=1, required=True)
+            pv_id = parse_int(product_version_id, field="product_version_id", minimum=1) if product_version_id is not None else None
+        except ValidationError as exc:
             db.session.rollback()
-            return jsonify({"error": "attack_vector_id is required"}), 400
+            return error_response(exc.error, field=exc.field, details=exc.details)
 
-        attack_vector = AttackVector.query.get(int(attack_vector_id))
+        attack_vector = AttackVector.query.get(parsed_attack_vector_id)
         if not attack_vector:
             db.session.rollback()
-            return jsonify({"error": f"Invalid attack vector {attack_vector_id}"}), 400
+            return error_response(f"Invalid attack vector {parsed_attack_vector_id}", field="attack_vector_id")
 
-        pv_id = int(product_version_id) if product_version_id is not None else None
         if pv_id is not None:
             pv = ProductVersion.query.get(pv_id)
             if not pv:
                 db.session.rollback()
-                return jsonify({"error": f"Invalid product version {pv_id}"}), 400
+                return error_response(f"Invalid product version {pv_id}", field="product_version_id")
 
         existing = VulnerabilityAttackVector.query.filter_by(
             vulnerability_id=vuln.id,
@@ -113,7 +81,10 @@ def _attach_attack_vectors(vuln, items):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="product_versions")
 def list_product_versions():
-    include_inactive = str(request.args.get("include_inactive", "")).lower() == "true"
+    try:
+        include_inactive = parse_query_bool(request.args.get("include_inactive"), field="include_inactive") or False
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     q = ProductVersion.query.join(Product, ProductVersion.product_id == Product.id)
     if not include_inactive:
         q = q.filter(ProductVersion.is_active.is_(True))
@@ -141,31 +112,21 @@ def list_vulnerabilities():
     try:
         q = apply_vulnerability_filters(q, parse_vulnerability_filters(request.args))
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), status_code=400)
 
     sort = request.args.get("sort", "updated_at")
     order = request.args.get("order", "desc")
 
-    page_raw = request.args.get("page", 1)
     try:
-        page = int(page_raw)
-    except (TypeError, ValueError):
-        return jsonify({"error": "page must be a positive integer"}), 400
-    if page < 1:
-        return jsonify({"error": "page must be a positive integer"}), 400
-
-    page_size_raw = request.args.get("page_size", 25)
-    try:
-        page_size = int(page_size_raw)
-    except (TypeError, ValueError):
-        return jsonify({"error": f"page_size must be an integer between 1 and {MAX_PAGE_SIZE}"}), 400
-    if page_size < 1 or page_size > MAX_PAGE_SIZE:
-        return jsonify({"error": f"page_size must be an integer between 1 and {MAX_PAGE_SIZE}"}), 400
+        page = parse_int(request.args.get("page", 1), field="page", minimum=1, required=True)
+        page_size = parse_int(request.args.get("page_size", 25), field="page_size", minimum=1, maximum=MAX_PAGE_SIZE, required=True)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     try:
         q = apply_vulnerability_sort(q, sort=sort, order=order)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc), status_code=400)
 
     items = q.paginate(page=page, per_page=page_size, error_out=False)
     policy = get_sla_policy()
@@ -199,48 +160,30 @@ def list_vulnerabilities():
 @role_required("Admin", "Analyst")
 def create_vulnerability():
     data = request.get_json(silent=True) or {}
-    title = (data.get("title") or "").strip()
-    if not title:
-        return jsonify({"error": "title is required"}), 400
 
-    attack_complexity = _normalize_attack_complexity(data.get("attack_complexity"))
-    if attack_complexity is False:
-        return jsonify({"error": f"Invalid attack_complexity; must be one of {sorted(ATTACK_COMPLEXITY_OPTIONS)}"}), 400
-    if attack_complexity is None:
-        attack_complexity = "Not Defined"
-
-    confidentiality_impact = _normalize_impact(data.get("confidentiality_impact"))
-    if confidentiality_impact is False:
-        return jsonify({"error": f"Invalid confidentiality_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
-    if confidentiality_impact is None:
-        confidentiality_impact = "Not Defined"
-
-    integrity_impact = _normalize_impact(data.get("integrity_impact"))
-    if integrity_impact is False:
-        return jsonify({"error": f"Invalid integrity_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
-    if integrity_impact is None:
-        integrity_impact = "Not Defined"
-
-    availability_impact = _normalize_impact(data.get("availability_impact"))
-    if availability_impact is False:
-        return jsonify({"error": f"Invalid availability_impact; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
-    if availability_impact is None:
-        availability_impact = "Not Defined"
-
-    published_date = _parse_date(data.get("published_date"))
-    if data.get("published_date") and published_date is None:
-        return jsonify({"error": "Invalid published_date; expected ISO date"}), 400
-
-    last_modified_date = _parse_date(data.get("last_modified_date"))
-    if data.get("last_modified_date") and last_modified_date is None:
-        return jsonify({"error": "Invalid last_modified_date; expected ISO date"}), 400
+    try:
+        title = required_string(data, "title")
+        attack_complexity = enum_value(data.get("attack_complexity"), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False) or "Not Defined"
+        confidentiality_impact = enum_value(data.get("confidentiality_impact"), field="confidentiality_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
+        integrity_impact = enum_value(data.get("integrity_impact"), field="integrity_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
+        availability_impact = enum_value(data.get("availability_impact"), field="availability_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
+        published_date = parse_iso_date(data.get("published_date"), field="published_date")
+        last_modified_date = parse_iso_date(data.get("last_modified_date"), field="last_modified_date")
+        cvss_score = None
+        if data.get("cvss_score") not in (None, ""):
+            try:
+                cvss_score = parse_float(data.get("cvss_score"), field="cvss_score")
+            except ValidationError:
+                cvss_score = None
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     v = Vulnerability(
         cve_id=(data.get("cve_id") or None),
         title=title,
         description=data.get("description"),
         severity=data.get("severity", "Medium"),
-        cvss_score=_parse_cvss(data.get("cvss_score")),
+        cvss_score=round(cvss_score, 1) if cvss_score is not None else None,
         attack_complexity=attack_complexity,
         confidentiality_impact=confidentiality_impact,
         integrity_impact=integrity_impact,
@@ -260,7 +203,7 @@ def create_vulnerability():
         pv = ProductVersion.query.get(int(pv_id))
         if not pv:
             db.session.rollback()
-            return jsonify({"error": f"Invalid product version {pv_id}"}), 400
+            return error_response(f"Invalid product version {pv_id}", field="affected_versions")
         db.session.add(VulnerabilityVersion(
             vulnerability_id=v.id,
             product_version_id=pv.id,
@@ -295,7 +238,7 @@ def create_vulnerability():
         db.session.commit()
     except Exception:
         db.session.rollback()
-        return jsonify({"error": "Failed to create vulnerability (duplicate CVE? invalid data?)"}), 400
+        return error_response("Failed to create vulnerability (duplicate CVE? invalid data?)", status_code=400)
 
     return jsonify({"id": v.id}), 201
 
@@ -390,34 +333,38 @@ def update_vulnerability(vuln_id: int):
         "availability_impact": v.availability_impact,
     }
 
-    for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
-                  "last_modified_date", "status", "assigned_to", "attack_complexity",
-                  "confidentiality_impact", "integrity_impact", "availability_impact"]:
-        if field in data:
+    try:
+        for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
+                      "last_modified_date", "status", "assigned_to", "attack_complexity",
+                      "confidentiality_impact", "integrity_impact", "availability_impact"]:
+            if field not in data:
+                continue
+
             if field == "title":
                 title_value = (data.get(field) or "").strip()
                 if not title_value:
-                    return jsonify({"error": "title cannot be empty"}), 400
+                    return error_response("title cannot be empty", field="title")
                 setattr(v, field, title_value)
             elif field in {"published_date", "last_modified_date"}:
-                parsed = _parse_date(data.get(field))
-                if data.get(field) and parsed is None:
-                    return jsonify({"error": f"Invalid {field}; expected ISO date"}), 400
-                setattr(v, field, parsed)
+                setattr(v, field, parse_iso_date(data.get(field), field=field))
             elif field == "cvss_score":
-                setattr(v, field, _parse_cvss(data.get(field)))
+                parsed_cvss = None
+                if data.get(field) not in (None, ""):
+                    try:
+                        parsed_cvss = parse_float(data.get(field), field="cvss_score")
+                    except ValidationError:
+                        parsed_cvss = None
+                setattr(v, field, round(parsed_cvss, 1) if parsed_cvss is not None else None)
             elif field == "attack_complexity":
-                normalized = _normalize_attack_complexity(data.get(field))
-                if normalized is False:
-                    return jsonify({"error": f"Invalid attack_complexity; must be one of {sorted(ATTACK_COMPLEXITY_OPTIONS)}"}), 400
+                normalized = enum_value(data.get(field), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False)
                 setattr(v, field, normalized if normalized is not None else "Not Defined")
             elif field in {"confidentiality_impact", "integrity_impact", "availability_impact"}:
-                normalized = _normalize_impact(data.get(field))
-                if normalized is False:
-                    return jsonify({"error": f"Invalid {field}; must be one of {sorted(IMPACT_OPTIONS)}"}), 400
+                normalized = enum_value(data.get(field), field=field, options=IMPACT_OPTIONS, required=False)
                 setattr(v, field, normalized if normalized is not None else "Not Defined")
             else:
                 setattr(v, field, data[field])
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     if "attack_vectors" in data:
         VulnerabilityAttackVector.query.filter_by(vulnerability_id=v.id).delete(synchronize_session=False)

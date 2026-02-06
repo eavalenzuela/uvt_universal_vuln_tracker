@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from flask import jsonify
 
@@ -16,7 +16,7 @@ class ValidationError(Exception):
 
 
 def error_response(error: str, *, field: str | None = None, details: Any = None, status_code: int = 400):
-    payload = {"error": error, "details": details, "field": field}
+    payload = {"error": error, "field": field, "details": details, "status": status_code}
     return jsonify(payload), status_code
 
 
@@ -92,3 +92,60 @@ def parse_bool(value: Any, *, field: str, required: bool = False) -> bool | None
     if not isinstance(value, bool):
         raise invalid(field, f"{field} must be a boolean")
     return value
+
+
+def parse_query_bool(value: Any, *, field: str, required: bool = False) -> bool | None:
+    if value in (None, ""):
+        if required:
+            raise invalid(field, f"{field} is required")
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise invalid(field, f"{field} must be a boolean", details={"accepted": ["true", "false"]})
+
+
+def parse_float(value: Any, *, field: str, minimum: float | None = None, maximum: float | None = None, required: bool = False) -> float | None:
+    if value in (None, ""):
+        if required:
+            raise invalid(field, f"{field} is required")
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise invalid(field, f"{field} must be a number") from exc
+
+    if minimum is not None and parsed < minimum:
+        raise invalid(field, f"{field} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise invalid(field, f"{field} must be <= {maximum}")
+    return parsed
+
+
+@dataclass(frozen=True)
+class FieldSchema:
+    parser: Callable[[Any], Any]
+    required: bool = False
+    default: Any = None
+
+
+def schema_field(parser: Callable[[Any], Any], *, required: bool = False, default: Any = None) -> FieldSchema:
+    return FieldSchema(parser=parser, required=required, default=default)
+
+
+def validate_schema(data: dict[str, Any], schema: dict[str, FieldSchema]) -> dict[str, Any]:
+    validated: dict[str, Any] = {}
+    for field, config in schema.items():
+        raw_value = data.get(field)
+        if raw_value in (None, ""):
+            if config.required:
+                raise invalid(field, f"{field} is required")
+            validated[field] = config.default
+            continue
+        validated[field] = config.parser(raw_value)
+    return validated
