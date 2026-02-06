@@ -929,7 +929,7 @@ def test_vulnerability_update_emits_full_audit_snapshot(app, client):
     update_resp = client.put(
         f"/api/vulnerabilities/{vuln_id}",
         headers=headers,
-        json={"severity": "High", "status": "In Progress", "assigned_to": admin.id, "cvss_score": 9.1},
+        json={"severity": "High", "status": "In Progress"},
     )
     assert update_resp.status_code == 200
 
@@ -939,6 +939,12 @@ def test_vulnerability_update_emits_full_audit_snapshot(app, client):
     for key in ["severity", "status", "cvss_score", "assigned_to", "sla_due_at"]:
         assert key in log.old_values
         assert key in log.new_values
+
+    field_diff = log.new_values["field_diff"]
+    assert field_diff["severity"] == {"before": "Low", "after": "High"}
+    assert field_diff["status"] == {"before": "Open", "after": "In Progress"}
+    assert "cvss_score" not in field_diff
+    assert "assigned_to" not in field_diff
 
 
 def test_product_update_emits_audit_log(app, client):

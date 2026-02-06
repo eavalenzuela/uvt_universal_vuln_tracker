@@ -63,6 +63,28 @@ def model_snapshot(instance: Any) -> dict[str, Any]:
     return {column.key: scrub_snapshot(getattr(instance, column.key)) for column in mapper.columns}
 
 
+def build_field_diff(
+    old_values: dict[str, Any] | None,
+    new_values: dict[str, Any] | None,
+    tracked_fields: list[str] | tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    old_values = old_values or {}
+    new_values = new_values or {}
+    field_diff: dict[str, dict[str, Any]] = {}
+
+    for field in tracked_fields:
+        before = old_values.get(field)
+        after = new_values.get(field)
+        if before == after:
+            continue
+        field_diff[field] = {
+            "before": before,
+            "after": after,
+        }
+
+    return field_diff
+
+
 def log_audit_event(
     *,
     actor_id: int | None,
@@ -81,4 +103,3 @@ def log_audit_event(
         new_values=scrub_snapshot(new_values) if new_values is not None else None,
     )
     return db_row
-

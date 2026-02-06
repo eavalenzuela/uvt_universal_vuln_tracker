@@ -17,7 +17,7 @@ from ..models import (
     User,
 )
 from ..auth import login_required, role_required
-from ..services.audit import log_audit_event, model_snapshot
+from ..services.audit import build_field_diff, log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
@@ -468,8 +468,11 @@ def update_vulnerability(vuln_id: int):
 
     recompute_vulnerability_sla(v)
 
-    _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
-        "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
+    new_values = {
+        "cve_id": v.cve_id,
+        "title": v.title,
+        "severity": v.severity,
+        "status": v.status,
         "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
         "assigned_to": v.assigned_to,
         "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
@@ -477,7 +480,14 @@ def update_vulnerability(vuln_id: int):
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
         "availability_impact": v.availability_impact,
-    })
+    }
+    new_values["field_diff"] = build_field_diff(
+        old,
+        new_values,
+        ["severity", "status", "cvss_score", "assigned_to", "sla_due_at"],
+    )
+
+    _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values=new_values)
 
     event_type = "updated"
     status_changed = old.get("status") != v.status
