@@ -154,6 +154,11 @@ class ProductControl(db.Model):
 
 class Vulnerability(db.Model):
     __tablename__ = "vulnerabilities"
+    __table_args__ = (
+        db.CheckConstraint("severity IN ('Critical', 'High', 'Medium', 'Low', 'None')", name="ck_vulnerabilities_severity"),
+        db.CheckConstraint("status IN ('Open', 'In Progress', 'Resolved', 'Closed')", name="ck_vulnerabilities_status"),
+        db.CheckConstraint("cvss_score IS NULL OR (cvss_score >= 0 AND cvss_score <= 10)", name="ck_vulnerabilities_cvss_score"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 

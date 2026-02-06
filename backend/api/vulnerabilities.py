@@ -28,6 +28,8 @@ bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
 IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
+SEVERITY_OPTIONS = {"Critical", "High", "Medium", "Low", "None"}
+STATUS_OPTIONS = {"Open", "In Progress", "Resolved", "Closed"}
 MAX_PAGE_SIZE = 100
 
 
@@ -200,10 +202,12 @@ def create_vulnerability():
     try:
         title = required_string(data, "title")
         cve_id = normalize_cve_id(data.get("cve_id"), required=False)
+        severity = enum_value(data.get("severity"), field="severity", options=SEVERITY_OPTIONS, required=False) or "Medium"
         attack_complexity = enum_value(data.get("attack_complexity"), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False) or "Not Defined"
         confidentiality_impact = enum_value(data.get("confidentiality_impact"), field="confidentiality_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
         integrity_impact = enum_value(data.get("integrity_impact"), field="integrity_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
         availability_impact = enum_value(data.get("availability_impact"), field="availability_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
+        status = enum_value(data.get("status"), field="status", options=STATUS_OPTIONS, required=False) or "Open"
         published_date = parse_iso_date(data.get("published_date"), field="published_date")
         last_modified_date = parse_iso_date(data.get("last_modified_date"), field="last_modified_date")
         cvss_score = parse_float(
@@ -212,14 +216,18 @@ def create_vulnerability():
             minimum=0.0,
             maximum=10.0,
         )
+        assigned_to = parse_int(data.get("assigned_to"), field="assigned_to", minimum=1)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if assigned_to is not None and not User.query.get(assigned_to):
+        return error_response("assigned_to user not found", field="assigned_to")
 
     v = Vulnerability(
         cve_id=cve_id,
         title=title,
         description=data.get("description"),
-        severity=data.get("severity", "Medium"),
+        severity=severity,
         cvss_score=round(cvss_score, 1) if cvss_score is not None else None,
         attack_complexity=attack_complexity,
         confidentiality_impact=confidentiality_impact,
@@ -227,9 +235,9 @@ def create_vulnerability():
         availability_impact=availability_impact,
         published_date=published_date,
         last_modified_date=last_modified_date,
-        status=data.get("status", "Open"),
+        status=status,
         created_by=request.user.id,
-        assigned_to=data.get("assigned_to"),
+        assigned_to=assigned_to,
     )
     db.session.add(v)
     db.session.flush()  # get v.id before commit
@@ -455,6 +463,17 @@ def update_vulnerability(vuln_id: int):
             elif field == "attack_complexity":
                 normalized = enum_value(data.get(field), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False)
                 setattr(v, field, normalized if normalized is not None else "Not Defined")
+            elif field == "severity":
+                normalized = enum_value(data.get(field), field="severity", options=SEVERITY_OPTIONS, required=False)
+                setattr(v, field, normalized if normalized is not None else "Medium")
+            elif field == "status":
+                normalized = enum_value(data.get(field), field="status", options=STATUS_OPTIONS, required=False)
+                setattr(v, field, normalized if normalized is not None else "Open")
+            elif field == "assigned_to":
+                parsed_assigned_to = parse_int(data.get(field), field="assigned_to", minimum=1)
+                if parsed_assigned_to is not None and not User.query.get(parsed_assigned_to):
+                    return error_response("assigned_to user not found", field="assigned_to")
+                setattr(v, field, parsed_assigned_to)
             elif field in {"confidentiality_impact", "integrity_impact", "availability_impact"}:
                 normalized = enum_value(data.get(field), field=field, options=IMPACT_OPTIONS, required=False)
                 setattr(v, field, normalized if normalized is not None else "Not Defined")
