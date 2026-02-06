@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.api.validation import ValidationError
 from backend.database import db
 from backend.models import Vulnerability
 from backend.services import vuln_ingest
@@ -88,3 +89,20 @@ def test_upsert_vulnerabilities_rolls_back_on_error(app, monkeypatch):
 
         assert rollback_calls == 1
         assert Vulnerability.query.filter(Vulnerability.cve_id.in_(["CVE-2026-2001", "CVE-2026-2002"])).count() == 0
+
+
+def test_upsert_vulnerabilities_invalid_cve_rolls_back_and_raises(app):
+    with app.app_context():
+        with pytest.raises(ValidationError) as exc_info:
+            vuln_ingest.upsert_vulnerabilities(
+                [
+                    NormalizedVuln(cve_id="CVE-2026-3001", title="Valid first"),
+                    NormalizedVuln(cve_id="invalid-cve", title="Invalid second"),
+                ],
+                source="unit-test",
+            )
+
+        assert exc_info.value.field == "cve_id"
+        assert exc_info.value.error == "cve_id must match CVE-YYYY-NNNN format"
+        assert Vulnerability.query.filter_by(cve_id="CVE-2026-3001").count() == 0
+        assert Vulnerability.query.filter_by(title="Invalid second").count() == 0

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Mapping
 
 from backend.database import db
+from backend.api.validation import normalize_cve_id
 from backend.models import Vulnerability, VulnerabilitySource
 from backend.services.component_correlation import correlate_vulnerability_to_components
 
@@ -43,6 +44,11 @@ def _upsert_vulnerability_no_commit(
     source: str | None = None,
     source_id: str | None = None,
 ) -> Vulnerability:
+    normalized = replace(
+        normalized,
+        cve_id=normalize_cve_id(normalized.cve_id, required=False),
+    )
+
     vulnerability = _find_existing(normalized)
 
     if vulnerability is None:

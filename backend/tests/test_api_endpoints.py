@@ -349,7 +349,7 @@ def test_vulnerability_endpoints(app, client):
         "/api/vulnerabilities",
         headers=headers,
         json={
-            "cve_id": "CVE-0001",
+            "cve_id": "CVE-2024-0001",
             "title": "Example vuln",
             "severity": "High",
             "cvss_score": "not-a-number",
@@ -369,7 +369,7 @@ def test_vulnerability_endpoints(app, client):
 
     detail_resp = client.get(f"/api/vulnerabilities/{vuln_id}", headers=headers)
     assert detail_resp.status_code == 200
-    assert detail_resp.get_json()["cve_id"] == "CVE-0001"
+    assert detail_resp.get_json()["cve_id"] == "CVE-2024-0001"
     mapping_id = detail_resp.get_json()["affected_versions"][0]["id"]
 
     invalid_update = client.put(
@@ -416,6 +416,35 @@ def test_vulnerability_endpoints(app, client):
     delete_resp = client.delete(f"/api/vulnerabilities/{vuln_id}", headers=headers)
     assert delete_resp.status_code == 200
 
+
+
+def test_vulnerability_rejects_invalid_cve_id(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad CVE", "cve_id": "cve-123"},
+    )
+    assert create_resp.status_code == 400
+    assert create_resp.get_json()["field"] == "cve_id"
+
+    valid_create = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Good CVE", "cve_id": "CVE-2024-1111"},
+    )
+    assert valid_create.status_code == 201
+    vuln_id = valid_create.get_json()["id"]
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"cve_id": "bad-id"},
+    )
+    assert update_resp.status_code == 400
+    assert update_resp.get_json()["field"] == "cve_id"
 
 def test_vulnerability_list_validation_errors(app, client):
     admin = create_admin(app)
