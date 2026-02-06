@@ -188,6 +188,45 @@ class Vulnerability(db.Model):
     terminal_impacts = db.relationship("VulnerabilityTerminalImpact", back_populates="vulnerability", cascade="all, delete-orphan")
     sources = db.relationship("VulnerabilitySource", back_populates="vulnerability", cascade="all, delete-orphan")
     affected_components = db.relationship("VulnerabilityComponent", back_populates="vulnerability", cascade="all, delete-orphan")
+    comments = db.relationship("VulnerabilityComment", back_populates="vulnerability", cascade="all, delete-orphan")
+    watchers = db.relationship("VulnerabilityWatcher", back_populates="vulnerability", cascade="all, delete-orphan")
+
+
+class VulnerabilityComment(db.Model):
+    __tablename__ = "vulnerability_comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    body = db.Column(db.Text, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+
+    vulnerability = db.relationship("Vulnerability", back_populates="comments")
+    author = db.relationship("User", foreign_keys=[author_id])
+    updater = db.relationship("User", foreign_keys=[updated_by])
+
+
+class VulnerabilityWatcher(db.Model):
+    __tablename__ = "vulnerability_watchers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    added_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    vulnerability = db.relationship("Vulnerability", back_populates="watchers")
+    user = db.relationship("User", foreign_keys=[user_id])
+    added_by_user = db.relationship("User", foreign_keys=[added_by])
+
+    __table_args__ = (
+        db.UniqueConstraint("vulnerability_id", "user_id", name="unique_vulnerability_watcher"),
+    )
 
 
 class SoftwareComponent(db.Model):
