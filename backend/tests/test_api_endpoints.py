@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 import json
 
 from backend.auth import create_user, generate_token, hash_password
@@ -951,3 +951,59 @@ def test_saved_vulnerability_filters_crud_and_visibility(app, client):
 
     delete_resp = client.delete(f"/api/vulnerabilities/filters/{private_id}", headers=analyst_headers)
     assert delete_resp.status_code == 204
+
+
+def test_sla_policy_and_vulnerability_due_dates(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+    product, pv = create_product_with_version(app, owner_id=admin.id)
+
+    update_policy_resp = client.put(
+        "/api/sla_policy",
+        headers=headers,
+        json={
+            "global": {"Critical": 10, "High": 20, "Medium": 30, "Low": 40, "None": 50},
+            "overrides": [{"product_id": product.id, "severity": "Critical", "days": 2}],
+            "due_soon_days": 3,
+        },
+    )
+    assert update_policy_resp.status_code == 200
+    assert update_policy_resp.get_json()["global"]["Critical"] == 10
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={
+            "title": "Critical vuln",
+            "severity": "Critical",
+            "affected_versions": [pv.id],
+        },
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    detail = client.get(f"/api/vulnerabilities/{vuln_id}", headers=headers)
+    assert detail.status_code == 200
+    payload = detail.get_json()
+    due_at = datetime.fromisoformat(payload["sla_due_at"])
+    created_at = datetime.fromisoformat(payload["created_at"])
+    assert due_at - created_at < timedelta(days=3)
+    assert payload["sla_state"] in {"on_track", "due_soon"}
+
+    list_resp = client.get("/api/vulnerabilities", headers=headers)
+    assert list_resp.status_code == 200
+    item = next(row for row in list_resp.get_json()["items"] if row["id"] == vuln_id)
+    assert item["sla_due_at"] is not None
+    assert item["sla_state"] in {"on_track", "due_soon", "breached"}
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"severity": "Low"},
+    )
+    assert update_resp.status_code == 200
+
+    detail2 = client.get(f"/api/vulnerabilities/{vuln_id}", headers=headers).get_json()
+    due_at_low = datetime.fromisoformat(detail2["sla_due_at"])
+    created_at_low = datetime.fromisoformat(detail2["created_at"])
+    assert due_at_low - created_at_low > timedelta(days=30)

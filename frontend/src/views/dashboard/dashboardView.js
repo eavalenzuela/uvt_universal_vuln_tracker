@@ -52,13 +52,6 @@ const DEFAULT_WIDGETS = [
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
 const RANGE_OPTIONS = ["Last 7 days", "Last 14 days", "Last 30 days", "Quarter to date", "Month to date"];
-const SLA_DAYS = {
-  Critical: 7,
-  High: 14,
-  Medium: 30,
-  Low: 60,
-  None: 90,
-};
 const WIDGET_BORDER = "rgba(148, 163, 184, 0.25)";
 const WIDGET_BG = "rgba(15, 23, 42, 0.7)";
 const WIDGET_SURFACE = "rgba(30, 41, 59, 0.7)";
@@ -709,21 +702,50 @@ export async function DashboardView() {
         });
         const horizon = parseDueHorizon(widgetSettings.range);
         const now = new Date();
-        const dueSoon = (data.items || [])
+        const withDueDates = (data.items || [])
           .map((item) => {
-            const created = new Date(item.created_at);
-            if (Number.isNaN(created.getTime())) return null;
-            const days = SLA_DAYS[item.severity] ?? 30;
-            const dueDate = new Date(created);
-            dueDate.setDate(dueDate.getDate() + days);
+            const dueDate = item?.sla_due_at ? new Date(item.sla_due_at) : null;
+            if (!dueDate || Number.isNaN(dueDate.getTime())) return null;
             return { ...item, dueDate };
           })
-          .filter(Boolean)
+          .filter(Boolean);
+        const dueSoon = withDueDates
           .filter((item) => (horizon ? item.dueDate <= horizon : true))
           .sort((a, b) => a.dueDate - b.dueDate)
           .slice(0, 8);
 
+        const breached = withDueDates.filter((item) => item.sla_state === "breached");
+        const bySeverity = breached.reduce((acc, item) => {
+          const key = item.severity || "Unknown";
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+        const users = await ensureActiveUsers();
+        const userMap = new Map(users.map((u) => [u.id, u]));
+        const byOwner = breached.reduce((acc, item) => {
+          const user = item.assigned_to ? userMap.get(item.assigned_to) : null;
+          const label = user ? (user.full_name || user.username || user.email || `User ${user.id}`) : "Unassigned";
+          acc[label] = (acc[label] || 0) + 1;
+          return acc;
+        }, {});
+
         list.innerHTML = "";
+        const rollup = el("div", { style: `display:grid; grid-template-columns: 1fr 1fr; gap:10px; padding:8px; border:1px solid ${WIDGET_BORDER}; border-radius:8px; background:${WIDGET_SURFACE};` });
+        rollup.append(
+          el("div", {},
+            el("div", { style: "font-weight:600;", text: "Breaches by severity" }),
+            ...(Object.entries(bySeverity).length
+              ? Object.entries(bySeverity).sort((a, b) => b[1] - a[1]).map(([severity, count]) => el("div", { class: "muted", text: `${severity}: ${count}` }))
+              : [el("div", { class: "muted", text: "No breaches." })]),
+          ),
+          el("div", {},
+            el("div", { style: "font-weight:600;", text: "Breaches by owner" }),
+            ...(Object.entries(byOwner).length
+              ? Object.entries(byOwner).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([owner, count]) => el("div", { class: "muted", text: `${owner}: ${count}` }))
+              : [el("div", { class: "muted", text: "No breaches." })]),
+          ),
+        );
+        list.appendChild(rollup);
         if (!dueSoon.length) {
           list.appendChild(el("div", { class: "muted", text: "No upcoming SLA deadlines." }));
           return;

@@ -8,6 +8,7 @@ from .vulnerabilities import bp as vulns_bp
 from .users import bp as users_bp
 from .notification_rules import bp as notification_rules_bp
 from .vulnerability_filters import bp as vulnerability_filters_bp
+from .sla_policy import bp as sla_policy_bp
 
 
 def register_api(app):
@@ -21,3 +22,4 @@ def register_api(app):
     app.register_blueprint(users_bp)
     app.register_blueprint(notification_rules_bp)
     app.register_blueprint(vulnerability_filters_bp)
+    app.register_blueprint(sla_policy_bp)
