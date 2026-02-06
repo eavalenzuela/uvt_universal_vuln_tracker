@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sized
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Any
 
@@ -10,6 +11,19 @@ from .state import create_plugin_run, get_plugin_config, update_plugin_run
 from ..models import PluginRun
 
 logger = logging.getLogger(__name__)
+
+_plugin_run_executor: ThreadPoolExecutor | None = None
+
+
+def get_plugin_run_executor() -> ThreadPoolExecutor:
+    global _plugin_run_executor
+    if _plugin_run_executor is None:
+        _plugin_run_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="plugin-runner")
+    return _plugin_run_executor
+
+
+def get_plugin_run_by_id(run_id: int) -> PluginRun | None:
+    return PluginRun.query.execution_options(populate_existing=True).filter_by(id=run_id).first()
 
 
 def get_latest_plugin_run(plugin_id: str) -> PluginRun | None:
@@ -52,6 +66,60 @@ def run_plugin(
             finished_at=datetime.utcnow(),
             error=str(exc),
         )
+    return run
+
+
+def _execute_plugin_run(
+    app,
+    registry: PluginRegistry,
+    *,
+    run_id: int,
+    plugin_id: str,
+    config: dict[str, Any] | None = None,
+) -> None:
+    with app.app_context():
+        run = get_plugin_run_by_id(run_id)
+        if not run:
+            logger.error("Plugin run %s not found", run_id)
+            return
+
+        try:
+            plugin = registry.create(plugin_id, config=config)
+            result = plugin.run()
+            stats: dict[str, Any] | None = None
+            if isinstance(result, dict):
+                stats_payload = result.get("stats")
+                if isinstance(stats_payload, dict):
+                    stats = stats_payload
+            if stats is None and isinstance(result, Sized) and not isinstance(result, (str, bytes)):
+                stats = {"items_processed": len(result)}
+            update_plugin_run(run, status="success", finished_at=datetime.utcnow(), stats=stats)
+        except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
+            logger.exception("Plugin run failed for %s", plugin_id)
+            update_plugin_run(
+                run,
+                status="failed",
+                finished_at=datetime.utcnow(),
+                error=str(exc),
+            )
+
+
+def enqueue_plugin_run(
+    app,
+    registry: PluginRegistry,
+    plugin_id: str,
+    *,
+    config: dict[str, Any] | None = None,
+) -> PluginRun:
+    run = create_plugin_run(plugin_id, status="running")
+    get_plugin_run_executor().submit(
+        _execute_plugin_run,
+        app,
+        registry,
+        run_id=run.id,
+        plugin_id=plugin_id,
+        config=config,
+    )
     return run
 
 
