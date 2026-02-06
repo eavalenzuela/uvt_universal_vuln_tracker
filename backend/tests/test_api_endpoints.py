@@ -104,6 +104,83 @@ def test_auth_guard_rails(app, client):
     assert invalid.status_code == 401
 
 
+def test_scope_enforcement_for_newly_scoped_endpoints(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "analyst_scope", "analyst_scope@example.com", role="Analyst")
+    viewer = create_user_direct(app, "viewer_scope", "viewer_scope@example.com", role="Viewer")
+
+    for endpoint in (
+        "/api/plugins",
+        "/api/controls",
+        "/api/attack_vectors",
+        "/api/terminal_impacts",
+    ):
+        admin_read = client.get(endpoint, headers=auth_header(admin))
+        assert admin_read.status_code == 200
+
+        analyst_read = client.get(endpoint, headers=auth_header(analyst))
+        assert analyst_read.status_code == 200
+
+        viewer_read = client.get(endpoint, headers=auth_header(viewer))
+        assert viewer_read.status_code == 200
+
+    analyst_plugin_write = client.post(
+        "/api/plugins/slack/config",
+        headers=auth_header(analyst),
+        json={"enabled": True, "config": {"webhook_url": "https://example.local/test"}},
+    )
+    assert analyst_plugin_write.status_code == 200
+
+    viewer_plugin_write = client.post(
+        "/api/plugins/slack/config",
+        headers=auth_header(viewer),
+        json={"enabled": True, "config": {"webhook_url": "https://example.local/test"}},
+    )
+    assert viewer_plugin_write.status_code == 403
+
+    analyst_control_write = client.post(
+        "/api/controls",
+        headers=auth_header(analyst),
+        json={"name": "SC-1", "framework": "NIST"},
+    )
+    assert analyst_control_write.status_code == 201
+
+    viewer_control_write = client.post(
+        "/api/controls",
+        headers=auth_header(viewer),
+        json={"name": "SC-2", "framework": "NIST"},
+    )
+    assert viewer_control_write.status_code == 403
+
+    analyst_vector_write = client.post(
+        "/api/attack_vectors",
+        headers=auth_header(analyst),
+        json={"name": "Scope Vector", "description": "test"},
+    )
+    assert analyst_vector_write.status_code == 201
+
+    viewer_vector_write = client.post(
+        "/api/attack_vectors",
+        headers=auth_header(viewer),
+        json={"name": "Viewer Vector", "description": "test"},
+    )
+    assert viewer_vector_write.status_code == 403
+
+    analyst_impact_write = client.post(
+        "/api/terminal_impacts",
+        headers=auth_header(analyst),
+        json={"name": "Scope Impact", "description": "test"},
+    )
+    assert analyst_impact_write.status_code == 201
+
+    viewer_impact_write = client.post(
+        "/api/terminal_impacts",
+        headers=auth_header(viewer),
+        json={"name": "Viewer Impact", "description": "test"},
+    )
+    assert viewer_impact_write.status_code == 403
+
+
 def test_user_management_endpoints(app, client):
     admin = create_admin(app)
     headers = auth_header(admin)

@@ -10,6 +10,14 @@ SCOPE_VULNS_READ = "vulnerabilities:read"
 SCOPE_VULNS_WRITE = "vulnerabilities:write"
 SCOPE_USERS_READ = "users:read"
 SCOPE_USERS_WRITE = "users:write"
+SCOPE_CONTROLS_READ = "controls:read"
+SCOPE_CONTROLS_WRITE = "controls:write"
+SCOPE_ATTACK_VECTORS_READ = "attack_vectors:read"
+SCOPE_ATTACK_VECTORS_WRITE = "attack_vectors:write"
+SCOPE_TERMINAL_IMPACTS_READ = "terminal_impacts:read"
+SCOPE_TERMINAL_IMPACTS_WRITE = "terminal_impacts:write"
+SCOPE_PLUGINS_READ = "plugins:read"
+SCOPE_PLUGINS_WRITE = "plugins:write"
 
 ROLE_SCOPES = {
     ROLE_ADMIN: {
@@ -19,16 +27,36 @@ ROLE_SCOPES = {
         SCOPE_VULNS_WRITE,
         SCOPE_USERS_READ,
         SCOPE_USERS_WRITE,
+        SCOPE_CONTROLS_READ,
+        SCOPE_CONTROLS_WRITE,
+        SCOPE_ATTACK_VECTORS_READ,
+        SCOPE_ATTACK_VECTORS_WRITE,
+        SCOPE_TERMINAL_IMPACTS_READ,
+        SCOPE_TERMINAL_IMPACTS_WRITE,
+        SCOPE_PLUGINS_READ,
+        SCOPE_PLUGINS_WRITE,
     },
     ROLE_ANALYST: {
         SCOPE_PRODUCTS_READ,
         SCOPE_PRODUCTS_WRITE,
         SCOPE_VULNS_READ,
         SCOPE_VULNS_WRITE,
+        SCOPE_CONTROLS_READ,
+        SCOPE_CONTROLS_WRITE,
+        SCOPE_ATTACK_VECTORS_READ,
+        SCOPE_ATTACK_VECTORS_WRITE,
+        SCOPE_TERMINAL_IMPACTS_READ,
+        SCOPE_TERMINAL_IMPACTS_WRITE,
+        SCOPE_PLUGINS_READ,
+        SCOPE_PLUGINS_WRITE,
     },
     ROLE_VIEWER: {
         SCOPE_PRODUCTS_READ,
         SCOPE_VULNS_READ,
+        SCOPE_CONTROLS_READ,
+        SCOPE_ATTACK_VECTORS_READ,
+        SCOPE_TERMINAL_IMPACTS_READ,
+        SCOPE_PLUGINS_READ,
     },
 }
 
@@ -38,6 +66,10 @@ PATH_SCOPE_PREFIXES = (
     ("/api/vulnerabilities", "vulnerabilities"),
     ("/api/product_versions", "vulnerabilities"),
     ("/api/users", "users"),
+    ("/api/plugins", "plugins"),
+    ("/api/controls", "controls"),
+    ("/api/attack_vectors", "attack_vectors"),
+    ("/api/terminal_impacts", "terminal_impacts"),
 )
 
 
