@@ -9,7 +9,7 @@ import {
 import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
-import { exportDashboardSummaryCsv, getDashboardSummary } from "../../api/reports.js";
+import { exportDashboardSummaryCsv, getDashboardSummary, getRiskTrends } from "../../api/reports.js";
 import { toast } from "../../ui/components/toast.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
@@ -41,6 +41,20 @@ const DEFAULT_WIDGETS = [
     description: "Most impacted products and versions.",
     settings: { filter: "All", range: "Last 30 days", grouping: "Product" },
     groupings: ["Product", "Product Version"],
+  },
+  {
+    id: "risk-trends",
+    title: "Risk Trends by Product",
+    description: "Trend chart by product and version risk metrics.",
+    settings: { filter: "All", range: "Last 30 days", grouping: "week", productFilter: "" },
+    groupings: ["day", "week", "month"],
+  },
+  {
+    id: "top-risk-products",
+    title: "Top Risk Products",
+    description: "Product versions with highest weighted risk posture.",
+    settings: { filter: "All", range: "Last 30 days", grouping: "week", productFilter: "" },
+    groupings: ["day", "week", "month"],
   },
   {
     id: "my-work",
@@ -344,6 +358,12 @@ export async function DashboardView() {
       value: currentSettings.filter,
       placeholder: "Filter",
     });
+    const productFilterInput = el("input", {
+      class: "input",
+      type: "text",
+      value: currentSettings.productFilter || "",
+      placeholder: "Product IDs (comma-separated)",
+    });
     const rangeSelect = el(
       "select",
       { class: "input" },
@@ -369,6 +389,10 @@ export async function DashboardView() {
         filterInput,
       ),
       el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+        el("label", { text: "Product filter" }),
+        productFilterInput,
+      ),
+      el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
         el("label", { text: "Date range" }),
         rangeSelect,
       ),
@@ -388,6 +412,7 @@ export async function DashboardView() {
           onClick: () => {
             layoutState.settings[widgetId] = {
               filter: filterInput.value || "All",
+              productFilter: productFilterInput.value || "",
               range: rangeSelect.value,
               grouping: groupingSelect.value || currentSettings.grouping,
             };
@@ -845,6 +870,98 @@ export async function DashboardView() {
     return container;
   }
 
+
+  async function loadRiskTrendData(widgetSettings) {
+    const range = widgetSettings.range || "Last 30 days";
+    const productFilter = (widgetSettings.productFilter || "").trim();
+    return getRiskTrends({
+      range,
+      bucket: widgetSettings.grouping || "week",
+      product_ids: productFilter || undefined,
+    });
+  }
+
+  function renderRiskTrendsWidget(widgetSettings) {
+    const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+    const body = el("div", { class: "muted", text: "Loading risk trend data..." });
+    container.append(body);
+
+    const load = async () => {
+      try {
+        const data = await loadRiskTrendData(widgetSettings);
+        body.innerHTML = "";
+        const grouped = (data.items || []).reduce((acc, item) => {
+          const key = `${item.product_name || "Unknown"} ${item.product_version || ""}`.trim();
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(item);
+          return acc;
+        }, {});
+        const topSeries = Object.entries(grouped)
+          .map(([name, items]) => ({
+            name,
+            items: items.sort((a, b) => a.bucket.localeCompare(b.bucket)),
+            score: items.reduce((sum, item) => sum + (item.weighted_risk_score || 0), 0),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+        if (!topSeries.length) {
+          body.appendChild(el("div", { class: "muted", text: "No risk trend data for selected filters." }));
+          return;
+        }
+        topSeries.forEach((series) => {
+          const spark = renderSparkline(series.items.map((row) => row.weighted_risk_score || 0));
+          body.append(
+            el("div", { style: `padding:8px; border:1px solid ${WIDGET_BORDER}; border-radius:8px; background:${WIDGET_SURFACE};` },
+              el("div", { style: "font-weight:600;", text: series.name }),
+              el("div", { class: "muted", text: `Buckets: ${series.items.length} • Total score: ${series.score}` }),
+              spark,
+            ),
+          );
+        });
+      } catch (error) {
+        body.innerHTML = "";
+        body.appendChild(el("div", { class: "muted", text: "Unable to load risk trends." }));
+      }
+    };
+    load();
+    return container;
+  }
+
+  function renderTopRiskProductsWidget(widgetSettings) {
+    const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+    const body = el("div", { class: "muted", text: "Loading top-risk products..." });
+    container.append(body);
+
+    const load = async () => {
+      try {
+        const data = await loadRiskTrendData(widgetSettings);
+        const rows = data.top_risk_products || [];
+        body.innerHTML = "";
+        if (!rows.length) {
+          body.appendChild(el("div", { class: "muted", text: "No top-risk products for selected filters." }));
+          return;
+        }
+        rows.forEach((item, idx) => {
+          const label = `${item.product_name || "Unknown"} ${item.product_version || ""}`.trim();
+          body.append(
+            el("div", { style: `display:grid; grid-template-columns:32px 1.4fr 0.8fr 0.8fr 1fr; gap:8px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER}; align-items:center;` },
+              el("div", { text: `${idx + 1}.` }),
+              el("div", { text: label }),
+              el("div", { class: "muted", text: `Critical: ${item.open_critical_count}` }),
+              el("div", { class: "muted", text: `Overdue: ${item.overdue_sla_count}` }),
+              el("div", { style: "font-weight:600;", text: `Score: ${item.weighted_risk_score}` }),
+            ),
+          );
+        });
+      } catch (error) {
+        body.innerHTML = "";
+        body.appendChild(el("div", { class: "muted", text: "Unable to load top-risk products." }));
+      }
+    };
+    load();
+    return container;
+  }
+
   function renderMyWorkWidget(widgetSettings) {
     const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
     const list = el("div", { class: "muted", text: "Loading assigned work..." });
@@ -1019,6 +1136,10 @@ export async function DashboardView() {
         details = renderSlaWidget(widgetSettings);
       } else if (widgetId === "top-assets") {
         details = renderTopAssetsWidget(widgetSettings);
+      } else if (widgetId === "risk-trends") {
+        details = renderRiskTrendsWidget(widgetSettings);
+      } else if (widgetId === "top-risk-products") {
+        details = renderTopRiskProductsWidget(widgetSettings);
       } else if (widgetId === "my-work") {
         details = renderMyWorkWidget(widgetSettings);
       } else {
