@@ -1,0 +1,8 @@
+{
+  "name": "uvt-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:smoke": "node --test frontend/tests/**/*.test.js"
+  }
+}
