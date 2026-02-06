@@ -32,3 +32,7 @@ export function runReportSchedule(id) {
 export function getDashboardSummary(params = {}) {
   return apiFetch(withParams("/api/dashboard/summary", params), { method: "GET" });
 }
+
+export function getRiskTrends(params = {}) {
+  return apiFetch(withParams("/api/reports/risk-trends", params), { method: "GET" });
+}

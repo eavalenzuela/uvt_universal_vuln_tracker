@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from backend.auth import create_user, generate_token
 from backend.database import db
-from backend.models import Vulnerability
+from backend.models import Product, ProductVersion, Vulnerability, VulnerabilityVersion
 
 
 def _auth_header(user):
@@ -82,3 +82,67 @@ def test_list_vulnerabilities_supports_multi_value_filters(app, client):
     assert payload["total"] == 2
     returned = {(item["severity"], item["status"]) for item in payload["items"]}
     assert returned == {("Critical", "Open"), ("High", "In Progress")}
+
+
+def test_risk_trends_groups_by_product_version_and_bucket(app, client):
+    admin = _create_admin(app)
+    now = datetime.utcnow()
+
+    product_id = None
+    with app.app_context():
+        product = Product(name="Payments", created_by=admin.id)
+        db.session.add(product)
+        db.session.flush()
+        product_id = product.id
+
+        pv = ProductVersion(product_id=product.id, version="1.0")
+        db.session.add(pv)
+        db.session.flush()
+
+        vulns = [
+            Vulnerability(
+                title="Critical open overdue",
+                severity="Critical",
+                status="Open",
+                sla_due_at=now - timedelta(days=1),
+                created_by=admin.id,
+                updated_at=now - timedelta(days=1),
+            ),
+            Vulnerability(
+                title="High in progress",
+                severity="High",
+                status="In Progress",
+                created_by=admin.id,
+                updated_at=now - timedelta(days=1),
+            ),
+            Vulnerability(
+                title="Low closed",
+                severity="Low",
+                status="Closed",
+                created_by=admin.id,
+                updated_at=now - timedelta(days=1),
+            ),
+        ]
+        db.session.add_all(vulns)
+        db.session.flush()
+
+        for vuln in vulns:
+            db.session.add(VulnerabilityVersion(vulnerability_id=vuln.id, product_version_id=pv.id, affected=True))
+        db.session.commit()
+
+    resp = client.get(
+        f"/api/reports/risk-trends?bucket=day&range=Last 7 days&product_ids={product_id}",
+        headers=_auth_header(admin),
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["bucket"] == "day"
+    assert len(payload["items"]) >= 1
+    item = payload["items"][0]
+    assert item["product_name"] == "Payments"
+    assert item["product_version"] == "1.0"
+    assert item["open_critical_count"] == 1
+    assert item["overdue_sla_count"] == 1
+    assert item["weighted_risk_score"] == 17
+    assert payload["top_risk_products"][0]["weighted_risk_score"] == 17
