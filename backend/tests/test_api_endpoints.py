@@ -593,6 +593,71 @@ def test_plugin_endpoints(app, client, monkeypatch):
     assert missing_resp.status_code == 404
 
 
+
+
+def test_plugin_import_sources_and_validation(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    app.config["PLUGIN_IMPORT_PATHS"] = ["backend.tests"]
+
+    sources_resp = client.get("/api/plugins/import/sources", headers=headers)
+    assert sources_resp.status_code == 200
+    assert "backend.tests" in sources_resp.get_json()["paths"]
+
+    validate_resp = client.post(
+        "/api/plugins/import/validate",
+        headers=headers,
+        json={"module_path": "backend.tests.sample_import_plugin", "class_name": "SampleImportPlugin"},
+    )
+    assert validate_resp.status_code == 200
+    payload = validate_resp.get_json()
+    assert payload["plugin_id"] == "sample-import-plugin"
+    assert "controls_import" in payload["capabilities"]
+    assert payload["already_registered"] is False
+
+
+def test_plugin_import_registers_plugin_and_config(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    app.config["PLUGIN_IMPORT_PATHS"] = ["backend.tests"]
+
+    register_resp = client.post(
+        "/api/plugins/import/register",
+        headers=headers,
+        json={
+            "module_path": "backend.tests.sample_import_plugin",
+            "class_name": "SampleImportPlugin",
+            "enabled": True,
+            "config": {"file_path": "/tmp/sample.json", "dry_run": True},
+        },
+    )
+    assert register_resp.status_code == 201
+    register_payload = register_resp.get_json()
+    assert register_payload["plugin"]["plugin_id"] == "sample-import-plugin"
+    assert register_payload["config"]["enabled"] is True
+
+    plugins_resp = client.get("/api/plugins", headers=headers)
+    assert plugins_resp.status_code == 200
+    plugin_ids = {item["plugin_id"] for item in plugins_resp.get_json()}
+    assert "sample-import-plugin" in plugin_ids
+
+
+def test_plugin_import_rejects_disallowed_module_path(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    app.config["PLUGIN_IMPORT_PATHS"] = ["backend.tests.allowed"]
+
+    validate_resp = client.post(
+        "/api/plugins/import/validate",
+        headers=headers,
+        json={"module_path": "backend.tests.sample_import_plugin", "class_name": "SampleImportPlugin"},
+    )
+    assert validate_resp.status_code == 400
+    assert "PLUGIN_IMPORT_PATHS" in validate_resp.get_json()["error"]
+
 def test_plugin_run_enqueue_behavior(app, client, monkeypatch):
     admin = create_admin(app)
     headers = auth_header(admin)

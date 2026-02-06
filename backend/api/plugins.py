@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import inspect
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
@@ -9,6 +11,8 @@ from ..auth import login_required, role_required
 from ..database import db
 from ..models import PluginConfig
 from ..plugins.config import is_masked_value, mask_config
+from ..plugins.base import BasePlugin, ControlsImportPlugin, VulnerabilityFeedPlugin
+from ..plugins.config import prepare_plugin_config, validate_config_schema
 from ..plugins.registry import PluginRegistry
 from ..plugins.runner import enqueue_plugin_run, get_latest_plugin_run, get_plugin_run_by_id
 from ..plugins.state import get_plugin_config, upsert_plugin_config
@@ -90,6 +94,58 @@ def _merge_plugin_config(existing: dict[str, Any], updates: dict[str, Any]) -> d
     return merged
 
 
+def _allowed_import_paths() -> list[str]:
+    paths = current_app.config.get("PLUGIN_IMPORT_PATHS", [])
+    return [path for path in paths if isinstance(path, str) and path.strip()]
+
+
+def _is_allowed_module_path(module_path: str) -> bool:
+    configured_paths = _allowed_import_paths()
+    if not configured_paths:
+        return False
+    return any(module_path == allowed or module_path.startswith(f"{allowed}.") for allowed in configured_paths)
+
+
+def _infer_capabilities(plugin_cls: type[BasePlugin]) -> list[str]:
+    capabilities = list(plugin_cls.capabilities or [])
+    if capabilities:
+        return capabilities
+    if issubclass(plugin_cls, VulnerabilityFeedPlugin):
+        return ["vulnerability_feed"]
+    if issubclass(plugin_cls, ControlsImportPlugin):
+        return ["controls_import"]
+    return []
+
+
+def _load_plugin_class(module_path: str, class_name: str):
+    if not _is_allowed_module_path(module_path):
+        allowed = ", ".join(_allowed_import_paths()) or "<none configured>"
+        raise ValueError(f"module_path must be under configured PLUGIN_IMPORT_PATHS. Allowed: {allowed}")
+
+    module = importlib.import_module(module_path)
+    plugin_cls = getattr(module, class_name, None)
+    if plugin_cls is None:
+        raise ValueError(f"Class '{class_name}' was not found in module '{module_path}'")
+    if not inspect.isclass(plugin_cls) or not issubclass(plugin_cls, BasePlugin):
+        raise ValueError("Selected class must inherit from BasePlugin")
+    if inspect.isabstract(plugin_cls):
+        raise ValueError("Selected class is abstract and cannot be registered")
+
+    validate_config_schema(plugin_cls.config_schema or {})
+    return plugin_cls
+
+
+def _plugin_introspection_payload(plugin_cls: type[BasePlugin], *, already_registered: bool):
+    return {
+        "plugin_id": plugin_cls.plugin_id,
+        "display_name": plugin_cls.display_name,
+        "version": plugin_cls.version,
+        "capabilities": _infer_capabilities(plugin_cls),
+        "config_schema": plugin_cls.config_schema,
+        "already_registered": already_registered,
+    }
+
+
 @bp.get("/plugins")
 @login_required
 def list_plugins():
@@ -103,7 +159,7 @@ def list_plugins():
                 "plugin_id": plugin_cls.plugin_id,
                 "display_name": plugin_cls.display_name,
                 "version": plugin_cls.version,
-                "capabilities": list(plugin_cls.capabilities or []),
+                "capabilities": _infer_capabilities(plugin_cls),
                 "config_schema": plugin_cls.config_schema,
                 "config": mask_config(config_row.config_json or {}, plugin_cls.config_schema) if config_row else {},
                 "enabled": config_row.enabled if config_row else True,
@@ -136,7 +192,7 @@ def get_plugin(plugin_id: str):
         "plugin_id": plugin_cls.plugin_id,
         "display_name": plugin_cls.display_name,
         "version": plugin_cls.version,
-        "capabilities": list(plugin_cls.capabilities or []),
+        "capabilities": _infer_capabilities(plugin_cls),
         "config_schema": plugin_cls.config_schema,
         "config": mask_config(config_row.config_json or {}, plugin_cls.config_schema) if config_row else {},
         "enabled": config_row.enabled if config_row else True,
@@ -239,3 +295,78 @@ def update_plugin_config(plugin_id: str):
     )
     db.session.commit()
     return jsonify(_plugin_config_json(updated, schema=plugin_cls.config_schema)), 200
+
+
+@bp.get("/plugins/import/sources")
+@role_required("Admin")
+def list_plugin_import_sources():
+    return jsonify({"paths": _allowed_import_paths()})
+
+
+@bp.post("/plugins/import/validate")
+@role_required("Admin")
+def validate_plugin_import():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "payload must be an object"}), 400
+    module_path = str(payload.get("module_path") or "").strip()
+    class_name = str(payload.get("class_name") or "").strip()
+    if not module_path or not class_name:
+        return jsonify({"error": "module_path and class_name are required"}), 400
+
+    try:
+        plugin_cls = _load_plugin_class(module_path, class_name)
+    except (ImportError, ValueError, AttributeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    registry = _get_registry()
+    already_registered = _get_plugin_class(registry, plugin_cls.plugin_id) is not None
+    return jsonify(_plugin_introspection_payload(plugin_cls, already_registered=already_registered)), 200
+
+
+@bp.post("/plugins/import/register")
+@role_required("Admin")
+def register_plugin_import():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "payload must be an object"}), 400
+
+    module_path = str(payload.get("module_path") or "").strip()
+    class_name = str(payload.get("class_name") or "").strip()
+    config_payload = payload.get("config") or {}
+    enabled = payload.get("enabled", True)
+    if not module_path or not class_name:
+        return jsonify({"error": "module_path and class_name are required"}), 400
+    if not isinstance(config_payload, dict):
+        return jsonify({"error": "config must be an object"}), 400
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "enabled must be a boolean"}), 400
+
+    try:
+        plugin_cls = _load_plugin_class(module_path, class_name)
+        prepared = prepare_plugin_config(config_payload, plugin_cls.config_schema)
+    except (ImportError, ValueError, AttributeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    registry = _get_registry()
+    already_registered = _get_plugin_class(registry, plugin_cls.plugin_id) is not None
+    if not already_registered:
+        try:
+            registry.register(plugin_cls)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    updated = upsert_plugin_config(plugin_cls.plugin_id, prepared, enabled=enabled)
+    _audit(
+        "CREATE" if not already_registered else "UPDATE",
+        "plugin_configs",
+        updated.id,
+        new_values=_plugin_config_json(updated, schema=plugin_cls.config_schema),
+    )
+    db.session.commit()
+
+    return jsonify({
+        "plugin": _plugin_introspection_payload(plugin_cls, already_registered=already_registered),
+        "config": _plugin_config_json(updated, schema=plugin_cls.config_schema),
+        "message": "Plugin imported successfully" if not already_registered else "Plugin updated successfully",
+    }), 201 if not already_registered else 200
