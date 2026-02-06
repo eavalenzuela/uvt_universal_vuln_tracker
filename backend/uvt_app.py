@@ -33,6 +33,13 @@ def create_app():
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "dev-jwt-secret")
     app.config["ALLOW_PUBLIC_REGISTRATION"] = os.getenv("ALLOW_PUBLIC_REGISTRATION", "false").lower() in ("1", "true", "yes")
 
+    app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("1", "true", "yes")
+    app.config["RATE_LIMIT_AUTH_LOGIN_LIMIT"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_LIMIT", "5"))
+    app.config["RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", "60"))
+    app.config["RATE_LIMIT_VULN_LIST_LIMIT"] = int(os.getenv("RATE_LIMIT_VULN_LIST_LIMIT", "60"))
+    app.config["RATE_LIMIT_VULN_LIST_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", "60"))
+    app.config["RATE_LIMIT_VULN_EXPORT_LIMIT"] = int(os.getenv("RATE_LIMIT_VULN_EXPORT_LIMIT", "20"))
+    app.config["RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", "60"))
     db_url = os.getenv("DATABASE_URL", "sqlite:///uvt.db")
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

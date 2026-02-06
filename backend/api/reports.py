@@ -9,6 +9,7 @@ from ..auth import login_required, role_required
 from ..database import db
 from ..models import ReportSchedule, Vulnerability
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
+from ..rate_limiter import rate_limit
 
 bp = Blueprint("reports_api", __name__, url_prefix="/api")
 
@@ -141,6 +142,7 @@ def _summary_rows(summary):
 
 @bp.get("/reports/vulnerabilities/export")
 @login_required
+@rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_vuln_export")
 def export_vulnerabilities():
     filters = _parse_filters(request.args)
     items = _build_vulnerability_query(filters).all()
@@ -150,6 +152,7 @@ def export_vulnerabilities():
 
 @bp.get("/reports/dashboard/export")
 @login_required
+@rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_dashboard_export")
 def export_dashboard_summary():
     filters = _parse_filters(request.args)
     summary = _dashboard_summary(filters)

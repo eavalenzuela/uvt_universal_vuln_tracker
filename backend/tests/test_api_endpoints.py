@@ -1268,3 +1268,81 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
         },
     )
     assert invalid_frequency.status_code == 400
+
+
+def test_rate_limit_login_threshold_crossing_and_retry_metadata(app, client):
+    app.config.update(
+        RATE_LIMIT_AUTH_LOGIN_LIMIT=2,
+        RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS=60,
+    )
+
+    create_admin(app)
+
+    first = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    assert first.status_code == 200
+    assert first.headers.get("X-RateLimit-Limit") == "2"
+    assert first.headers.get("X-RateLimit-Remaining") == "1"
+
+    second = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    assert second.status_code == 200
+    assert second.headers.get("X-RateLimit-Remaining") == "0"
+
+    blocked = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    assert blocked.status_code == 429
+    payload = blocked.get_json()
+    assert payload["error"] == "Rate limit exceeded"
+    assert int(payload["retry_after_seconds"]) >= 1
+    assert int(blocked.headers.get("Retry-After")) == int(payload["retry_after_seconds"])
+    assert blocked.headers.get("X-RateLimit-Limit") == "2"
+    assert blocked.headers.get("X-RateLimit-Remaining") == "0"
+
+
+def test_rate_limit_vulnerability_list_resets_after_window(app, client):
+    admin = create_admin(app)
+
+    now = [1000.0]
+
+    def fake_now():
+        return now[0]
+
+    app.config.update(
+        RATE_LIMIT_VULN_LIST_LIMIT=2,
+        RATE_LIMIT_VULN_LIST_WINDOW_SECONDS=10,
+        RATE_LIMIT_TIME_FUNCTION=fake_now,
+    )
+
+    headers = auth_header(admin)
+
+    first = client.get("/api/vulnerabilities", headers=headers)
+    assert first.status_code == 200
+    assert first.headers.get("X-RateLimit-Remaining") == "1"
+
+    second = client.get("/api/vulnerabilities", headers=headers)
+    assert second.status_code == 200
+    assert second.headers.get("X-RateLimit-Remaining") == "0"
+
+    blocked = client.get("/api/vulnerabilities", headers=headers)
+    assert blocked.status_code == 429
+    assert blocked.headers.get("Retry-After") == "10"
+
+    now[0] += 11
+
+    allowed_after_reset = client.get("/api/vulnerabilities", headers=headers)
+    assert allowed_after_reset.status_code == 200
+    assert allowed_after_reset.headers.get("X-RateLimit-Remaining") == "1"
+
+
+def test_rate_limit_export_endpoint(app, client):
+    admin = create_admin(app)
+    app.config.update(
+        RATE_LIMIT_VULN_EXPORT_LIMIT=1,
+        RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS=60,
+    )
+
+    first = client.get("/api/reports/vulnerabilities/export", headers=auth_header(admin))
+    assert first.status_code == 200
+    assert first.headers.get("X-RateLimit-Remaining") == "0"
+
+    blocked = client.get("/api/reports/vulnerabilities/export", headers=auth_header(admin))
+    assert blocked.status_code == 429
+    assert blocked.get_json()["error"] == "Rate limit exceeded"
