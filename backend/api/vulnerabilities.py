@@ -20,6 +20,12 @@ from ..auth import login_required, role_required
 from ..services.audit import build_field_diff, log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
+from ..services.cve_enrichment import (
+    CveNotFoundError,
+    CveUpstreamRequestError,
+    CveUpstreamTimeoutError,
+    fetch_cve_enrichment,
+)
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
@@ -175,6 +181,10 @@ def list_vulnerabilities():
             "title": v.title,
             "severity": v.severity,
             "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+            "cvss_vector": v.cvss_vector,
+            "cvss_version": v.cvss_version,
+            "cwe_id": v.cwe_id,
+            "references_json": v.references_json or [],
             "attack_complexity": v.attack_complexity,
             "confidentiality_impact": v.confidentiality_impact,
             "integrity_impact": v.integrity_impact,
@@ -362,6 +372,10 @@ def get_vulnerability(vuln_id: int):
         "description": v.description,
         "severity": v.severity,
         "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "cvss_vector": v.cvss_vector,
+        "cvss_version": v.cvss_version,
+        "cwe_id": v.cwe_id,
+        "references_json": v.references_json or [],
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
@@ -551,6 +565,130 @@ def delete_vulnerability(vuln_id: int):
     db.session.delete(v)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+def _is_empty_value(value):
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list):
+        return len(value) == 0
+    return False
+
+
+@bp.post("/vulnerabilities/<int:vuln_id>/enrich")
+@role_required("Admin", "Analyst")
+def enrich_vulnerability(vuln_id: int):
+    v = Vulnerability.query.get_or_404(vuln_id)
+    try:
+        force = parse_query_bool(request.args.get("force"), field="force") or False
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if not v.cve_id:
+        return jsonify({
+            "ok": False,
+            "enrichment": {
+                "status": "error",
+                "error": "vulnerability has no cve_id",
+                "applied_fields": [],
+            },
+        }), 400
+
+    try:
+        enriched = fetch_cve_enrichment(v.cve_id)
+    except CveNotFoundError as exc:
+        return jsonify({"ok": False, "enrichment": {"status": "not_found", "error": str(exc), "applied_fields": []}}), 404
+    except CveUpstreamTimeoutError as exc:
+        return jsonify({"ok": False, "enrichment": {"status": "timeout", "error": str(exc), "applied_fields": []}}), 504
+    except CveUpstreamRequestError as exc:
+        return jsonify({"ok": False, "enrichment": {"status": "error", "error": str(exc), "applied_fields": []}}), 502
+
+    old = {
+        "title": v.title,
+        "description": v.description,
+        "severity": v.severity,
+        "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "cvss_vector": v.cvss_vector,
+        "cvss_version": v.cvss_version,
+        "cwe_id": v.cwe_id,
+        "references_json": v.references_json or [],
+        "published_date": v.published_date.isoformat() if v.published_date else None,
+        "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
+    }
+
+    updates = {
+        "title": enriched.title,
+        "description": enriched.description,
+        "severity": enriched.severity,
+        "cvss_score": round(enriched.cvss_score, 1) if enriched.cvss_score is not None else None,
+        "cvss_vector": enriched.cvss_vector,
+        "cvss_version": enriched.cvss_version,
+        "cwe_id": enriched.cwe_id,
+        "references_json": enriched.references_json,
+        "published_date": enriched.published_date,
+        "last_modified_date": enriched.last_modified_date,
+    }
+
+    applied_fields = []
+    for field, value in updates.items():
+        if value is None:
+            continue
+        if not force and not _is_empty_value(getattr(v, field)):
+            continue
+        setattr(v, field, value)
+        applied_fields.append(field)
+
+    if old["severity"] != v.severity or old["cvss_score"] != (float(v.cvss_score) if v.cvss_score is not None else None):
+        recompute_vulnerability_sla(v)
+
+    new_values = {
+        "title": v.title,
+        "description": v.description,
+        "severity": v.severity,
+        "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "cvss_vector": v.cvss_vector,
+        "cvss_version": v.cvss_version,
+        "cwe_id": v.cwe_id,
+        "references_json": v.references_json or [],
+        "published_date": v.published_date.isoformat() if v.published_date else None,
+        "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
+        "force": force,
+        "applied_fields": applied_fields,
+    }
+
+    _audit(request.user.id, "ENRICH", "vulnerabilities", v.id, old_values=old, new_values=new_values)
+    trigger_notifications_for_event(NotificationEvent(
+        event_type="updated",
+        vulnerability_id=v.id,
+        actor_id=request.user.id,
+        old_values=old,
+        new_values={"status": v.status, "assigned_to": v.assigned_to},
+    ))
+
+    db.session.commit()
+    return jsonify({
+        "ok": True,
+        "enrichment": {
+            "status": "enriched",
+            "error": None,
+            "force": force,
+            "applied_fields": applied_fields,
+        },
+        "vulnerability": {
+            "id": v.id,
+            "severity": v.severity,
+            "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+            "cvss_vector": v.cvss_vector,
+            "cvss_version": v.cvss_version,
+            "cwe_id": v.cwe_id,
+            "references_json": v.references_json or [],
+            "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
+        },
+    })
 
 @bp.post("/vulnerabilities/<int:vuln_id>/versions")
 @role_required("Admin", "Analyst")
