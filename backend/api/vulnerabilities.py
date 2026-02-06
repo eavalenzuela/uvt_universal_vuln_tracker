@@ -256,6 +256,9 @@ def create_vulnerability():
 
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
+        "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "assigned_to": v.assigned_to,
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
@@ -415,7 +418,9 @@ def update_vulnerability(vuln_id: int):
         "title": v.title,
         "severity": v.severity,
         "status": v.status,
+        "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
         "assigned_to": v.assigned_to,
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
@@ -465,6 +470,9 @@ def update_vulnerability(vuln_id: int):
 
     _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
+        "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
+        "assigned_to": v.assigned_to,
+        "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,

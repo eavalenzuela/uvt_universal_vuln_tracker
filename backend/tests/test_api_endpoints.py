@@ -910,6 +910,35 @@ def test_vulnerability_create_emits_audit_log(app, client):
     assert log.user_id == admin.id
     assert log.record_id == vuln_id
     assert log.new_values["title"] == "Audit vuln"
+    for key in ["severity", "status", "cvss_score", "assigned_to", "sla_due_at"]:
+        assert key in log.new_values
+
+
+def test_vulnerability_update_emits_full_audit_snapshot(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Update audit vuln", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"severity": "High", "status": "In Progress", "assigned_to": admin.id, "cvss_score": 9.1},
+    )
+    assert update_resp.status_code == 200
+
+    log = _latest_audit(app, action="UPDATE", table_name="vulnerabilities")
+    assert log is not None
+    assert log.record_id == vuln_id
+    for key in ["severity", "status", "cvss_score", "assigned_to", "sla_due_at"]:
+        assert key in log.old_values
+        assert key in log.new_values
 
 
 def test_product_update_emits_audit_log(app, client):
