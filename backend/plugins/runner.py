@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from .registry import PluginRegistry
-from .state import create_plugin_run, get_plugin_config, update_plugin_run
+from .state import create_plugin_run, get_plugin_config, save_plugin_run_result
 from ..models import PluginRun
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,15 @@ def run_plugin(
                 stats = stats_payload
         if stats is None and isinstance(result, Sized) and not isinstance(result, (str, bytes)):
             stats = {"items_processed": len(result)}
-        update_plugin_run(run, status="success", finished_at=datetime.utcnow(), stats=stats)
+        artifacts = []
+        if isinstance(result, dict) and isinstance(result.get("artifacts"), list):
+            artifacts = result.get("artifacts")
+        elif getattr(plugin, "artifact_descriptors", None):
+            artifacts = [vars(item) for item in plugin.artifact_descriptors]
+        save_plugin_run_result(run, status="success", finished_at=datetime.utcnow(), stats=stats, artifact_descriptors=artifacts)
     except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
         logger.exception("Plugin run failed for %s", plugin_id)
-        update_plugin_run(
+        save_plugin_run_result(
             run,
             status="failed",
             finished_at=datetime.utcnow(),
@@ -93,10 +98,15 @@ def _execute_plugin_run(
                     stats = stats_payload
             if stats is None and isinstance(result, Sized) and not isinstance(result, (str, bytes)):
                 stats = {"items_processed": len(result)}
-            update_plugin_run(run, status="success", finished_at=datetime.utcnow(), stats=stats)
+            artifacts = []
+            if isinstance(result, dict) and isinstance(result.get("artifacts"), list):
+                artifacts = result.get("artifacts")
+            elif getattr(plugin, "artifact_descriptors", None):
+                artifacts = [vars(item) for item in plugin.artifact_descriptors]
+            save_plugin_run_result(run, status="success", finished_at=datetime.utcnow(), stats=stats, artifact_descriptors=artifacts)
         except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
             logger.exception("Plugin run failed for %s", plugin_id)
-            update_plugin_run(
+            save_plugin_run_result(
                 run,
                 status="failed",
                 finished_at=datetime.utcnow(),

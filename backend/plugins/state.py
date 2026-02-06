@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..database import db
-from ..models import ExternalSourceState, PluginConfig, PluginRun
+from ..models import (
+    ExternalSourceState,
+    PluginConfig,
+    PluginRun,
+    PluginRunArtifact,
+    PluginRunArtifactLink,
+)
 
 
 def get_plugin_config(plugin_id: str) -> PluginConfig | None:
@@ -107,4 +113,60 @@ def update_plugin_run(
     if stats is not None:
         run.stats_json = dict(stats)
     db.session.commit()
+    return run
+
+
+def save_plugin_run_result(
+    run: PluginRun,
+    *,
+    status: str,
+    finished_at: datetime,
+    error: str | None = None,
+    stats: Mapping[str, Any] | None = None,
+    artifact_descriptors: Sequence[Mapping[str, Any]] | None = None,
+) -> PluginRun:
+    run.status = status
+    run.finished_at = finished_at
+    run.error = error
+    if stats is not None:
+        run.stats_json = dict(stats)
+
+    try:
+        if artifact_descriptors is not None:
+            run.artifacts.clear()
+            for descriptor in artifact_descriptors:
+                artifact = PluginRunArtifact(
+                    plugin_run_id=run.id,
+                    artifact_type=str(descriptor.get("artifact_type") or "unknown"),
+                    storage_path=str(descriptor.get("storage_path") or ""),
+                    checksum=descriptor.get("checksum"),
+                    size=descriptor.get("size"),
+                    content_type=descriptor.get("content_type"),
+                )
+                db.session.add(artifact)
+                db.session.flush()
+
+                for vuln_id in descriptor.get("vulnerability_ids") or []:
+                    db.session.add(
+                        PluginRunArtifactLink(
+                            artifact_id=artifact.id,
+                            vulnerability_id=int(vuln_id),
+                        )
+                    )
+                for version_id in descriptor.get("product_version_ids") or []:
+                    db.session.add(
+                        PluginRunArtifactLink(
+                            artifact_id=artifact.id,
+                            product_version_id=int(version_id),
+                        )
+                    )
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        run = PluginRun.query.get(run.id)
+        run.status = "partial_failed"
+        run.finished_at = finished_at
+        run.error = "artifact persistence failed"
+        db.session.commit()
     return run

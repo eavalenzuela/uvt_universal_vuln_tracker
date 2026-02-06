@@ -4,12 +4,12 @@ import importlib
 import inspect
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 from sqlalchemy import asc
 
 from ..auth import login_required, role_required
 from ..database import db
-from ..models import PluginConfig
+from ..models import PluginConfig, PluginRunArtifact
 from ..plugins.config import is_masked_value, mask_config
 from ..plugins.base import BasePlugin, ControlsImportPlugin, VulnerabilityFeedPlugin
 from ..plugins.config import prepare_plugin_config, validate_config_schema
@@ -46,6 +46,33 @@ def _plugin_run_json(run):
         "stats": run.stats_json,
     }
 
+
+
+
+def _redact_storage_path(storage_path: str | None) -> str | None:
+    if not storage_path:
+        return None
+    return storage_path.rsplit("/", 1)[-1]
+
+
+def _artifact_json(artifact: PluginRunArtifact):
+    return {
+        "id": artifact.id,
+        "plugin_run_id": artifact.plugin_run_id,
+        "artifact_type": artifact.artifact_type,
+        "storage_path": _redact_storage_path(artifact.storage_path),
+        "checksum": artifact.checksum,
+        "size": artifact.size,
+        "content_type": artifact.content_type,
+        "created_at": artifact.created_at.isoformat() if artifact.created_at else None,
+        "links": [
+            {
+                "vulnerability_id": link.vulnerability_id,
+                "product_version_id": link.product_version_id,
+            }
+            for link in artifact.links
+        ],
+    }
 
 def _plugin_config_json(
     config: PluginConfig | None,
@@ -295,6 +322,35 @@ def update_plugin_config(plugin_id: str):
     )
     db.session.commit()
     return jsonify(_plugin_config_json(updated, schema=plugin_cls.config_schema)), 200
+
+
+@bp.get("/plugins/runs/<int:run_id>/artifacts")
+@login_required
+def list_plugin_run_artifacts(run_id: int):
+    run = get_plugin_run_by_id(run_id)
+    if not run:
+        return jsonify({"error": "Plugin run not found"}), 404
+    artifacts = PluginRunArtifact.query.filter_by(plugin_run_id=run_id).order_by(PluginRunArtifact.created_at.asc()).all()
+    return jsonify([_artifact_json(item) for item in artifacts]), 200
+
+
+@bp.get("/plugins/artifacts/<int:artifact_id>/download")
+@login_required
+def download_plugin_run_artifact(artifact_id: int):
+    artifact = PluginRunArtifact.query.filter_by(id=artifact_id).first()
+    if not artifact:
+        return jsonify({"error": "Artifact not found"}), 404
+
+    actor = getattr(request, "user", None)
+    if not actor or actor.role not in {"Admin", "Analyst"}:
+        return jsonify({"error": "Forbidden"}), 403
+
+    return send_file(
+        artifact.storage_path,
+        mimetype=artifact.content_type or "application/octet-stream",
+        as_attachment=True,
+        download_name=_redact_storage_path(artifact.storage_path) or f"artifact-{artifact.id}",
+    )
 
 
 @bp.get("/plugins/import/sources")
