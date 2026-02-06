@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from backend.database import db
 from backend.models import Vulnerability, VulnerabilitySource
+from backend.services.component_correlation import correlate_vulnerability_to_components
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,14 @@ def upsert_vulnerability(
 
     if source:
         _upsert_source(vulnerability, source, source_id, normalized.raw_payload)
+
+    if source and normalized.cve_id:
+        correlate_vulnerability_to_components(
+            vulnerability,
+            source=source,
+            cve_id=normalized.cve_id,
+            raw_payload=normalized.raw_payload,
+        )
 
     db.session.commit()
     return vulnerability

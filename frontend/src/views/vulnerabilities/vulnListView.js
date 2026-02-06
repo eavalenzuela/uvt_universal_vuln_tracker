@@ -44,6 +44,9 @@ function collectFilterValues({
   confidentialitySelect,
   integritySelect,
   availabilitySelect,
+  componentEcosystemInput,
+  componentNameInput,
+  componentDepthInput,
 }) {
   return {
     search: searchInput.value.trim() || undefined,
@@ -53,6 +56,9 @@ function collectFilterValues({
     confidentiality_impact: confidentialitySelect.value || undefined,
     integrity_impact: integritySelect.value || undefined,
     availability_impact: availabilitySelect.value || undefined,
+    component_ecosystem: componentEcosystemInput.value.trim() || undefined,
+    component_name: componentNameInput.value.trim() || undefined,
+    component_depth_max: componentDepthInput.value || undefined,
   };
 }
 
@@ -64,6 +70,9 @@ function applyFilterValues(values, {
   confidentialitySelect,
   integritySelect,
   availabilitySelect,
+  componentEcosystemInput,
+  componentNameInput,
+  componentDepthInput,
 }) {
   searchInput.value = values?.search || "";
   statusSelect.value = values?.status || "";
@@ -72,6 +81,9 @@ function applyFilterValues(values, {
   confidentialitySelect.value = values?.confidentiality_impact || "";
   integritySelect.value = values?.integrity_impact || "";
   availabilitySelect.value = values?.availability_impact || "";
+  componentEcosystemInput.value = values?.component_ecosystem || "";
+  componentNameInput.value = values?.component_name || "";
+  componentDepthInput.value = values?.component_depth_max || "";
 }
 let cachedProductVersions = null;
 let cachedAttackVectors = null;
@@ -961,6 +973,9 @@ export async function VulnListView(params = {}) {
     el("option", { value: "", text: "Availability impact" }),
     ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c }))
   );
+  const componentEcosystemInput = el("input", { class: "input", placeholder: "Component ecosystem (e.g. npm)" });
+  const componentNameInput = el("input", { class: "input", placeholder: "Component package name" });
+  const componentDepthInput = el("input", { class: "input", type: "number", min: "0", placeholder: "Max transitive depth" });
 
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
@@ -978,6 +993,9 @@ export async function VulnListView(params = {}) {
         confidentialitySelect,
         integritySelect,
         availabilitySelect,
+        componentEcosystemInput,
+        componentNameInput,
+        componentDepthInput,
       }));
 
       list.innerHTML = "";
@@ -1008,6 +1026,9 @@ export async function VulnListView(params = {}) {
       confidentialitySelect,
       integritySelect,
       availabilitySelect,
+      componentEcosystemInput,
+      componentNameInput,
+      componentDepthInput,
     });
     try {
       const csv = await exportVulnerabilitiesCsv(filters);
@@ -1066,6 +1087,9 @@ export async function VulnListView(params = {}) {
           confidentialitySelect,
           integritySelect,
           availabilitySelect,
+          componentEcosystemInput,
+          componentNameInput,
+          componentDepthInput,
         }),
         visibility,
       });
@@ -1089,6 +1113,9 @@ export async function VulnListView(params = {}) {
       confidentialitySelect,
       integritySelect,
       availabilitySelect,
+      componentEcosystemInput,
+      componentNameInput,
+      componentDepthInput,
     });
     await load();
   });
@@ -1133,6 +1160,9 @@ export async function VulnListView(params = {}) {
     confidentialitySelect,
     integritySelect,
     availabilitySelect,
+    componentEcosystemInput,
+    componentNameInput,
+    componentDepthInput,
     applyBtn,
     exportBtn,
     savedFiltersSelect,

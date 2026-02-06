@@ -9,6 +9,9 @@ export async function listVulnerabilities({
   integrity_impact,
   availability_impact,
   assigned_to,
+  component_ecosystem,
+  component_name,
+  component_depth_max,
   sort = "updated_at",
   order = "desc",
   page = 1,
@@ -23,6 +26,9 @@ export async function listVulnerabilities({
   if (integrity_impact) params.set("integrity_impact", integrity_impact);
   if (availability_impact) params.set("availability_impact", availability_impact);
   if (assigned_to !== undefined && assigned_to !== null && assigned_to !== "") params.set("assigned_to", assigned_to);
+  if (component_ecosystem) params.set("component_ecosystem", component_ecosystem);
+  if (component_name) params.set("component_name", component_name);
+  if (component_depth_max !== undefined && component_depth_max !== null && component_depth_max !== "") params.set("component_depth_max", component_depth_max);
   if (sort) params.set("sort", sort);
   if (order) params.set("order", order);
   params.set("page", page);

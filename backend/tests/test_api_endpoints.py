@@ -1388,3 +1388,85 @@ def test_rate_limit_export_endpoint(app, client):
     blocked = client.get("/api/reports/vulnerabilities/export", headers=auth_header(admin))
     assert blocked.status_code == 429
     assert blocked.get_json()["error"] == "Rate limit exceeded"
+
+
+def test_sbom_ingest_and_component_listing(app, client):
+    admin = create_admin(app)
+    _, pv = create_product_with_version(app, owner_id=admin.id)
+
+    payload = {
+        "format": "cyclonedx",
+        "sbom": {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "components": [
+                {
+                    "bom-ref": "pkg:npm/lodash@4.17.21",
+                    "type": "library",
+                    "name": "lodash",
+                    "version": "4.17.21",
+                    "purl": "pkg:npm/lodash@4.17.21",
+                    "properties": [{"name": "uvt:cve", "value": "CVE-2024-9999"}],
+                },
+            ],
+            "dependencies": [
+                {"ref": "pkg:npm/lodash@4.17.21", "dependsOn": []},
+            ],
+        },
+    }
+
+    ingest = client.post(f"/api/product_versions/{pv.id}/sbom", headers=auth_header(admin), json=payload)
+    assert ingest.status_code == 200
+    assert ingest.get_json()["stats"]["components_ingested"] == 1
+
+    listing = client.get(f"/api/product_versions/{pv.id}/components", headers=auth_header(admin))
+    assert listing.status_code == 200
+    rows = listing.get_json()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "lodash"
+    assert rows[0]["ecosystem"] == "npm"
+
+
+def test_vulnerability_component_filters_and_export(app, client):
+    admin = create_admin(app)
+    _, pv = create_product_with_version(app, owner_id=admin.id)
+
+    vuln = client.post(
+        "/api/vulnerabilities",
+        headers=auth_header(admin),
+        json={"title": "lodash vuln", "cve_id": "CVE-2024-9999", "severity": "High"},
+    )
+    assert vuln.status_code == 201
+
+    payload = {
+        "format": "cyclonedx",
+        "sbom": {
+            "components": [
+                {
+                    "bom-ref": "pkg:npm/lodash@4.17.21",
+                    "name": "lodash",
+                    "version": "4.17.21",
+                    "purl": "pkg:npm/lodash@4.17.21",
+                    "properties": [{"name": "uvt:cve", "value": "CVE-2024-9999"}],
+                },
+            ],
+            "dependencies": [],
+        },
+    }
+    ingest = client.post(f"/api/product_versions/{pv.id}/sbom", headers=auth_header(admin), json=payload)
+    assert ingest.status_code == 200
+
+    filtered = client.get(
+        "/api/vulnerabilities?component_ecosystem=npm&component_name=lodash",
+        headers=auth_header(admin),
+    )
+    assert filtered.status_code == 200
+    assert filtered.get_json()["total"] >= 1
+
+    exported = client.get(
+        "/api/reports/vulnerabilities/export?component_ecosystem=npm&component_name=lodash",
+        headers=auth_header(admin),
+    )
+    assert exported.status_code == 200
+    csv = exported.get_data(as_text=True)
+    assert "component_ecosystems" in csv

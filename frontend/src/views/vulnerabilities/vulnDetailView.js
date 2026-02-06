@@ -105,6 +105,13 @@ export async function VulnDetailView(params = {}) {
           item.attack_vector_description ? el("div", { class: "muted", text: item.attack_vector_description }) : null,
         )
       ),
+      renderList("Affected components", vuln.affected_components, (item) =>
+        el("div", { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
+          el("div", { style: "font-weight:600;", text: `${item.ecosystem || "pkg"} • ${item.name || "unknown"} ${item.version || ""}` }),
+          el("div", { class: "muted", text: `Match: ${item.match_type || "-"} • Depth: ${item.transitive_depth ?? 0}` }),
+          item.dependency_path ? el("div", { class: "muted", text: item.dependency_path }) : null,
+        )
+      ),
       renderList("Terminal impacts", vuln.terminal_impacts, (item) =>
         el("div", { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
           el("div", { style: "font-weight:600;", text: item.terminal_impact_name || "Unnamed impact" }),

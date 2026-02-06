@@ -11,6 +11,7 @@ from ..models import (
     AttackVector,
     ProductVersion,
     Product,
+    VulnerabilityComponent,
 )
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
@@ -151,6 +152,7 @@ def list_vulnerabilities():
             "updated_at": v.updated_at.isoformat(),
             "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
             "sla_state": compute_sla_state(v, policy),
+            "affected_components_count": len(v.affected_components or []),
         } for v in items.items],
         "page": page,
         "page_size": page_size,
@@ -291,6 +293,23 @@ def get_vulnerability(vuln_id: int):
             "terminal_impact_description": mapping.terminal_impact.description if mapping.terminal_impact else None,
         })
 
+    component_rows = []
+    for mapping in v.affected_components:
+        component = mapping.component
+        component_rows.append({
+            "id": mapping.id,
+            "component_id": component.id if component else None,
+            "name": component.name if component else None,
+            "version": component.version if component else None,
+            "ecosystem": component.ecosystem if component else None,
+            "purl": component.purl if component else None,
+            "cpe": component.cpe if component else None,
+            "source": mapping.source,
+            "match_type": mapping.match_type,
+            "dependency_path": mapping.dependency_path,
+            "transitive_depth": mapping.transitive_depth,
+        })
+
     return jsonify({
         "id": v.id,
         "cve_id": v.cve_id,
@@ -314,6 +333,7 @@ def get_vulnerability(vuln_id: int):
         "affected_versions": version_rows,
         "attack_vectors": attack_vector_rows,
         "terminal_impacts": terminal_impact_rows,
+        "affected_components": component_rows,
     })
 
 

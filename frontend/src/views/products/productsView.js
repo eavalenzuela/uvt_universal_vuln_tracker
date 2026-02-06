@@ -66,6 +66,7 @@ function renderProductCard(product, reloadList, { canEdit, isAdminUser }) {
       el("div", {}, el("div", { class: "muted", text: "Created" }), el("div", { text: product.created_at ? product.created_at.slice(0, 10) : "-" })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: product.updated_at ? product.updated_at.slice(0, 10) : "-" })),
       el("div", {}, el("div", { class: "muted", text: "Versions" }), el("div", { text: product.version_count ?? "-" })),
+      el("div", {}, el("div", { class: "muted", text: "Components" }), el("div", { text: product.component_count ?? "-" })),
     ),
     product.description ? el("p", { class: "muted", style: "margin-top: 8px;", text: product.description }) : null,
   );
@@ -543,6 +544,22 @@ function renderProductCard(product, reloadList, { canEdit, isAdminUser }) {
       : el("p", { class: "muted", text: "No description provided." });
 
     const deleteBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Delete product");
+    const componentSection = el(
+      "div",
+      {},
+      el("h4", { text: "Software components" }),
+      detailData.components?.length
+        ? el("div", { style: "display:flex; flex-direction:column; gap:8px;" },
+            ...detailData.components.map((c) =>
+              el("div", { class: "card", style: "padding:8px;" },
+                el("div", { style: "font-weight:600;", text: `${c.ecosystem || "pkg"} • ${c.name} ${c.version || ""}` }),
+                el("div", { class: "muted", text: `Product version: ${c.version_label || "-"}` }),
+                c.dependency_path ? el("div", { class: "muted", text: c.dependency_path }) : null,
+              )
+            )
+          )
+        : el("div", { class: "muted", text: "No software components imported yet." }),
+    );
     if (isAdminUser) {
       deleteBtn.addEventListener("click", async () => {
         if (!confirm(`Delete ${detailData.name}? This cannot be undone.`)) return;
@@ -582,6 +599,7 @@ function renderProductCard(product, reloadList, { canEdit, isAdminUser }) {
     });
 
     detailContent.append(renderVersionsSection());
+    detailContent.append(componentSection);
 
     if (isEditing) {
       renderEditSection().then((form) => {
