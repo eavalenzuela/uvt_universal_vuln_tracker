@@ -6,13 +6,27 @@ from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 
 from ..auth import login_required, role_required
+from ..database import db
 from ..models import PluginConfig
 from ..plugins.config import is_masked_value, mask_config
 from ..plugins.registry import PluginRegistry
 from ..plugins.runner import enqueue_plugin_run, get_latest_plugin_run, get_plugin_run_by_id
 from ..plugins.state import get_plugin_config, upsert_plugin_config
+from ..services.audit import log_audit_event
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
+
+
+def _audit(action, resource, record_id, *, old_values=None, new_values=None):
+    actor = getattr(request, "user", None)
+    db.session.add(log_audit_event(
+        actor_id=actor.id if actor else None,
+        action=action,
+        resource=resource,
+        record_id=record_id,
+        old_values=old_values,
+        new_values=new_values,
+    ))
 
 
 def _plugin_run_json(run):
@@ -151,6 +165,8 @@ def run_plugin_now(plugin_id: str):
     if config_override:
         config_payload.update(config_override)
     run = enqueue_plugin_run(current_app._get_current_object(), registry, plugin_id, config=config_payload)
+    _audit("RUN", "plugin_runs", run.id, new_values={"plugin_id": plugin_id, "config_override": config_override})
+    db.session.commit()
     return jsonify(_plugin_run_json(run)), 202
 
 
@@ -205,6 +221,8 @@ def update_plugin_config(plugin_id: str):
         else (config_row.interval_minutes if config_row else None)
     )
 
+    old_values = _plugin_config_json(config_row, plugin_id=plugin_id, schema=plugin_cls.config_schema)
+
     updated = upsert_plugin_config(
         plugin_id,
         merged_config if incoming_config is not None else None,
@@ -212,4 +230,12 @@ def update_plugin_config(plugin_id: str):
         schedule_cron=schedule_cron,
         interval_minutes=interval_minutes,
     )
+    _audit(
+        "UPDATE",
+        "plugin_configs",
+        updated.id,
+        old_values=old_values,
+        new_values=_plugin_config_json(updated, schema=plugin_cls.config_schema),
+    )
+    db.session.commit()
     return jsonify(_plugin_config_json(updated, schema=plugin_cls.config_schema)), 200

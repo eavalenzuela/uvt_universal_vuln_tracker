@@ -3,7 +3,7 @@ import json
 
 from backend.auth import create_user, generate_token, hash_password
 from backend.database import db
-from backend.models import Product, ProductVersion, User, Vulnerability, VulnerabilityVersion
+from backend.models import AuditLog, Product, ProductVersion, User, Vulnerability, VulnerabilityVersion
 
 
 def auth_header(user):
@@ -51,6 +51,15 @@ def create_product_with_version(app, owner_id=None, version="1.0.0"):
         return product, pv
 
 
+
+
+def _latest_audit(app, *, action, table_name):
+    with app.app_context():
+        return (
+            AuditLog.query.filter_by(action=action, table_name=table_name)
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
 def test_health_endpoint(client):
     resp = client.get("/api/health")
     assert resp.status_code == 200
@@ -698,3 +707,83 @@ def test_plugin_run_status_endpoint_not_found(app, client):
     status_resp = client.get("/api/plugins/runs/99999", headers=headers)
     assert status_resp.status_code == 404
     assert status_resp.get_json()["error"] == "Plugin run not found"
+
+
+def test_vulnerability_create_emits_audit_log(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Audit vuln", "severity": "Low", "status": "Open"},
+    )
+    assert resp.status_code == 201
+    vuln_id = resp.get_json()["id"]
+
+    log = _latest_audit(app, action="CREATE", table_name="vulnerabilities")
+    assert log is not None
+    assert log.user_id == admin.id
+    assert log.record_id == vuln_id
+    assert log.new_values["title"] == "Audit vuln"
+
+
+def test_product_update_emits_audit_log(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post("/api/products", headers=headers, json={"name": "Prod A", "description": "old"})
+    assert create_resp.status_code == 201
+    product_id = create_resp.get_json()["id"]
+
+    update_resp = client.patch(
+        f"/api/products/{product_id}",
+        headers=headers,
+        json={"description": "new"},
+    )
+    assert update_resp.status_code == 200
+
+    log = _latest_audit(app, action="UPDATE", table_name="products")
+    assert log is not None
+    assert log.record_id == product_id
+    assert log.old_values["description"] == "old"
+    assert log.new_values["description"] == "new"
+
+
+def test_plugin_config_update_emits_scrubbed_audit_log(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    resp = client.post(
+        "/api/plugins/slack/config",
+        headers=headers,
+        json={"enabled": True, "config": {"webhook_url": "https://example.local/secret", "default_channel": "#sec"}},
+    )
+    assert resp.status_code == 200
+
+    log = _latest_audit(app, action="UPDATE", table_name="plugin_configs")
+    assert log is not None
+    assert log.user_id == admin.id
+    assert log.new_values["config"]["webhook_url"] == "***"
+    assert log.new_values["config"]["default_channel"] == "#sec"
+
+
+def test_control_delete_emits_audit_log(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/controls",
+        headers=headers,
+        json={"name": "AU-1", "framework": "NIST"},
+    )
+    assert create_resp.status_code == 201
+    control_id = create_resp.get_json()["id"]
+
+    delete_resp = client.delete(f"/api/controls/{control_id}", headers=headers)
+    assert delete_resp.status_code == 200
+
+    log = _latest_audit(app, action="DELETE", table_name="controls")
+    assert log is not None
+    assert log.record_id == control_id
+    assert log.old_values["name"] == "AU-1"

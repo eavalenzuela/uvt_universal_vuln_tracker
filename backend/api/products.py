@@ -6,8 +6,21 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
 from ..auth import login_required, role_required
+from ..services.audit import log_audit_event, model_snapshot
 
 bp = Blueprint("products_api", __name__, url_prefix="/api")
+
+
+def _audit(action, resource, record_id, *, old_values=None, new_values=None):
+    actor = getattr(request, "user", None)
+    db.session.add(log_audit_event(
+        actor_id=actor.id if actor else None,
+        action=action,
+        resource=resource,
+        record_id=record_id,
+        old_values=old_values,
+        new_values=new_values,
+    ))
 
 def _version_json(v: ProductVersion):
     return {
@@ -88,6 +101,8 @@ def create_product():
         created_by=getattr(request, "user", None).id if getattr(request, "user", None) else None,
     )
     db.session.add(p)
+    db.session.flush()
+    _audit("CREATE", "products", p.id, new_values=model_snapshot(p))
     db.session.commit()
     return jsonify({"id": p.id, "name": p.name, "description": p.description}), 201
 
@@ -103,6 +118,8 @@ def get_product(product_id: int):
 def update_product(product_id: int):
     p = Product.query.get_or_404(product_id)
     data = request.get_json(silent=True) or {}
+
+    old_values = model_snapshot(p)
 
     if "name" in data:
         name = (data.get("name") or "").strip()
@@ -175,6 +192,7 @@ def update_product(product_id: int):
             new_links.append(link)
         p.control_links = new_links
 
+    _audit("UPDATE", "products", p.id, old_values=old_values, new_values=model_snapshot(p))
     db.session.commit()
     return jsonify(_product_json(p, include_details=True))
 
@@ -183,6 +201,7 @@ def update_product(product_id: int):
 @role_required("Admin")
 def delete_product(product_id: int):
     p = Product.query.get_or_404(product_id)
+    _audit("DELETE", "products", p.id, old_values=model_snapshot(p))
     db.session.delete(p)
     db.session.commit()
     return jsonify({"ok": True})
@@ -214,6 +233,8 @@ def create_version(product_id: int):
     )
     db.session.add(v)
     try:
+        db.session.flush()
+        _audit("CREATE", "product_versions", v.id, new_values=model_snapshot(v))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -227,6 +248,8 @@ def create_version(product_id: int):
 def update_version(product_id: int, version_id: int):
     v = ProductVersion.query.filter_by(product_id=product_id, id=version_id).first_or_404()
     data = request.get_json(silent=True) or {}
+
+    old_values = model_snapshot(v)
 
     if "version" in data:
         version_value = (data.get("version") or "").strip()
@@ -244,6 +267,7 @@ def update_version(product_id: int, version_id: int):
         v.is_active = bool(data.get("is_active"))
 
     try:
+        _audit("UPDATE", "product_versions", v.id, old_values=old_values, new_values=model_snapshot(v))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -256,6 +280,7 @@ def update_version(product_id: int, version_id: int):
 @role_required("Admin", "Analyst")
 def delete_version(product_id: int, version_id: int):
     v = ProductVersion.query.filter_by(product_id=product_id, id=version_id).first_or_404()
+    _audit("DELETE", "product_versions", v.id, old_values=model_snapshot(v))
     db.session.delete(v)
     db.session.commit()
     return jsonify({"ok": True})
