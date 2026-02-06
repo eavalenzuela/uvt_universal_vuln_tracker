@@ -3,7 +3,7 @@ import io
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, Response
-from sqlalchemy import asc, desc, func
+from sqlalchemy import desc, func
 
 from ..auth import login_required, role_required
 from ..database import db
@@ -11,7 +11,7 @@ from ..models import ReportSchedule, Vulnerability
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, required_string
-from .vulnerability_query import apply_vulnerability_filters, parse_vulnerability_filters
+from ..services.vulnerability_query import build_vulnerability_query
 
 bp = Blueprint("reports_api", __name__, url_prefix="/api")
 
@@ -41,21 +41,6 @@ ALLOWED_CHANNELS = {"email", "slack"}
 ALLOWED_REPORT_TYPES = {"vulnerabilities", "dashboard_summary"}
 
 
-def _parse_filters(args):
-    filters = parse_vulnerability_filters(args)
-    filters["sort"] = args.get("sort") or "updated_at"
-    filters["order"] = (args.get("order") or "desc").lower()
-    return filters
-
-
-def _build_vulnerability_query(filters):
-    q = apply_vulnerability_filters(Vulnerability.query, filters)
-    sort = filters.get("sort") or "updated_at"
-    sort_col = getattr(Vulnerability, sort, Vulnerability.updated_at)
-    q = q.order_by(desc(sort_col) if filters.get("order") != "asc" else asc(sort_col))
-    return q
-
-
 def _range_start(range_value):
     now = datetime.utcnow()
     if range_value == "Month to date":
@@ -73,7 +58,7 @@ def _range_start(range_value):
 
 
 def _dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 days"):
-    q = apply_vulnerability_filters(Vulnerability.query, filters)
+    q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
     total = q.count()
 
     rows = q.with_entities(
@@ -177,7 +162,7 @@ def _csv_response(filename, fieldnames, rows):
 
 
 def _dashboard_summary(filters):
-    q = _build_vulnerability_query(filters)
+    q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
     total = q.count()
     by_severity = dict(
         db.session.query(Vulnerability.severity, func.count(Vulnerability.id))
@@ -207,9 +192,9 @@ def _summary_rows(summary):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_vuln_export")
 def export_vulnerabilities():
-    filters = _parse_filters(request.args)
     try:
-        items = _build_vulnerability_query(filters).all()
+        items, _ = build_vulnerability_query(request.args, base_query=Vulnerability.query)
+        items = items.all()
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     rows = [_vuln_row(v) for v in items]
@@ -220,9 +205,8 @@ def export_vulnerabilities():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_dashboard_export")
 def export_dashboard_summary():
-    filters = _parse_filters(request.args)
     try:
-        summary = _dashboard_summary(filters)
+        summary = _dashboard_summary(request.args)
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     return _csv_response("dashboard_summary.csv", ["metric", "group", "value"], _summary_rows(summary))
@@ -232,7 +216,7 @@ def export_dashboard_summary():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="dashboard_summary")
 def dashboard_summary():
-    filters = parse_vulnerability_filters(request.args)
+    filters = request.args
     group_by = request.args.get("group_by") or "Severity"
     range_value = request.args.get("range") or "Last 14 days"
     try:
@@ -288,11 +272,15 @@ def run_report_schedule(schedule_id):
         return error_response("Forbidden", status_code=403)
 
     filters = schedule.filters_json or {}
-    if schedule.report_type == "dashboard_summary":
-        content = _csv_content(["metric", "group", "value"], _summary_rows(_dashboard_summary(filters)))
-    else:
-        rows = [_vuln_row(v) for v in _build_vulnerability_query(filters).all()]
-        content = _csv_content(EXPORT_FIELDS, rows)
+    try:
+        if schedule.report_type == "dashboard_summary":
+            content = _csv_content(["metric", "group", "value"], _summary_rows(_dashboard_summary(filters)))
+        else:
+            query, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
+            rows = [_vuln_row(v) for v in query.all()]
+            content = _csv_content(EXPORT_FIELDS, rows)
+    except ValueError as exc:
+        return error_response(str(exc), status_code=400)
 
     delivery_result = _deliver_report(schedule, content)
     schedule.last_run_at = datetime.utcnow()
