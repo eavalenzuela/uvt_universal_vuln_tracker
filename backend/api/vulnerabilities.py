@@ -21,7 +21,7 @@ from ..services.audit import build_field_diff, log_audit_event, model_snapshot
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
-from .validation import ValidationError, enum_value, error_response, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
+from .validation import ValidationError, enum_value, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
@@ -199,6 +199,7 @@ def create_vulnerability():
 
     try:
         title = required_string(data, "title")
+        cve_id = normalize_cve_id(data.get("cve_id"), required=False)
         attack_complexity = enum_value(data.get("attack_complexity"), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False) or "Not Defined"
         confidentiality_impact = enum_value(data.get("confidentiality_impact"), field="confidentiality_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
         integrity_impact = enum_value(data.get("integrity_impact"), field="integrity_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
@@ -215,7 +216,7 @@ def create_vulnerability():
         return error_response(exc.error, field=exc.field, details=exc.details)
 
     v = Vulnerability(
-        cve_id=(data.get("cve_id") or None),
+        cve_id=cve_id,
         title=title,
         description=data.get("description"),
         severity=data.get("severity", "Medium"),
@@ -434,7 +435,9 @@ def update_vulnerability(vuln_id: int):
             if field not in data:
                 continue
 
-            if field == "title":
+            if field == "cve_id":
+                setattr(v, field, normalize_cve_id(data.get(field), required=False))
+            elif field == "title":
                 title_value = (data.get(field) or "").strip()
                 if not title_value:
                     return error_response("title cannot be empty", field="title")

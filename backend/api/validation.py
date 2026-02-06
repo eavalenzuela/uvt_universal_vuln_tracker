@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import re
 from typing import Any, Callable, Iterable
 
 from flask import jsonify
+
+
+_CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 
 
 @dataclass
@@ -38,6 +42,20 @@ def optional_string(data: dict[str, Any], field: str) -> str | None:
     if not isinstance(value, str):
         raise invalid(field, f"{field} must be a string")
     return value.strip()
+
+
+def normalize_cve_id(value: Any, *, field: str = "cve_id", required: bool = False) -> str | None:
+    if value in (None, ""):
+        if required:
+            raise invalid(field, f"{field} is required")
+        return None
+    if not isinstance(value, str):
+        raise invalid(field, f"{field} must be a string")
+
+    normalized = value.strip().upper()
+    if not _CVE_ID_RE.fullmatch(normalized):
+        raise invalid(field, f"{field} must match CVE-YYYY-NNNN format")
+    return normalized
 
 
 def enum_value(value: Any, *, field: str, options: Iterable[str], required: bool = True) -> str | None:
