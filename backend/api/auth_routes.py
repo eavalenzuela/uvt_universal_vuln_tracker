@@ -1,12 +1,15 @@
-from flask import Blueprint, jsonify, request, current_app
+from urllib.parse import quote
 
-from ..database import db
+from flask import Blueprint, jsonify, request, current_app, redirect
+
 from ..models import User
 from ..auth import authenticate_user, create_user, generate_token, login_required
 from ..rate_limiter import rate_limit
+from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
+
 
 @bp.post("/login")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
@@ -28,9 +31,49 @@ def login():
         "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}
     })
 
+
+@bp.get("/providers")
+def providers():
+    return jsonify({
+        "oidc": {
+            "enabled": oidc_enabled(current_app.config),
+            "login_url": "/api/auth/oidc/login",
+        }
+    })
+
+
+@bp.get("/oidc/login")
+def oidc_login():
+    if not oidc_enabled(current_app.config):
+        return error_response("OIDC disabled", status_code=404)
+
+    next_path = request.args.get("next", "/")
+    return redirect(build_login_redirect(current_app.config, next_path), code=302)
+
+
+@bp.get("/oidc/callback")
+def oidc_callback():
+    if not oidc_enabled(current_app.config):
+        return error_response("OIDC disabled", status_code=404)
+
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code or not state:
+        return error_response("Missing OIDC callback parameters", status_code=400)
+
+    try:
+        result = complete_oidc_login(current_app.config, code, state)
+    except Exception:
+        return error_response("OIDC authentication failed", status_code=401)
+
+    frontend_redirect = current_app.config.get("FRONTEND_LOGIN_SUCCESS_URL", "http://127.0.0.1:5173/login")
+    token = quote(result["token"])
+    return redirect(f"{frontend_redirect}?token={token}", code=302)
+
+
 @bp.post("/register")
 def register():
-    
+
     if not current_app.config.get("ALLOW_PUBLIC_REGISTRATION", False):
         return error_response("Registration disabled", status_code=403)
 
@@ -59,6 +102,7 @@ def register():
         "token": token,
         "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}
     }), 201
+
 
 @bp.get("/me")
 @login_required
