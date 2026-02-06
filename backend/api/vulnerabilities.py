@@ -11,10 +11,10 @@ from ..models import (
     VulnerabilityTerminalImpact,
     AttackVector,
     ProductVersion,
-    AuditLog,
     Product,
 )
 from ..auth import login_required, role_required
+from ..services.audit import log_audit_event, model_snapshot
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -70,10 +70,10 @@ def _normalize_impact(value):
     return value
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
-    db.session.add(AuditLog(
-        user_id=user_id,
+    db.session.add(log_audit_event(
+        actor_id=user_id,
         action=action,
-        table_name=table,
+        resource=table,
         record_id=record_id,
         old_values=old_values,
         new_values=new_values,
@@ -463,7 +463,7 @@ def update_vulnerability(vuln_id: int):
 @role_required("Admin", "Analyst")
 def delete_vulnerability(vuln_id: int):
     v = Vulnerability.query.get_or_404(vuln_id)
-    old = {"cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status}
+    old = model_snapshot(v)
 
     _audit(request.user.id, "DELETE", "vulnerabilities", v.id, old_values=old, new_values=None)
 

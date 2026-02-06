@@ -4,8 +4,21 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import Control
 from ..auth import login_required, role_required
+from ..services.audit import log_audit_event, model_snapshot
 
 bp = Blueprint("controls_api", __name__, url_prefix="/api")
+
+
+def _audit(action, resource, record_id, *, old_values=None, new_values=None):
+    actor = getattr(request, "user", None)
+    db.session.add(log_audit_event(
+        actor_id=actor.id if actor else None,
+        action=action,
+        resource=resource,
+        record_id=record_id,
+        old_values=old_values,
+        new_values=new_values,
+    ))
 
 
 def _control_json(control: Control):
@@ -40,6 +53,8 @@ def create_control():
         description=data.get("description"),
     )
     db.session.add(control)
+    db.session.flush()
+    _audit("CREATE", "controls", control.id, new_values=model_snapshot(control))
     db.session.commit()
     return jsonify(_control_json(control)), 201
 
@@ -57,6 +72,8 @@ def update_control(control_id: int):
     control = Control.query.get_or_404(control_id)
     data = request.get_json(silent=True) or {}
 
+    old_values = model_snapshot(control)
+
     if "name" in data:
         name = (data.get("name") or "").strip()
         if not name:
@@ -69,6 +86,7 @@ def update_control(control_id: int):
     if "description" in data:
         control.description = data.get("description")
 
+    _audit("UPDATE", "controls", control.id, old_values=old_values, new_values=model_snapshot(control))
     db.session.commit()
     return jsonify(_control_json(control))
 
@@ -77,6 +95,7 @@ def update_control(control_id: int):
 @role_required("Admin")
 def delete_control(control_id: int):
     control = Control.query.get_or_404(control_id)
+    _audit("DELETE", "controls", control.id, old_values=model_snapshot(control))
     db.session.delete(control)
     db.session.commit()
     return jsonify({"ok": True})
