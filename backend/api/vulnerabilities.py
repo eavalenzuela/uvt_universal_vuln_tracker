@@ -22,7 +22,7 @@ from ..services.notification_rules import NotificationEvent, trigger_notificatio
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
-from .vulnerability_query import apply_vulnerability_filters, apply_vulnerability_sort, parse_vulnerability_filters
+from ..services.vulnerability_query import build_vulnerability_query
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -143,26 +143,25 @@ def list_product_versions():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="list_vulnerabilities")
 def list_vulnerabilities():
-    q = Vulnerability.query
-
     try:
-        q = apply_vulnerability_filters(q, parse_vulnerability_filters(request.args))
+        q, query_meta = build_vulnerability_query(
+            request.args,
+            base_query=Vulnerability.query,
+            default_page=1,
+            default_page_size=25,
+            max_page_size=MAX_PAGE_SIZE,
+        )
     except ValueError as exc:
-        return error_response(str(exc), status_code=400)
+        message = str(exc)
+        field = None
+        if message.startswith("page "):
+            field = "page"
+        elif message.startswith("page_size "):
+            field = "page_size"
+        return error_response(message, field=field, status_code=400)
 
-    sort = request.args.get("sort", "updated_at")
-    order = request.args.get("order", "desc")
-
-    try:
-        page = parse_int(request.args.get("page", 1), field="page", minimum=1, required=True)
-        page_size = parse_int(request.args.get("page_size", 25), field="page_size", minimum=1, maximum=MAX_PAGE_SIZE, required=True)
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    try:
-        q = apply_vulnerability_sort(q, sort=sort, order=order)
-    except ValueError as exc:
-        return error_response(str(exc), status_code=400)
+    page = query_meta["page"]
+    page_size = query_meta["page_size"]
 
     items = q.paginate(page=page, per_page=page_size, error_out=False)
     policy = get_sla_policy()
