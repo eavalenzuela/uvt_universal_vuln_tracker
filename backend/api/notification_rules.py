@@ -12,7 +12,7 @@ from .validation import ValidationError, enum_value, error_response, parse_bool,
 
 bp = Blueprint("notification_rules_api", __name__, url_prefix="/api")
 
-VALID_ADAPTERS = {"slack", "jira"}
+VALID_ADAPTERS = {"slack", "jira", "webhook", "email"}
 VALID_SEVERITIES = {"None", "Low", "Medium", "High", "Critical"}
 
 
@@ -39,6 +39,10 @@ def _rule_json(rule: NotificationRule):
         "notify_on_status_change": rule.notify_on_status_change,
         "notify_on_assignment_change": rule.notify_on_assignment_change,
         "product_scope": rule.product_scope or [],
+        "frequency_days": rule.frequency_days,
+        "escalation_after_days": rule.escalation_after_days,
+        "channels": rule.channels or [],
+        "recipients": rule.recipients or [],
         "created_by": rule.created_by,
         "created_at": rule.created_at.isoformat() if rule.created_at else None,
         "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
@@ -72,6 +76,10 @@ def create_rule():
         notify_on_status_change=bool(data.get("notify_on_status_change", True)),
         notify_on_assignment_change=bool(data.get("notify_on_assignment_change", True)),
         product_scope=data.get("product_scope") or [],
+        frequency_days=max(int(data.get("frequency_days", 3)), 1),
+        escalation_after_days=max(int(data.get("escalation_after_days", 7)), 0),
+        channels=data.get("channels") or [],
+        recipients=data.get("recipients") or [],
         created_by=request.user.id,
     )
     db.session.add(rule)
@@ -110,6 +118,35 @@ def update_rule(rule_id: int):
     for field in ["is_enabled", "notify_on_status_change", "notify_on_assignment_change"]:
         if field in data:
             setattr(rule, field, bool(data.get(field)))
+
+
+    if "frequency_days" in data:
+        try:
+            rule.frequency_days = max(int(data.get("frequency_days") or 1), 1)
+        except (TypeError, ValueError):
+            return error_response("frequency_days must be an integer", field="frequency_days")
+
+    if "escalation_after_days" in data:
+        try:
+            rule.escalation_after_days = max(int(data.get("escalation_after_days") or 0), 0)
+        except (TypeError, ValueError):
+            return error_response("escalation_after_days must be an integer", field="escalation_after_days")
+
+    if "channels" in data:
+        channels = data.get("channels")
+        if channels is None:
+            channels = []
+        if not isinstance(channels, list):
+            return error_response("channels must be an array", field="channels")
+        rule.channels = channels
+
+    if "recipients" in data:
+        recipients = data.get("recipients")
+        if recipients is None:
+            recipients = []
+        if not isinstance(recipients, list):
+            return error_response("recipients must be an array", field="recipients")
+        rule.recipients = recipients
 
     if "delivery_config" in data:
         cfg = data.get("delivery_config")

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 import re
 from typing import Any
+from urllib import request as urllib_request
+from urllib import error as urllib_error
 
 from ..database import db
 from ..models import (
+    NotificationDeliveryCheckpoint,
     NotificationDeliveryLog,
     NotificationRule,
     PluginConfig,
@@ -19,7 +23,6 @@ from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
-
 
 MENTION_PATTERN = re.compile(r"(?<!\w)@([A-Za-z0-9_.-]{1,100})")
 
@@ -138,6 +141,24 @@ def _jira_send(config: dict[str, Any], vulnerability: Vulnerability, text: str) 
     return {"issue_key": issue_key}
 
 
+def _webhook_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    webhook_url = config.get("webhook_url")
+    if not webhook_url:
+        raise ValueError("Missing webhook_url")
+    body = str(payload).encode("utf-8")
+    req = urllib_request.Request(webhook_url, data=body, method="POST")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib_request.urlopen(req, timeout=10) as resp:
+            return {"status": resp.status}
+    except urllib_error.URLError as exc:
+        raise ValueError(f"webhook request failed: {exc}") from exc
+
+
+def _email_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    return {"status": "stub", "message": "email adapter entrypoint", "payload": payload, "config": config}
+
+
 def _deliver(rule: NotificationRule, vulnerability: Vulnerability, event: NotificationEvent, dry_run: bool = False) -> tuple[bool, dict[str, Any] | None, str | None]:
     config = _merged_delivery_config(rule.delivery_adapter, rule.delivery_config)
     text = (
@@ -146,18 +167,44 @@ def _deliver(rule: NotificationRule, vulnerability: Vulnerability, event: Notifi
     )
 
     if dry_run:
-        return True, {"dry_run": True, "message": text}, None
+        return True, {"dry_run": True, "message": text, "event_context": event.new_values or {}}, None
 
     try:
         if rule.delivery_adapter == "slack":
             payload = _slack_send(config, text)
         elif rule.delivery_adapter == "jira":
             payload = _jira_send(config, vulnerability, text)
+        elif rule.delivery_adapter == "webhook":
+            payload = _webhook_send(config, {"text": text, "vulnerability_id": vulnerability.id, "event_type": event.event_type})
+        elif rule.delivery_adapter == "email":
+            payload = _email_send(config, {"text": text, "vulnerability_id": vulnerability.id, "event_type": event.event_type})
         else:
             return False, None, f"Unsupported delivery_adapter '{rule.delivery_adapter}'"
         return True, payload, None
     except (SlackWebhookError, JiraApiError, ValueError, TypeError) as exc:
         return False, None, str(exc)
+
+
+def _escalation_step(rule: NotificationRule, vulnerability: Vulnerability) -> int:
+    if not vulnerability.sla_due_at:
+        return 0
+    escalation_after_days = max(int(rule.escalation_after_days or 0), 0)
+    if escalation_after_days <= 0:
+        return 1
+    overdue_days = (datetime.utcnow() - vulnerability.sla_due_at).days
+    if overdue_days < escalation_after_days:
+        return 0
+    return (overdue_days // escalation_after_days) + 1
+
+
+def _resolve_targets(rule: NotificationRule, step: int) -> tuple[list[str], list[str]]:
+    channels = list(rule.channels or [])
+    recipients = list(rule.recipients or [])
+    if step > 0:
+        escalation_cfg = (rule.delivery_config or {}).get("escalation") or {}
+        channels = list(escalation_cfg.get("channels") or channels)
+        recipients = list(escalation_cfg.get("recipients") or recipients)
+    return channels, recipients
 
 
 def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id: int | None = None) -> list[NotificationDeliveryLog]:
@@ -197,5 +244,74 @@ def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id
         )
         db.session.add(log_row)
         logs.append(log_row)
+
+    return logs
+
+
+def run_scheduled_notification_scan(now: datetime | None = None, *, dry_run: bool = False) -> list[NotificationDeliveryLog]:
+    now = now or datetime.utcnow()
+    rules = NotificationRule.query.filter_by(is_enabled=True).all()
+    vulnerabilities = Vulnerability.query.filter(
+        Vulnerability.status.in_(["Open", "In Progress"]),
+    ).all()
+
+    logs: list[NotificationDeliveryLog] = []
+
+    for rule in rules:
+        frequency_days = max(int(rule.frequency_days or 1), 1)
+        for vulnerability in vulnerabilities:
+            if _severity_value(vulnerability.severity) < _severity_value(rule.severity_threshold):
+                continue
+            if not _passes_product_scope(rule, vulnerability):
+                continue
+
+            overdue = vulnerability.sla_due_at is not None and vulnerability.sla_due_at <= now
+            high_risk = _severity_value(vulnerability.severity) >= _severity_value("High")
+            if not (overdue or high_risk):
+                continue
+
+            checkpoint = NotificationDeliveryCheckpoint.query.filter_by(
+                rule_id=rule.id,
+                vulnerability_id=vulnerability.id,
+            ).first()
+            if checkpoint and checkpoint.last_notified_at and (now - checkpoint.last_notified_at) < timedelta(days=frequency_days):
+                continue
+
+            step = _escalation_step(rule, vulnerability)
+            channels, recipients = _resolve_targets(rule, step)
+            event = NotificationEvent(
+                event_type="scheduled_scan",
+                vulnerability_id=vulnerability.id,
+                actor_id=None,
+                new_values={
+                    "overdue": overdue,
+                    "high_risk": high_risk,
+                    "escalation_step": step,
+                    "channels": channels,
+                    "recipients": recipients,
+                },
+            )
+            success, response_payload, error_message = _deliver(rule, vulnerability, event, dry_run=dry_run)
+            log_row = NotificationDeliveryLog(
+                rule_id=rule.id,
+                vulnerability_id=vulnerability.id,
+                event_type="scheduled_scan",
+                delivery_adapter=rule.delivery_adapter,
+                success=success,
+                response_payload=response_payload,
+                error_message=error_message,
+            )
+            db.session.add(log_row)
+            logs.append(log_row)
+
+            if checkpoint is None:
+                checkpoint = NotificationDeliveryCheckpoint(
+                    rule_id=rule.id,
+                    vulnerability_id=vulnerability.id,
+                )
+                db.session.add(checkpoint)
+            checkpoint.last_notified_at = now
+            checkpoint.last_escalation_step = step
+            checkpoint.last_event_type = "scheduled_scan"
 
     return logs

@@ -6,6 +6,7 @@ from .database import db
 from .models import User
 from .auth import hash_password
 from .plugins.runner import run_plugins
+from .services.notification_rules import run_scheduled_notification_scan
 
 @click.command("seed-admin")
 @click.option("--username", required=True, help="Admin username")
@@ -76,3 +77,15 @@ def run_plugins_cli(plugin_id, include_disabled, only_due):
         only_due=only_due,
     )
     click.echo(f"Completed {len(runs)} plugin run(s).")
+
+
+@click.command("run-notification-scan")
+@click.option("--dry-run", is_flag=True, help="Evaluate scheduled notification rules without external delivery.")
+@with_appcontext
+def run_notification_scan_cli(dry_run):
+    """
+    Run scheduled vulnerability notification scan once and exit.
+    """
+    logs = run_scheduled_notification_scan(dry_run=dry_run)
+    db.session.commit()
+    click.echo(f"Completed scheduled notification scan with {len(logs)} delivery attempt(s).")
