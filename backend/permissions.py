@@ -18,6 +18,8 @@ SCOPE_TERMINAL_IMPACTS_READ = "terminal_impacts:read"
 SCOPE_TERMINAL_IMPACTS_WRITE = "terminal_impacts:write"
 SCOPE_PLUGINS_READ = "plugins:read"
 SCOPE_PLUGINS_WRITE = "plugins:write"
+SCOPE_REPORTS_READ = "reports:read"
+SCOPE_REPORTS_WRITE = "reports:write"
 
 ROLE_SCOPES = {
     ROLE_ADMIN: {
@@ -35,6 +37,8 @@ ROLE_SCOPES = {
         SCOPE_TERMINAL_IMPACTS_WRITE,
         SCOPE_PLUGINS_READ,
         SCOPE_PLUGINS_WRITE,
+        SCOPE_REPORTS_READ,
+        SCOPE_REPORTS_WRITE,
     },
     ROLE_ANALYST: {
         SCOPE_PRODUCTS_READ,
@@ -49,6 +53,8 @@ ROLE_SCOPES = {
         SCOPE_TERMINAL_IMPACTS_WRITE,
         SCOPE_PLUGINS_READ,
         SCOPE_PLUGINS_WRITE,
+        SCOPE_REPORTS_READ,
+        SCOPE_REPORTS_WRITE,
     },
     ROLE_VIEWER: {
         SCOPE_PRODUCTS_READ,
@@ -57,6 +63,7 @@ ROLE_SCOPES = {
         SCOPE_ATTACK_VECTORS_READ,
         SCOPE_TERMINAL_IMPACTS_READ,
         SCOPE_PLUGINS_READ,
+        SCOPE_REPORTS_READ,
     },
 }
 
@@ -70,6 +77,7 @@ PATH_SCOPE_PREFIXES = (
     ("/api/controls", "controls"),
     ("/api/attack_vectors", "attack_vectors"),
     ("/api/terminal_impacts", "terminal_impacts"),
+    ("/api/reports", "reports"),
 )
 
 

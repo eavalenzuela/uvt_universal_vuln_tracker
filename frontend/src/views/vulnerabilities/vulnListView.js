@@ -26,6 +26,7 @@ import {
 } from "../../api/vulnerabilities.js";
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
+import { exportVulnerabilitiesCsv } from "../../api/reports.js";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
@@ -991,6 +992,37 @@ export async function VulnListView(params = {}) {
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
   applyBtn.addEventListener("click", load);
 
+  const exportBtn = el("button", { class: "btn", type: "button" }, "Export current view");
+  exportBtn.addEventListener("click", async () => {
+    exportBtn.disabled = true;
+    const filters = collectFilterValues({
+      searchInput,
+      statusSelect,
+      severitySelect,
+      attackComplexitySelect,
+      confidentialitySelect,
+      integritySelect,
+      availabilitySelect,
+    });
+    try {
+      const csv = await exportVulnerabilitiesCsv(filters);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vulnerabilities_export.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export ready", message: "Downloaded vulnerabilities CSV." });
+    } catch (e) {
+      toast({ title: "Export failed", message: e?.message || "Unable to export vulnerabilities" });
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
   const savedFiltersSelect = el("select", { class: "input" },
     el("option", { value: "", text: "Saved filters" }),
   );
@@ -1097,6 +1129,7 @@ export async function VulnListView(params = {}) {
     integritySelect,
     availabilitySelect,
     applyBtn,
+    exportBtn,
     savedFiltersSelect,
     saveCurrentBtn,
     setDefaultBtn,
