@@ -583,23 +583,74 @@ def test_plugin_endpoints(app, client, monkeypatch):
     missing_resp = client.get("/api/plugins/missing", headers=headers)
     assert missing_resp.status_code == 404
 
-    from backend.services.slack_alerts import SlackWebhookClient
 
-    def fake_send_message(self, *, text, channel=None, username=None, icon_emoji=None, blocks=None):
-        return None
+def test_plugin_run_enqueue_behavior(app, client, monkeypatch):
+    admin = create_admin(app)
+    headers = auth_header(admin)
 
-    monkeypatch.setattr(SlackWebhookClient, "send_message", fake_send_message)
+    submitted = {}
+
+    class FakeExecutor:
+        def submit(self, fn, *args, **kwargs):
+            submitted["fn"] = fn
+            submitted["args"] = args
+            submitted["kwargs"] = kwargs
+            return object()
+
+    monkeypatch.setattr("backend.plugins.runner.get_plugin_run_executor", lambda: FakeExecutor())
 
     run_resp = client.post(
         "/api/plugins/slack/run",
         headers=headers,
         json={"config": {"webhook_url": "https://example.com/webhook"}},
     )
-    assert run_resp.status_code == 201
+    assert run_resp.status_code == 202
     run_payload = run_resp.get_json()
-    assert run_payload["status"] == "success"
-    assert run_payload["stats"]["sent"] == 1
-    assert run_payload["stats"]["failed"] == 0
+    assert run_payload["status"] == "running"
+    assert run_payload["finished_at"] is None
+    assert submitted["kwargs"]["run_id"] == run_payload["id"]
+    assert submitted["kwargs"]["plugin_id"] == "slack"
+
+
+def test_plugin_run_status_transition_success_and_status_endpoint(app, client, monkeypatch):
+    from backend.services.slack_alerts import SlackWebhookClient
+
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    def fake_send_message(self, *, text, channel=None, username=None, icon_emoji=None, blocks=None):
+        return None
+
+    class ImmediateExecutor:
+        def submit(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+            return object()
+
+    monkeypatch.setattr(SlackWebhookClient, "send_message", fake_send_message)
+    monkeypatch.setattr("backend.plugins.runner.get_plugin_run_executor", lambda: ImmediateExecutor())
+
+    run_resp = client.post(
+        "/api/plugins/slack/run",
+        headers=headers,
+        json={"config": {"webhook_url": "https://example.com/webhook"}},
+    )
+    assert run_resp.status_code == 202
+    run_id = run_resp.get_json()["id"]
+
+    payload = None
+    for _ in range(5):
+        status_resp = client.get(f"/api/plugins/runs/{run_id}", headers=headers)
+        assert status_resp.status_code == 200
+        payload = status_resp.get_json()
+        if payload["status"] != "running":
+            break
+
+    assert payload is not None
+    assert payload["id"] == run_id
+    assert payload["plugin_id"] == "slack"
+    assert payload["status"] == "success"
+    assert payload["stats"]["sent"] == 1
+    assert payload["stats"]["failed"] == 0
 
 
 def test_plugin_run_records_failure(app, client, monkeypatch):
@@ -611,14 +662,39 @@ def test_plugin_run_records_failure(app, client, monkeypatch):
     def fake_send_message(self, *, text, channel=None, username=None, icon_emoji=None, blocks=None):
         raise SlackWebhookError("boom")
 
+    class ImmediateExecutor:
+        def submit(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+            return object()
+
     monkeypatch.setattr(SlackWebhookClient, "send_message", fake_send_message)
+    monkeypatch.setattr("backend.plugins.runner.get_plugin_run_executor", lambda: ImmediateExecutor())
 
     run_resp = client.post(
         "/api/plugins/slack/run",
         headers=headers,
         json={"config": {"webhook_url": "https://example.com/webhook"}},
     )
-    assert run_resp.status_code == 201
-    run_payload = run_resp.get_json()
+    assert run_resp.status_code == 202
+    run_id = run_resp.get_json()["id"]
+
+    run_payload = None
+    for _ in range(5):
+        status_resp = client.get(f"/api/plugins/runs/{run_id}", headers=headers)
+        assert status_resp.status_code == 200
+        run_payload = status_resp.get_json()
+        if run_payload["status"] != "running":
+            break
+
+    assert run_payload is not None
     assert run_payload["status"] == "failed"
     assert run_payload["error"]
+
+
+def test_plugin_run_status_endpoint_not_found(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    status_resp = client.get("/api/plugins/runs/99999", headers=headers)
+    assert status_resp.status_code == 404
+    assert status_resp.get_json()["error"] == "Plugin run not found"

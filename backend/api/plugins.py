@@ -9,7 +9,7 @@ from ..auth import login_required, role_required
 from ..models import PluginConfig
 from ..plugins.config import is_masked_value, mask_config
 from ..plugins.registry import PluginRegistry
-from ..plugins.runner import get_latest_plugin_run, run_plugin
+from ..plugins.runner import enqueue_plugin_run, get_latest_plugin_run, get_plugin_run_by_id
 from ..plugins.state import get_plugin_config, upsert_plugin_config
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
@@ -150,8 +150,17 @@ def run_plugin_now(plugin_id: str):
     config_payload = dict(config_row.config_json or {}) if config_row else {}
     if config_override:
         config_payload.update(config_override)
-    run = run_plugin(registry, plugin_id, config=config_payload)
-    return jsonify(_plugin_run_json(run)), 201
+    run = enqueue_plugin_run(current_app._get_current_object(), registry, plugin_id, config=config_payload)
+    return jsonify(_plugin_run_json(run)), 202
+
+
+@bp.get("/plugins/runs/<int:run_id>")
+@login_required
+def get_plugin_run_status(run_id: int):
+    run = get_plugin_run_by_id(run_id)
+    if not run:
+        return jsonify({"error": "Plugin run not found"}), 404
+    return jsonify(_plugin_run_json(run)), 200
 
 
 @bp.post("/plugins/<plugin_id>/config")
