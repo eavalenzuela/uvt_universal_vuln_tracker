@@ -9,6 +9,8 @@ import {
 import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
+import { exportDashboardSummaryCsv } from "../../api/reports.js";
+import { toast } from "../../ui/components/toast.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
 const DEFAULT_WIDGETS = [
@@ -269,12 +271,46 @@ export async function DashboardView() {
 
   const container = el("div", { class: "card", style: "display:flex; flex-direction:column; gap:16px;" });
 
+  const exportStatusSelect = el("select", { class: "input", style: "max-width: 180px;" },
+    el("option", { value: "", text: "All statuses" }),
+    ...STATUS_OPTIONS.map((status) => el("option", { value: status, text: status })),
+  );
+  const exportSeveritySelect = el("select", { class: "input", style: "max-width: 180px;" },
+    el("option", { value: "", text: "All severities" }),
+    ...SEVERITY_OPTIONS.map((severity) => el("option", { value: severity, text: severity })),
+  );
+  const exportBtn = el("button", { class: "btn", type: "button" }, "Export current view");
+  exportBtn.addEventListener("click", async () => {
+    exportBtn.disabled = true;
+    try {
+      const csv = await exportDashboardSummaryCsv({
+        status: exportStatusSelect.value || undefined,
+        severity: exportSeveritySelect.value || undefined,
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "dashboard_summary.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export ready", message: "Downloaded dashboard summary CSV." });
+    } catch (error) {
+      toast({ title: "Export failed", message: error?.message || "Unable to export dashboard summary" });
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
   const header = el(
     "div",
     { style: "display:flex; flex-direction:column; gap:6px;" },
     el("h1", { class: "page-title", text: "Dashboard" }),
     el("p", { class: "muted", text: `Signed in as ${user?.username || "?"} (${user?.role || "?"}).` }),
     el("p", { class: "muted", text: "Drag widgets to reorder or use the move controls for keyboard access." }),
+    el("div", { class: "row", style: "gap: 8px; flex-wrap: wrap; align-items: center;" }, exportStatusSelect, exportSeveritySelect, exportBtn),
   );
 
   const gridWrapper = el("div", { style: "display:flex; flex-direction:column; gap:12px;" });

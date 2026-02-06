@@ -403,3 +403,23 @@ class SlaPolicy(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     updater = db.relationship("User", foreign_keys=[updated_by])
+
+
+class ReportSchedule(db.Model):
+    __tablename__ = "report_schedules"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    report_type = db.Column(db.String(30), nullable=False, default="vulnerabilities")
+    frequency = db.Column(db.String(20), nullable=False, default="daily")
+    delivery_channel = db.Column(db.String(20), nullable=False, default="email")
+    recipient = db.Column(db.String(255), nullable=False)
+    filters_json = db.Column(db.JSON)
+
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    last_run_at = db.Column(db.DateTime)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])

@@ -1168,3 +1168,103 @@ def test_validation_error_payload_shape_consistent(app, client):
         assert isinstance(payload, dict)
         assert set(["error", "details", "field"]).issubset(payload.keys())
         assert payload["error"]
+
+def test_reports_export_endpoints_apply_filters_and_schema(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "report_analyst", "report_analyst@example.com", role="Analyst")
+    headers = auth_header(admin)
+
+    client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Critical item", "severity": "Critical", "status": "Open", "assigned_to": analyst.id},
+    )
+    client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Low item", "severity": "Low", "status": "Closed"},
+    )
+
+    export_resp = client.get(
+        f"/api/reports/vulnerabilities/export?severity=Critical&status=Open&assigned_to={analyst.id}",
+        headers=headers,
+    )
+    assert export_resp.status_code == 200
+    body = export_resp.get_data(as_text=True)
+    assert "id,cve_id,title,severity,cvss_score,status" in body
+    assert "Critical item" in body
+    assert "Low item" not in body
+
+    dashboard_resp = client.get("/api/reports/dashboard/export?severity=Critical", headers=headers)
+    assert dashboard_resp.status_code == 200
+    dashboard_csv = dashboard_resp.get_data(as_text=True)
+    assert "metric,group,value" in dashboard_csv
+    assert "severity,Critical,1" in dashboard_csv
+
+
+def test_report_schedule_permissions_and_run(app, client, monkeypatch):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "sched_analyst", "sched_analyst@example.com", role="Analyst")
+    viewer = create_user_direct(app, "sched_viewer", "sched_viewer@example.com", role="Viewer")
+
+    headers_admin = auth_header(admin)
+    headers_analyst = auth_header(analyst)
+    headers_viewer = auth_header(viewer)
+
+    create_forbidden = client.post(
+        "/api/reports/schedules",
+        headers=headers_viewer,
+        json={
+            "name": "Viewer schedule",
+            "report_type": "vulnerabilities",
+            "frequency": "daily",
+            "delivery_channel": "email",
+            "recipient": "viewer@example.com",
+        },
+    )
+    assert create_forbidden.status_code == 403
+
+    create_resp = client.post(
+        "/api/reports/schedules",
+        headers=headers_analyst,
+        json={
+            "name": "Daily open critical",
+            "report_type": "vulnerabilities",
+            "frequency": "daily",
+            "delivery_channel": "email",
+            "recipient": "analyst@example.com",
+            "filters": {"severity": "Critical", "status": "Open"},
+        },
+    )
+    assert create_resp.status_code == 201
+    schedule_id = create_resp.get_json()["id"]
+
+    analyst_list = client.get("/api/reports/schedules", headers=headers_analyst)
+    assert analyst_list.status_code == 200
+    assert len(analyst_list.get_json()) == 1
+
+    admin_list = client.get("/api/reports/schedules", headers=headers_admin)
+    assert admin_list.status_code == 200
+    assert any(item["id"] == schedule_id for item in admin_list.get_json())
+
+    run_forbidden = client.post(f"/api/reports/schedules/{schedule_id}/run", headers=headers_viewer)
+    assert run_forbidden.status_code == 403
+
+    run_resp = client.post(f"/api/reports/schedules/{schedule_id}/run", headers=headers_analyst)
+    assert run_resp.status_code == 200
+    payload = run_resp.get_json()
+    assert payload["status"] == "sent"
+    assert payload["delivery"]["channel"] == "email"
+
+    invalid_frequency = client.post(
+        "/api/reports/schedules",
+        headers=headers_admin,
+        json={
+            "name": "Bad schedule",
+            "report_type": "vulnerabilities",
+            "frequency": "monthly",
+            "delivery_channel": "email",
+            "recipient": "admin@example.com",
+        },
+    )
+    assert invalid_frequency.status_code == 400
