@@ -33,6 +33,16 @@ def create_app():
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "dev-jwt-secret")
     app.config["ALLOW_PUBLIC_REGISTRATION"] = os.getenv("ALLOW_PUBLIC_REGISTRATION", "false").lower() in ("1", "true", "yes")
 
+    app.config["OIDC_ENABLED"] = os.getenv("OIDC_ENABLED", "false").lower() in ("1", "true", "yes")
+    app.config["OIDC_ISSUER"] = os.getenv("OIDC_ISSUER", "")
+    app.config["OIDC_CLIENT_ID"] = os.getenv("OIDC_CLIENT_ID", "")
+    app.config["OIDC_CLIENT_SECRET"] = os.getenv("OIDC_CLIENT_SECRET", "")
+    app.config["OIDC_REDIRECT_URL"] = os.getenv("OIDC_REDIRECT_URL", "")
+    app.config["OIDC_SCOPES"] = os.getenv("OIDC_SCOPES", "openid profile email")
+    app.config["OIDC_GROUPS_CLAIM"] = os.getenv("OIDC_GROUPS_CLAIM", "groups")
+    app.config["OIDC_DEFAULT_ROLE"] = os.getenv("OIDC_DEFAULT_ROLE", "Viewer")
+    app.config["OIDC_ROLE_MAPPING"] = os.getenv("OIDC_ROLE_MAPPING", "")
+
     app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("1", "true", "yes")
     app.config["RATE_LIMIT_AUTH_LOGIN_LIMIT"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_LIMIT", "5"))
     app.config["RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", "60"))

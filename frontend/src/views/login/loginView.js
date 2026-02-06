@@ -1,10 +1,24 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
-import { login, me } from "../../api/auth.js";
+import { authProviders, login, me } from "../../api/auth.js";
 import { setSession } from "../../state/store.js";
 import { navigate } from "../../router/router.js";
 
 export async function LoginView() {
+  const params = new URLSearchParams(window.location.search);
+  const oidcToken = params.get("token");
+  if (oidcToken) {
+    try {
+      setSession({ token: oidcToken, user: null });
+      const fresh = await me();
+      setSession({ token: oidcToken, user: fresh });
+      toast({ title: "Welcome", message: `Logged in as ${fresh.username}` });
+      navigate("/");
+    } catch {
+      toast({ title: "SSO failed", message: "Unable to complete single sign-on." });
+    }
+  }
+
   const usernameInput = el("input", { class: "input", type: "text", autocomplete: "username", placeholder: "Username" });
   const passwordInput = el("input", { class: "input", type: "password", autocomplete: "current-password", placeholder: "Password" });
 
@@ -22,10 +36,8 @@ export async function LoginView() {
       }
 
       const res = await login(username, password);
-      // res: { token, user }
       setSession({ token: res.token, user: res.user });
 
-      // optional refresh from /me (source of truth)
       try {
         const fresh = await me();
         setSession({ token: res.token, user: fresh });
@@ -42,6 +54,18 @@ export async function LoginView() {
     }
   });
 
+  let showSso = false;
+  try {
+    const providers = await authProviders();
+    showSso = Boolean(providers?.oidc?.enabled);
+  } catch {
+    showSso = false;
+  }
+
+  const ssoButton = showSso
+    ? el("button", { class: "btn", onclick: () => (window.location.href = "/api/auth/oidc/login?next=/") }, "Continue with SSO")
+    : null;
+
   const card = el("div", { class: "card", style: "max-width: 420px; margin: 40px auto;" },
     el("h1", { class: "page-title", text: "Log in" }),
     el("p", { class: "muted", text: "Use your UVT credentials." }),
@@ -49,7 +73,8 @@ export async function LoginView() {
       usernameInput,
       passwordInput,
       el("div", { class: "form-actions" }, btn)
-    )
+    ),
+    ssoButton ? el("div", { class: "form-actions", style: "margin-top: 16px;" }, ssoButton) : null
   );
 
   return card;
