@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from ..database import db
@@ -9,6 +10,8 @@ from ..models import (
     NotificationRule,
     PluginConfig,
     ProductVersion,
+    Notification,
+    User,
     Vulnerability,
     VulnerabilityVersion,
 )
@@ -16,6 +19,39 @@ from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
+
+
+MENTION_PATTERN = re.compile(r"(?<!\w)@([A-Za-z0-9_.-]{1,100})")
+
+
+def parse_mentions(text: str | None) -> set[str]:
+    if not text:
+        return set()
+    return {match.group(1) for match in MENTION_PATTERN.finditer(text)}
+
+
+def trigger_mention_notifications(*, vulnerability_id: int, actor_id: int | None, comment_id: int, comment_text: str) -> list[Notification]:
+    mentioned_usernames = parse_mentions(comment_text)
+    if not mentioned_usernames:
+        return []
+
+    users = User.query.filter(User.username.in_(mentioned_usernames), User.is_active.is_(True)).all()
+    notifications: list[Notification] = []
+    for user in users:
+        if actor_id is not None and user.id == actor_id:
+            continue
+        row = Notification(
+            user_id=user.id,
+            vulnerability_id=vulnerability_id,
+            message=(
+                f"You were mentioned by user #{actor_id} in vulnerability #{vulnerability_id} "
+                f"comment #{comment_id}."
+            ),
+        )
+        db.session.add(row)
+        notifications.append(row)
+
+    return notifications
 
 
 @dataclass

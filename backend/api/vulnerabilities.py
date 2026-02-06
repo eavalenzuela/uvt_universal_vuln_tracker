@@ -12,10 +12,13 @@ from ..models import (
     ProductVersion,
     Product,
     VulnerabilityComponent,
+    VulnerabilityComment,
+    VulnerabilityWatcher,
+    User,
 )
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
-from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
@@ -38,6 +41,37 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
         new_values=new_values,
     ))
 
+
+
+def _can_moderate_comment(user, comment):
+    return bool(user and (user.role == "Admin" or comment.author_id == user.id))
+
+
+def _serialize_comment(comment):
+    return {
+        "id": comment.id,
+        "vulnerability_id": comment.vulnerability_id,
+        "author_id": comment.author_id,
+        "body": comment.body,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+        "updated_by": comment.updated_by,
+        "author": {
+            "id": comment.author.id,
+            "username": comment.author.username,
+        } if comment.author else None,
+    }
+
+
+def _serialize_watcher(watcher):
+    return {
+        "id": watcher.id,
+        "vulnerability_id": watcher.vulnerability_id,
+        "user_id": watcher.user_id,
+        "username": watcher.user.username if watcher.user else None,
+        "added_by": watcher.added_by,
+        "created_at": watcher.created_at.isoformat() if watcher.created_at else None,
+    }
 def _attach_attack_vectors(vuln, items):
     for item in items:
         if isinstance(item, dict):
@@ -590,5 +624,151 @@ def delete_vulnerability_version(vuln_id: int, mapping_id: int):
     ))
 
     db.session.delete(mapping)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@bp.get("/vulnerabilities/<int:vuln_id>/comments")
+@login_required
+def list_vulnerability_comments(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    comments = (
+        VulnerabilityComment.query
+        .filter_by(vulnerability_id=vuln_id)
+        .order_by(asc(VulnerabilityComment.created_at), asc(VulnerabilityComment.id))
+        .all()
+    )
+    return jsonify([_serialize_comment(comment) for comment in comments])
+
+
+@bp.post("/vulnerabilities/<int:vuln_id>/comments")
+@role_required("Admin", "Analyst")
+def create_vulnerability_comment(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        body = required_string(data, "body")
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    comment = VulnerabilityComment(
+        vulnerability_id=vuln_id,
+        author_id=request.user.id,
+        body=body,
+        updated_by=request.user.id,
+    )
+    db.session.add(comment)
+    db.session.flush()
+
+    trigger_mention_notifications(
+        vulnerability_id=vuln_id,
+        actor_id=request.user.id,
+        comment_id=comment.id,
+        comment_text=body,
+    )
+
+    _audit(request.user.id, "CREATE", "vulnerability_comments", comment.id, old_values=None, new_values={"body": comment.body})
+    db.session.commit()
+    return jsonify(_serialize_comment(comment)), 201
+
+
+@bp.put("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
+@role_required("Admin", "Analyst")
+def update_vulnerability_comment(vuln_id: int, comment_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
+    if not _can_moderate_comment(request.user, comment):
+        return error_response("Not permitted to edit this comment", status_code=403)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        body = required_string(data, "body")
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    old_values = {"body": comment.body}
+    comment.body = body
+    comment.updated_by = request.user.id
+
+    trigger_mention_notifications(
+        vulnerability_id=vuln_id,
+        actor_id=request.user.id,
+        comment_id=comment.id,
+        comment_text=body,
+    )
+
+    _audit(request.user.id, "UPDATE", "vulnerability_comments", comment.id, old_values=old_values, new_values={"body": comment.body})
+    db.session.commit()
+    return jsonify(_serialize_comment(comment))
+
+
+@bp.delete("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
+@role_required("Admin", "Analyst")
+def delete_vulnerability_comment(vuln_id: int, comment_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
+    if not _can_moderate_comment(request.user, comment):
+        return error_response("Not permitted to delete this comment", status_code=403)
+
+    old_values = {"body": comment.body, "author_id": comment.author_id}
+    _audit(request.user.id, "DELETE", "vulnerability_comments", comment.id, old_values=old_values, new_values=None)
+    db.session.delete(comment)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@bp.get("/vulnerabilities/<int:vuln_id>/watchers")
+@login_required
+def list_vulnerability_watchers(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    watchers = (
+        VulnerabilityWatcher.query
+        .filter_by(vulnerability_id=vuln_id)
+        .order_by(asc(VulnerabilityWatcher.created_at), asc(VulnerabilityWatcher.id))
+        .all()
+    )
+    return jsonify([_serialize_watcher(watcher) for watcher in watchers])
+
+
+@bp.post("/vulnerabilities/<int:vuln_id>/watch")
+@role_required("Admin", "Analyst")
+def watch_vulnerability(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    data = request.get_json(silent=True) or {}
+    requested_user_id = data.get("user_id", request.user.id)
+    try:
+        user_id = parse_int(requested_user_id, field="user_id", minimum=1, required=True)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if request.user.role != "Admin" and user_id != request.user.id:
+        return error_response("Only admins can add watchers for other users", status_code=403)
+
+    user = User.query.get(user_id)
+    if not user:
+        return error_response("User not found", field="user_id", status_code=404)
+
+    existing = VulnerabilityWatcher.query.filter_by(vulnerability_id=vuln_id, user_id=user_id).first()
+    if existing:
+        return jsonify(_serialize_watcher(existing))
+
+    watcher = VulnerabilityWatcher(vulnerability_id=vuln_id, user_id=user_id, added_by=request.user.id)
+    db.session.add(watcher)
+    db.session.commit()
+    return jsonify(_serialize_watcher(watcher)), 201
+
+
+@bp.delete("/vulnerabilities/<int:vuln_id>/watch/<int:user_id>")
+@role_required("Admin", "Analyst")
+def unwatch_vulnerability(vuln_id: int, user_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+    if request.user.role != "Admin" and user_id != request.user.id:
+        return error_response("Only admins can remove watchers for other users", status_code=403)
+
+    watcher = VulnerabilityWatcher.query.filter_by(vulnerability_id=vuln_id, user_id=user_id).first()
+    if not watcher:
+        return jsonify({"ok": True})
+
+    db.session.delete(watcher)
     db.session.commit()
     return jsonify({"ok": True})

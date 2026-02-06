@@ -156,3 +156,37 @@ export async function updateSavedVulnerabilityFilter(id, data) {
 export async function deleteSavedVulnerabilityFilter(id) {
   return apiFetch(`/api/vulnerabilities/filters/${id}`, { method: "DELETE" });
 }
+
+export async function listVulnerabilityComments(id) {
+  return apiFetch(`/api/vulnerabilities/${id}/comments`, { method: "GET" });
+}
+
+export async function createVulnerabilityComment(id, body) {
+  return apiFetch(`/api/vulnerabilities/${id}/comments`, {
+    method: "POST",
+    body: { body },
+  });
+}
+
+export async function updateVulnerabilityComment(id, commentId, body) {
+  return apiFetch(`/api/vulnerabilities/${id}/comments/${commentId}`, {
+    method: "PUT",
+    body: { body },
+  });
+}
+
+export async function deleteVulnerabilityComment(id, commentId) {
+  return apiFetch(`/api/vulnerabilities/${id}/comments/${commentId}`, { method: "DELETE" });
+}
+
+export async function listVulnerabilityWatchers(id) {
+  return apiFetch(`/api/vulnerabilities/${id}/watchers`, { method: "GET" });
+}
+
+export async function watchVulnerability(id) {
+  return apiFetch(`/api/vulnerabilities/${id}/watch`, { method: "POST", body: {} });
+}
+
+export async function unwatchVulnerability(id, userId) {
+  return apiFetch(`/api/vulnerabilities/${id}/watch/${userId}`, { method: "DELETE" });
+}

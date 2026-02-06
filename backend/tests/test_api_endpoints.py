@@ -1470,3 +1470,80 @@ def test_vulnerability_component_filters_and_export(app, client):
     assert exported.status_code == 200
     csv = exported.get_data(as_text=True)
     assert "component_ecosystems" in csv
+
+
+def test_vulnerability_comment_mentions_create_notifications(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "analyst_mentions", "analyst_mentions@example.com", role="Analyst")
+    mentioned = create_user_direct(app, "mention_target", "mention_target@example.com", role="Analyst")
+
+    headers = auth_header(admin)
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Mention test vuln", "severity": "High", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    comment_resp = client.post(
+        f"/api/vulnerabilities/{vuln_id}/comments",
+        headers=auth_header(analyst),
+        json={"body": "Please review this @mention_target and @missing_user"},
+    )
+    assert comment_resp.status_code == 201
+
+    with app.app_context():
+        from backend.models import Notification
+        notifications = Notification.query.filter_by(vulnerability_id=vuln_id).all()
+        assert len(notifications) == 1
+        assert notifications[0].user_id == mentioned.id
+        assert "mentioned" in notifications[0].message.lower()
+
+
+def test_vulnerability_comment_permissions_author_or_admin(app, client):
+    admin = create_admin(app)
+    author = create_user_direct(app, "comment_author", "comment_author@example.com", role="Analyst")
+    other = create_user_direct(app, "comment_other", "comment_other@example.com", role="Analyst")
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=auth_header(admin),
+        json={"title": "Comment permission vuln"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    comment_resp = client.post(
+        f"/api/vulnerabilities/{vuln_id}/comments",
+        headers=auth_header(author),
+        json={"body": "Author comment"},
+    )
+    assert comment_resp.status_code == 201
+    comment_id = comment_resp.get_json()["id"]
+
+    denied_update = client.put(
+        f"/api/vulnerabilities/{vuln_id}/comments/{comment_id}",
+        headers=auth_header(other),
+        json={"body": "Unauthorized edit"},
+    )
+    assert denied_update.status_code == 403
+
+    denied_delete = client.delete(
+        f"/api/vulnerabilities/{vuln_id}/comments/{comment_id}",
+        headers=auth_header(other),
+    )
+    assert denied_delete.status_code == 403
+
+    admin_update = client.put(
+        f"/api/vulnerabilities/{vuln_id}/comments/{comment_id}",
+        headers=auth_header(admin),
+        json={"body": "Admin moderation edit"},
+    )
+    assert admin_update.status_code == 200
+
+    admin_delete = client.delete(
+        f"/api/vulnerabilities/{vuln_id}/comments/{comment_id}",
+        headers=auth_header(admin),
+    )
+    assert admin_delete.status_code == 200
