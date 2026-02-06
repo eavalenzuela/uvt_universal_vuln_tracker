@@ -11,7 +11,7 @@ import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 
 const SEVERITIES = ["None", "Low", "Medium", "High", "Critical"];
-const ADAPTERS = ["slack", "jira"];
+const ADAPTERS = ["slack", "jira", "webhook", "email"];
 
 function parseJson(input) {
   if (!input.trim()) return {};
@@ -29,6 +29,11 @@ function ruleCard(rule, products, { onSave, onDelete, onTestSend }) {
   const enabled = el("input", { type: "checkbox", checked: !!rule.is_enabled });
   const onStatus = el("input", { type: "checkbox", checked: !!rule.notify_on_status_change });
   const onAssignment = el("input", { type: "checkbox", checked: !!rule.notify_on_assignment_change });
+
+  const frequencyDaysInput = el("input", { class: "input", type: "number", min: "1", value: String(rule.frequency_days || 3) });
+  const escalationAfterDaysInput = el("input", { class: "input", type: "number", min: "0", value: String(rule.escalation_after_days || 7) });
+  const channelsInput = el("input", { class: "input", value: (rule.channels || []).join(",") });
+  const recipientsInput = el("input", { class: "input", value: (rule.recipients || []).join(",") });
 
   const configInput = el("textarea", {
     class: "input",
@@ -48,6 +53,10 @@ function ruleCard(rule, products, { onSave, onDelete, onTestSend }) {
     }
     const productScope = Array.from(scopeSelect.selectedOptions).map((opt) => Number(opt.value));
     onSave(rule.id, {
+      frequency_days: Number(frequencyDaysInput.value || 3),
+      escalation_after_days: Number(escalationAfterDaysInput.value || 7),
+      channels: channelsInput.value.split(",").map((v) => v.trim()).filter(Boolean),
+      recipients: recipientsInput.value.split(",").map((v) => v.trim()).filter(Boolean),
       name: nameInput.value,
       is_enabled: enabled.checked,
       delivery_adapter: adapterSelect.value,
@@ -73,6 +82,10 @@ function ruleCard(rule, products, { onSave, onDelete, onTestSend }) {
     el("label", {}, enabled, " Enabled"),
     el("label", {}, onStatus, " Notify on status change"),
     el("label", {}, onAssignment, " Notify on assignment change"),
+    el("label", {}, "Reminder cadence (days)", frequencyDaysInput),
+    el("label", {}, "Escalation step size (days)", escalationAfterDaysInput),
+    el("label", {}, "Channels (comma-separated)", channelsInput),
+    el("label", {}, "Recipients (comma-separated)", recipientsInput),
     el("label", {}, "Delivery config (JSON)", configInput),
     el("label", {}, "Product scope", scopeSelect),
     el("div", { class: "row", style: "gap:8px;" }, saveBtn, testBtn, deleteBtn),
@@ -106,6 +119,10 @@ export async function AdminNotificationRulesView() {
       is_enabled: true,
       delivery_config: {},
       product_scope: [],
+      frequency_days: 3,
+      escalation_after_days: 7,
+      channels: [],
+      recipients: [],
     });
     toast({ title: "Rule created" });
     await refresh();
@@ -164,7 +181,7 @@ export async function AdminNotificationRulesView() {
 
   return el("div", { class: "stack" },
     el("h1", { text: "Admin · Notification Rules" }),
-    el("p", { class: "muted", text: "Configure when vulnerability changes should trigger Slack/Jira notifications." }),
+    el("p", { class: "muted", text: "Configure event and scheduled reminder notifications, cadence, and escalation targets." }),
     addBtn,
     list,
     el("h2", { text: "Recent delivery logs" }),

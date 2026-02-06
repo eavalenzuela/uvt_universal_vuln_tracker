@@ -462,6 +462,10 @@ class NotificationRule(db.Model):
     notify_on_status_change = db.Column(db.Boolean, default=True, nullable=False)
     notify_on_assignment_change = db.Column(db.Boolean, default=True, nullable=False)
     product_scope = db.Column(db.JSON)
+    frequency_days = db.Column(db.Integer, nullable=False, default=3)
+    escalation_after_days = db.Column(db.Integer, nullable=False, default=7)
+    channels = db.Column(db.JSON)
+    recipients = db.Column(db.JSON)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -485,6 +489,26 @@ class NotificationDeliveryLog(db.Model):
 
     rule = db.relationship("NotificationRule")
     vulnerability = db.relationship("Vulnerability")
+
+
+class NotificationDeliveryCheckpoint(db.Model):
+    __tablename__ = "notification_delivery_checkpoints"
+
+    id = db.Column(db.Integer, primary_key=True)
+    rule_id = db.Column(db.Integer, db.ForeignKey("notification_rules.id", ondelete="CASCADE"), nullable=False, index=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
+    last_notified_at = db.Column(db.DateTime)
+    last_escalation_step = db.Column(db.Integer, nullable=False, default=0)
+    last_event_type = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    rule = db.relationship("NotificationRule")
+    vulnerability = db.relationship("Vulnerability")
+
+    __table_args__ = (
+        db.UniqueConstraint("rule_id", "vulnerability_id", name="unique_notification_delivery_checkpoint"),
+    )
 
 
 class PluginConfig(db.Model):
