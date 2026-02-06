@@ -9,6 +9,7 @@ from . import models  # ensures migrations can discover models
 from .cli import run_plugins_cli, seed_admin
 from .auth import enforce_scopes
 from .plugins import init_plugin_registry
+from .api.validation import ValidationError, error_response
 
 def create_app():
     app = Flask(__name__)
@@ -65,6 +66,10 @@ def create_app():
         return jsonify({"ok": True})
 
     # Error handlers
+    @app.errorhandler(ValidationError)
+    def validation_error(err: ValidationError):
+        return error_response(err.error, field=err.field, details=err.details, status_code=err.status_code)
+
     @app.errorhandler(404)
     def not_found(_e):
         return jsonify({"error": "Not found"}), 404

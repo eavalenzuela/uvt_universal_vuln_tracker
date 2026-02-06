@@ -11,6 +11,7 @@ from ..database import db
 from ..models import User, AuditLog
 from ..auth import role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES
+from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
@@ -78,12 +79,12 @@ def list_users():
 
     if role:
         if role not in _ALLOWED_ROLES:
-            return jsonify({"error": "Invalid role filter"}), 400
+            return error_response("role must be one of allowed roles", field="role", details={"allowed": sorted(_ALLOWED_ROLES)})
         query = query.filter(User.role == role)
 
     if status:
         if status not in {"active", "disabled"}:
-            return jsonify({"error": "Invalid status filter"}), 400
+            return error_response("status must be one of ['active', 'disabled']", field="status", details={"allowed": ["active", "disabled"]})
         query = query.filter(User.is_active.is_(status == "active"))
 
     users = query.order_by(User.username.asc()).all()
@@ -105,7 +106,7 @@ def create_user_admin():
     role = (data.get("role") or "Analyst").strip()
 
     if not username or not email or not password:
-        return jsonify({"error": "username, email, password are required"}), 400
+        return error_response("Required field missing", field="username", details="username, email, password are required")
     if role not in _ALLOWED_ROLES:
         return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
 
@@ -139,7 +140,7 @@ def invite_user():
     password = (data.get("password") or "").strip() or secrets.token_urlsafe(10)
 
     if not username or not email:
-        return jsonify({"error": "username and email are required"}), 400
+        return error_response("Required field missing", field="username", details="username and email are required")
     if role not in _ALLOWED_ROLES:
         return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
 
@@ -193,7 +194,7 @@ def update_user(user_id: int):
     if "email" in data:
         email = (data.get("email") or "").strip()
         if not email:
-            return jsonify({"error": "email cannot be empty"}), 400
+            return error_response("email cannot be empty", field="email")
         existing = User.query.filter(User.email == email, User.id != u.id).first()
         if existing:
             return jsonify({"error": "Email already exists"}), 400
@@ -203,7 +204,7 @@ def update_user(user_id: int):
 
     if "username" in data:
         # keep simple: disallow username change for now
-        return jsonify({"error": "username cannot be changed"}), 400
+        return error_response("username cannot be changed", field="username")
 
     if "first_name" in data:
         old_values["first_name"] = u.first_name
@@ -251,7 +252,7 @@ def reset_password(user_id: int):
     data = request.get_json(silent=True) or {}
     password = data.get("password") or ""
     if not password:
-        return jsonify({"error": "password is required"}), 400
+        return error_response("password is required", field="password")
 
     old_password_hash = u.password_hash
     u.password_hash = hash_password(password)
@@ -271,7 +272,7 @@ def impersonate(user_id: int):
     payload = request.get_json(silent=True) or {}
     reason = (payload.get("reason") or "").strip()
     if not reason:
-        return jsonify({"error": "reason is required to impersonate"}), 400
+        return error_response("reason is required to impersonate", field="reason")
 
     token = generate_token(target.id, target.username, target.role, target.token_version, target.last_revoked_at)
     _audit(
@@ -307,12 +308,11 @@ def toggle_active(user_id: int):
 @bp.get("/audit-logs")
 @role_required("Admin")
 def list_audit_logs():
-    limit = request.args.get("limit")
+    limit_raw = request.args.get("limit")
     try:
-        limit = int(limit) if limit is not None else 100
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid limit"}), 400
-    limit = max(1, min(limit, 500))
+        limit = parse_int(limit_raw, field="limit", minimum=1, maximum=500) if limit_raw is not None else 100
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     action = (request.args.get("action") or "").strip()
     table = (request.args.get("table") or "").strip()

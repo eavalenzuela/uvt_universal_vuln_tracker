@@ -8,6 +8,7 @@ from ..database import db
 from ..models import NotificationDeliveryLog, NotificationRule, Vulnerability
 from ..services.audit import log_audit_event
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from .validation import ValidationError, enum_value, error_response, parse_bool, parse_int, required_string
 
 bp = Blueprint("notification_rules_api", __name__, url_prefix="/api")
 
@@ -55,17 +56,12 @@ def list_rules():
 @role_required("Admin")
 def create_rule():
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
-
-    adapter = data.get("delivery_adapter", "slack")
-    if adapter not in VALID_ADAPTERS:
-        return jsonify({"error": f"delivery_adapter must be one of {sorted(VALID_ADAPTERS)}"}), 400
-
-    severity_threshold = data.get("severity_threshold", "Medium")
-    if severity_threshold not in VALID_SEVERITIES:
-        return jsonify({"error": f"severity_threshold must be one of {sorted(VALID_SEVERITIES)}"}), 400
+    try:
+        name = required_string(data, "name")
+        adapter = enum_value(data.get("delivery_adapter", "slack"), field="delivery_adapter", options=VALID_ADAPTERS)
+        severity_threshold = enum_value(data.get("severity_threshold", "Medium"), field="severity_threshold", options=VALID_SEVERITIES)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
 
     rule = NotificationRule(
         name=name,
@@ -96,19 +92,19 @@ def update_rule(rule_id: int):
     if "name" in data:
         name = (data.get("name") or "").strip()
         if not name:
-            return jsonify({"error": "name cannot be empty"}), 400
+            return error_response("name cannot be empty", field="name")
         rule.name = name
 
     if "delivery_adapter" in data:
         adapter = data.get("delivery_adapter")
         if adapter not in VALID_ADAPTERS:
-            return jsonify({"error": f"delivery_adapter must be one of {sorted(VALID_ADAPTERS)}"}), 400
+            return error_response(f"delivery_adapter must be one of {sorted(VALID_ADAPTERS)}", field="delivery_adapter", details={"allowed": sorted(VALID_ADAPTERS)})
         rule.delivery_adapter = adapter
 
     if "severity_threshold" in data:
         severity_threshold = data.get("severity_threshold")
         if severity_threshold not in VALID_SEVERITIES:
-            return jsonify({"error": f"severity_threshold must be one of {sorted(VALID_SEVERITIES)}"}), 400
+            return error_response(f"severity_threshold must be one of {sorted(VALID_SEVERITIES)}", field="severity_threshold", details={"allowed": sorted(VALID_SEVERITIES)})
         rule.severity_threshold = severity_threshold
 
     for field in ["is_enabled", "notify_on_status_change", "notify_on_assignment_change"]:
@@ -118,7 +114,7 @@ def update_rule(rule_id: int):
     if "delivery_config" in data:
         cfg = data.get("delivery_config")
         if cfg is not None and not isinstance(cfg, dict):
-            return jsonify({"error": "delivery_config must be an object"}), 400
+            return error_response("delivery_config must be an object", field="delivery_config")
         rule.delivery_config = cfg or {}
 
     if "product_scope" in data:
@@ -126,7 +122,7 @@ def update_rule(rule_id: int):
         if scope is None:
             scope = []
         if not isinstance(scope, list):
-            return jsonify({"error": "product_scope must be an array of product ids"}), 400
+            return error_response("product_scope must be an array of product ids", field="product_scope")
         rule.product_scope = scope
 
     _audit("UPDATE", "notification_rules", rule.id, old_values=old, new_values=_rule_json(rule))
@@ -151,7 +147,7 @@ def test_send(rule_id: int):
     rule = NotificationRule.query.get_or_404(rule_id)
     vuln = Vulnerability.query.order_by(desc(Vulnerability.updated_at)).first()
     if not vuln:
-        return jsonify({"error": "No vulnerabilities found to use for test-send"}), 400
+        return error_response("No vulnerabilities found to use for test-send", field="vulnerability_id")
 
     logs = trigger_notifications_for_event(
         NotificationEvent(
@@ -169,7 +165,10 @@ def test_send(rule_id: int):
 @bp.get("/notification-delivery-logs")
 @role_required("Admin")
 def list_delivery_logs():
-    limit = min(int(request.args.get("limit", 100)), 500)
+    try:
+        limit = parse_int(request.args.get("limit", 100), field="limit", minimum=1, maximum=500, required=True)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     rows = NotificationDeliveryLog.query.order_by(NotificationDeliveryLog.id.desc()).limit(limit).all()
     return jsonify([
         {

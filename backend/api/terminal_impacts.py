@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import TerminalImpact, Vulnerability, VulnerabilityTerminalImpact
 from ..auth import login_required, role_required
+from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("terminal_impacts_api", __name__, url_prefix="/api")
 
@@ -41,7 +42,7 @@ def create_terminal_impact():
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "name is required"}), 400
+        return error_response("name is required", field="name")
 
     impact = TerminalImpact(
         name=name,
@@ -68,7 +69,7 @@ def update_terminal_impact(impact_id: int):
     if "name" in data:
         name = (data.get("name") or "").strip()
         if not name:
-            return jsonify({"error": "name cannot be empty"}), 400
+            return error_response("name cannot be empty", field="name")
         impact.name = name
 
     if "description" in data:

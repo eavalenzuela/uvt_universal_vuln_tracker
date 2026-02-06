@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import Control
 from ..auth import login_required, role_required
+from .validation import ValidationError, error_response, required_string
 from ..services.audit import log_audit_event, model_snapshot
 
 bp = Blueprint("controls_api", __name__, url_prefix="/api")
@@ -45,7 +46,7 @@ def create_control():
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "name is required"}), 400
+        return error_response("name is required", field="name")
 
     control = Control(
         name=name,
@@ -77,7 +78,7 @@ def update_control(control_id: int):
     if "name" in data:
         name = (data.get("name") or "").strip()
         if not name:
-            return jsonify({"error": "name cannot be empty"}), 400
+            return error_response("name cannot be empty", field="name")
         control.name = name
 
     if "framework" in data:
