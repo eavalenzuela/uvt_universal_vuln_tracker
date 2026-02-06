@@ -408,6 +408,11 @@ def test_vulnerability_endpoints(app, client):
     )
     assert delete_mapping.status_code == 200
 
+    activity_resp = client.get(f"/api/vulnerabilities/{vuln_id}/activity", headers=headers)
+    assert activity_resp.status_code == 200
+    activity_payload = activity_resp.get_json()
+    assert any(event["table_name"] == "vulnerabilities" for event in activity_payload)
+
     delete_resp = client.delete(f"/api/vulnerabilities/{vuln_id}", headers=headers)
     assert delete_resp.status_code == 200
 

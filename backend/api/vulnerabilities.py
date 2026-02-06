@@ -7,6 +7,7 @@ from ..models import (
     VulnerabilityVersion,
     VulnerabilityAttackVector,
     VulnerabilityTerminalImpact,
+    AuditLog,
     AttackVector,
     ProductVersion,
     Product,
@@ -314,6 +315,41 @@ def get_vulnerability(vuln_id: int):
         "attack_vectors": attack_vector_rows,
         "terminal_impacts": terminal_impact_rows,
     })
+
+
+@bp.get("/vulnerabilities/<int:vuln_id>/activity")
+@login_required
+def get_vulnerability_activity(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+
+    logs = (
+        AuditLog.query
+        .filter(
+            AuditLog.table_name.in_(["vulnerabilities", "vulnerability_versions"]),
+            AuditLog.record_id == vuln_id,
+        )
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(250)
+        .all()
+    )
+
+    return jsonify([
+        {
+            "id": log.id,
+            "action": log.action,
+            "table_name": log.table_name,
+            "record_id": log.record_id,
+            "old_values": log.old_values,
+            "new_values": log.new_values,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "user": {
+                "id": log.user.id,
+                "username": log.user.username,
+                "email": log.user.email,
+            } if log.user else None,
+        }
+        for log in logs
+    ])
 
 @bp.put("/vulnerabilities/<int:vuln_id>")
 @role_required("Admin", "Analyst")
