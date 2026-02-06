@@ -521,6 +521,95 @@ def test_vulnerability_cvss_validation_rejects_out_of_range(app, client):
     assert update_high.get_json()["field"] == "cvss_score"
 
 
+def test_vulnerability_rejects_invalid_severity_status_enums(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    invalid_create_severity = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad Severity", "severity": "Severe"},
+    )
+    assert invalid_create_severity.status_code == 400
+    assert invalid_create_severity.get_json()["field"] == "severity"
+
+    invalid_create_status = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad Status", "status": "Doing"},
+    )
+    assert invalid_create_status.status_code == 400
+    assert invalid_create_status.get_json()["field"] == "status"
+
+    valid_create = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Enum Base", "severity": "High", "status": "Open"},
+    )
+    assert valid_create.status_code == 201
+    vuln_id = valid_create.get_json()["id"]
+
+    invalid_update_severity = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"severity": "Super High"},
+    )
+    assert invalid_update_severity.status_code == 400
+    assert invalid_update_severity.get_json()["field"] == "severity"
+
+    invalid_update_status = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"status": "Working"},
+    )
+    assert invalid_update_status.status_code == 400
+    assert invalid_update_status.get_json()["field"] == "status"
+
+
+def test_vulnerability_assigned_to_validation(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    invalid_create_assignee_type = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad Assignee Type", "assigned_to": "abc"},
+    )
+    assert invalid_create_assignee_type.status_code == 400
+    assert invalid_create_assignee_type.get_json()["field"] == "assigned_to"
+
+    invalid_create_assignee_missing = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad Assignee Missing", "assigned_to": 999999},
+    )
+    assert invalid_create_assignee_missing.status_code == 400
+    assert invalid_create_assignee_missing.get_json()["field"] == "assigned_to"
+
+    valid_create = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Assigned Base"},
+    )
+    assert valid_create.status_code == 201
+    vuln_id = valid_create.get_json()["id"]
+
+    invalid_update_assignee_type = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"assigned_to": 0},
+    )
+    assert invalid_update_assignee_type.status_code == 400
+    assert invalid_update_assignee_type.get_json()["field"] == "assigned_to"
+
+    invalid_update_assignee_missing = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"assigned_to": 999999},
+    )
+    assert invalid_update_assignee_missing.status_code == 400
+    assert invalid_update_assignee_missing.get_json()["field"] == "assigned_to"
+
 def test_vulnerability_cvss_validation_accepts_edge_values(app, client):
     admin = create_admin(app)
     headers = auth_header(admin)
