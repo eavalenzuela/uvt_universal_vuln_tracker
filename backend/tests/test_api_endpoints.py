@@ -787,3 +787,90 @@ def test_control_delete_emits_audit_log(app, client):
     assert log is not None
     assert log.record_id == control_id
     assert log.old_values["name"] == "AU-1"
+
+
+def test_notification_rule_crud_and_test_send(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Notif Seed", "severity": "High", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+
+    create_resp = client.post(
+        "/api/notification-rules",
+        headers=headers,
+        json={
+            "name": "High severity changes",
+            "delivery_adapter": "slack",
+            "severity_threshold": "Medium",
+            "is_enabled": True,
+            "notify_on_status_change": True,
+            "notify_on_assignment_change": True,
+            "delivery_config": {"webhook_url": "https://example.invalid"},
+            "product_scope": [],
+        },
+    )
+    assert create_resp.status_code == 201
+    rule_id = create_resp.get_json()["id"]
+
+    list_resp = client.get("/api/notification-rules", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(r["id"] == rule_id for r in list_resp.get_json())
+
+    update_resp = client.put(
+        f"/api/notification-rules/{rule_id}",
+        headers=headers,
+        json={"name": "Updated name", "severity_threshold": "High"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.get_json()["name"] == "Updated name"
+
+    test_resp = client.post(f"/api/notification-rules/{rule_id}/test-send", headers=headers)
+    assert test_resp.status_code == 200
+
+    log_resp = client.get("/api/notification-delivery-logs", headers=headers)
+    assert log_resp.status_code == 200
+    assert any(log["rule_id"] == rule_id for log in log_resp.get_json())
+
+
+def test_notification_trigger_on_vulnerability_status_change(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    rule_resp = client.post(
+        "/api/notification-rules",
+        headers=headers,
+        json={
+            "name": "status only",
+            "delivery_adapter": "slack",
+            "severity_threshold": "Low",
+            "notify_on_status_change": True,
+            "notify_on_assignment_change": False,
+            "delivery_config": {"webhook_url": "https://example.invalid"},
+        },
+    )
+    assert rule_resp.status_code == 201
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Status change target", "severity": "High", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"status": "Resolved"},
+    )
+    assert update_resp.status_code == 200
+
+    logs_resp = client.get("/api/notification-delivery-logs", headers=headers)
+    assert logs_resp.status_code == 200
+    logs = logs_resp.get_json()
+    assert any(log["vulnerability_id"] == vuln_id and log["event_type"] == "status_change" for log in logs)

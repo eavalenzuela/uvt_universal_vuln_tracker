@@ -300,6 +300,45 @@ class Notification(db.Model):
     vulnerability = db.relationship("Vulnerability")
 
 
+class NotificationRule(db.Model):
+    __tablename__ = "notification_rules"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    is_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    delivery_adapter = db.Column(db.String(20), nullable=False, default="slack")
+    delivery_config = db.Column(db.JSON)
+
+    severity_threshold = db.Column(db.String(20), nullable=False, default="Medium")
+    notify_on_status_change = db.Column(db.Boolean, default=True, nullable=False)
+    notify_on_assignment_change = db.Column(db.Boolean, default=True, nullable=False)
+    product_scope = db.Column(db.JSON)
+
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+
+class NotificationDeliveryLog(db.Model):
+    __tablename__ = "notification_delivery_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    rule_id = db.Column(db.Integer, db.ForeignKey("notification_rules.id", ondelete="SET NULL"), index=True)
+    vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="SET NULL"), index=True)
+    event_type = db.Column(db.String(50), nullable=False)
+    delivery_adapter = db.Column(db.String(20), nullable=False)
+    success = db.Column(db.Boolean, nullable=False)
+    response_payload = db.Column(db.JSON)
+    error_message = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    rule = db.relationship("NotificationRule")
+    vulnerability = db.relationship("Vulnerability")
+
+
 class PluginConfig(db.Model):
     __tablename__ = "plugin_configs"
 
