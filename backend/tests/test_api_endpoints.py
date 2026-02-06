@@ -352,7 +352,7 @@ def test_vulnerability_endpoints(app, client):
             "cve_id": "CVE-2024-0001",
             "title": "Example vuln",
             "severity": "High",
-            "cvss_score": "not-a-number",
+            "cvss_score": 7.2,
             "published_date": "2024-01-02",
             "last_modified_date": "2024-01-03",
             "status": "Open",
@@ -445,6 +445,123 @@ def test_vulnerability_rejects_invalid_cve_id(app, client):
     )
     assert update_resp.status_code == 400
     assert update_resp.get_json()["field"] == "cve_id"
+
+
+def test_vulnerability_cvss_validation_rejects_non_numeric(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Bad CVSS Create", "cvss_score": "not-a-number"},
+    )
+    assert create_resp.status_code == 400
+    assert create_resp.get_json()["field"] == "cvss_score"
+
+    valid_create = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Valid CVSS Base", "cvss_score": 5.0},
+    )
+    assert valid_create.status_code == 201
+    vuln_id = valid_create.get_json()["id"]
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"cvss_score": "not-a-number"},
+    )
+    assert update_resp.status_code == 400
+    assert update_resp.get_json()["field"] == "cvss_score"
+
+
+def test_vulnerability_cvss_validation_rejects_out_of_range(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_low = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Low CVSS", "cvss_score": -0.1},
+    )
+    assert create_low.status_code == 400
+    assert create_low.get_json()["field"] == "cvss_score"
+
+    create_high = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "High CVSS", "cvss_score": 10.1},
+    )
+    assert create_high.status_code == 400
+    assert create_high.get_json()["field"] == "cvss_score"
+
+    valid_create = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Range Base", "cvss_score": 5.0},
+    )
+    assert valid_create.status_code == 201
+    vuln_id = valid_create.get_json()["id"]
+
+    update_low = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"cvss_score": -1},
+    )
+    assert update_low.status_code == 400
+    assert update_low.get_json()["field"] == "cvss_score"
+
+    update_high = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"cvss_score": 11},
+    )
+    assert update_high.status_code == 400
+    assert update_high.get_json()["field"] == "cvss_score"
+
+
+def test_vulnerability_cvss_validation_accepts_edge_values(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_zero = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Zero CVSS", "cvss_score": 0.0},
+    )
+    assert create_zero.status_code == 201
+    zero_id = create_zero.get_json()["id"]
+
+    zero_detail = client.get(f"/api/vulnerabilities/{zero_id}", headers=headers)
+    assert zero_detail.status_code == 200
+    assert zero_detail.get_json()["cvss_score"] == 0.0
+
+    create_ten = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Ten CVSS", "cvss_score": 10.0},
+    )
+    assert create_ten.status_code == 201
+    ten_id = create_ten.get_json()["id"]
+
+    ten_detail = client.get(f"/api/vulnerabilities/{ten_id}", headers=headers)
+    assert ten_detail.status_code == 200
+    assert ten_detail.get_json()["cvss_score"] == 10.0
+
+    update_zero = client.put(
+        f"/api/vulnerabilities/{ten_id}",
+        headers=headers,
+        json={"cvss_score": 0.0},
+    )
+    assert update_zero.status_code == 200
+
+    update_ten = client.put(
+        f"/api/vulnerabilities/{zero_id}",
+        headers=headers,
+        json={"cvss_score": 10.0},
+    )
+    assert update_ten.status_code == 200
 
 def test_vulnerability_list_validation_errors(app, client):
     admin = create_admin(app)

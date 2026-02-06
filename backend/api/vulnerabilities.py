@@ -206,12 +206,12 @@ def create_vulnerability():
         availability_impact = enum_value(data.get("availability_impact"), field="availability_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
         published_date = parse_iso_date(data.get("published_date"), field="published_date")
         last_modified_date = parse_iso_date(data.get("last_modified_date"), field="last_modified_date")
-        cvss_score = None
-        if data.get("cvss_score") not in (None, ""):
-            try:
-                cvss_score = parse_float(data.get("cvss_score"), field="cvss_score")
-            except ValidationError:
-                cvss_score = None
+        cvss_score = parse_float(
+            data.get("cvss_score"),
+            field="cvss_score",
+            minimum=0.0,
+            maximum=10.0,
+        )
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
@@ -445,12 +445,12 @@ def update_vulnerability(vuln_id: int):
             elif field in {"published_date", "last_modified_date"}:
                 setattr(v, field, parse_iso_date(data.get(field), field=field))
             elif field == "cvss_score":
-                parsed_cvss = None
-                if data.get(field) not in (None, ""):
-                    try:
-                        parsed_cvss = parse_float(data.get(field), field="cvss_score")
-                    except ValidationError:
-                        parsed_cvss = None
+                parsed_cvss = parse_float(
+                    data.get(field),
+                    field="cvss_score",
+                    minimum=0.0,
+                    maximum=10.0,
+                )
                 setattr(v, field, round(parsed_cvss, 1) if parsed_cvss is not None else None)
             elif field == "attack_complexity":
                 normalized = enum_value(data.get(field), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False)
