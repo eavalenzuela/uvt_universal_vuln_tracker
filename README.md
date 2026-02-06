@@ -71,3 +71,15 @@ Point the UI at a different API base by defining a global before `src/main.js` l
 - Use `flask --app backend.uvt_app shell` for quick database inspection via `db` and models
 - Default CORS allowlist already includes `http://localhost:5000` and `http://localhost:5173`
 - Update `frontend/src/config.js` if you prefer a hard-coded API base instead of the global variable
+
+## Repository hygiene
+- Python cache/build artifacts should never be committed. CI enforces this via `scripts/check-no-artifacts.sh`.
+- Before committing, you can run:
+  ```bash
+  ./scripts/check-no-artifacts.sh
+  ```
+- If you need to clean local cache artifacts:
+  ```bash
+  find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+  find . -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) -delete
+  ```
