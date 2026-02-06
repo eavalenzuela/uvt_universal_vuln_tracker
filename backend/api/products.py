@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
 from ..database import db
-from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
+from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl, SoftwareComponent
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
 
@@ -68,6 +68,29 @@ def _product_json(p: Product, include_details: bool = False):
             "notes": link.notes,
             "mapping_id": link.id,
         } for link in sorted(p.control_links, key=lambda x: (x.control.name or ""))]
+        component_count = (
+            SoftwareComponent.query.join(ProductVersion, ProductVersion.id == SoftwareComponent.product_version_id)
+            .filter(ProductVersion.product_id == p.id)
+            .count()
+        )
+        data["component_count"] = component_count
+        component_rows = (
+            SoftwareComponent.query.join(ProductVersion, ProductVersion.id == SoftwareComponent.product_version_id)
+            .filter(ProductVersion.product_id == p.id)
+            .order_by(asc(SoftwareComponent.ecosystem), asc(SoftwareComponent.name), asc(SoftwareComponent.version))
+            .all()
+        )
+        data["components"] = [{
+            "id": c.id,
+            "product_version_id": c.product_version_id,
+            "version_label": c.product_version.version if c.product_version else None,
+            "name": c.name,
+            "version": c.version,
+            "ecosystem": c.ecosystem,
+            "purl": c.purl,
+            "cpe": c.cpe,
+            "dependency_path": (c.metadata_json or {}).get("dependency_path"),
+        } for c in component_rows]
 
     return data
 

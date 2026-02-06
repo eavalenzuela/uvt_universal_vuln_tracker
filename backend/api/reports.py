@@ -31,6 +31,9 @@ EXPORT_FIELDS = [
     "last_modified_date",
     "created_at",
     "updated_at",
+    "component_ecosystems",
+    "component_packages",
+    "max_transitive_depth",
 ]
 
 ALLOWED_FREQUENCIES = {"daily", "weekly"}
@@ -134,6 +137,10 @@ def _dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 d
 
 
 def _vuln_row(v):
+    components = [link.component for link in (v.affected_components or []) if link.component]
+    ecosystems = sorted({c.ecosystem for c in components if c.ecosystem})
+    packages = sorted({c.name for c in components if c.name})
+    max_depth = max([link.transitive_depth for link in (v.affected_components or [])], default=0)
     return {
         "id": v.id,
         "cve_id": v.cve_id or "",
@@ -150,6 +157,9 @@ def _vuln_row(v):
         "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else "",
         "created_at": v.created_at.isoformat() if v.created_at else "",
         "updated_at": v.updated_at.isoformat() if v.updated_at else "",
+        "component_ecosystems": ";".join(ecosystems),
+        "component_packages": ";".join(packages),
+        "max_transitive_depth": max_depth,
     }
 
 

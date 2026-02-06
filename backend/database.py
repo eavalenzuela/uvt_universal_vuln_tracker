@@ -33,7 +33,7 @@ def ensure_sqlite_schema(app):
             inspector = inspect(db.engine)
 
 
-        required_tables = {"notification_rules", "notification_delivery_logs", "saved_vulnerability_filters"}
+        required_tables = {"notification_rules", "notification_delivery_logs", "saved_vulnerability_filters", "software_components", "component_dependencies", "vulnerability_components"}
         if any(table not in inspector.get_table_names() for table in required_tables):
             db.create_all()
             inspector = inspect(db.engine)
