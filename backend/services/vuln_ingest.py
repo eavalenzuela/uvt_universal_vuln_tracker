@@ -27,6 +27,22 @@ def upsert_vulnerability(
     source: str | None = None,
     source_id: str | None = None,
 ) -> Vulnerability:
+    vulnerability = _upsert_vulnerability_no_commit(
+        normalized,
+        source=source,
+        source_id=source_id,
+    )
+
+    db.session.commit()
+    return vulnerability
+
+
+def _upsert_vulnerability_no_commit(
+    normalized: NormalizedVuln,
+    *,
+    source: str | None = None,
+    source_id: str | None = None,
+) -> Vulnerability:
     vulnerability = _find_existing(normalized)
 
     if vulnerability is None:
@@ -48,8 +64,6 @@ def upsert_vulnerability(
             cve_id=normalized.cve_id,
             raw_payload=normalized.raw_payload,
         )
-
-    db.session.commit()
     return vulnerability
 
 
@@ -59,14 +73,21 @@ def upsert_vulnerabilities(
     source: str | None = None,
 ) -> list[Vulnerability]:
     results: list[Vulnerability] = []
-    for normalized in normalized_items:
-        results.append(
-            upsert_vulnerability(
-                normalized,
-                source=source,
-                source_id=_extract_source_id(normalized),
+    try:
+        for normalized in normalized_items:
+            results.append(
+                _upsert_vulnerability_no_commit(
+                    normalized,
+                    source=source,
+                    source_id=_extract_source_id(normalized),
+                )
             )
-        )
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
     return results
 
 
