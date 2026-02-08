@@ -3,7 +3,16 @@ import json
 
 from backend.auth import create_user, generate_token, hash_password
 from backend.database import db
-from backend.models import AuditLog, Product, ProductVersion, User, Vulnerability, VulnerabilityVersion
+from backend.models import (
+    AuditLog,
+    ComponentDependency,
+    Product,
+    ProductVersion,
+    SoftwareComponent,
+    User,
+    Vulnerability,
+    VulnerabilityVersion,
+)
 
 
 def auth_header(user):
@@ -1949,3 +1958,154 @@ def test_vulnerability_enrich_merge_vs_force(app, client, monkeypatch):
     force_payload = force_resp.get_json()
     assert force_payload["vulnerability"]["severity"] == "High"
     assert "severity" in force_payload["enrichment"]["applied_fields"]
+
+
+def test_compare_product_version_components_diff(app, client):
+    admin = create_admin(app)
+
+    with app.app_context():
+        product = Product(name="Widget Diff", description="Diff target", created_by=admin.id)
+        db.session.add(product)
+        db.session.flush()
+
+        from_pv = ProductVersion(product_id=product.id, version="1.0.0", release_date=date(2024, 1, 1))
+        to_pv = ProductVersion(product_id=product.id, version="2.0.0", release_date=date(2024, 6, 1))
+        db.session.add_all([from_pv, to_pv])
+        db.session.flush()
+
+        from_root = SoftwareComponent(
+            product_version_id=from_pv.id,
+            name="app-core",
+            version="1.0.0",
+            ecosystem="npm",
+            purl="pkg:npm/app-core@1.0.0",
+            component_type="application",
+        )
+        from_lodash = SoftwareComponent(
+            product_version_id=from_pv.id,
+            name="lodash",
+            version="4.17.20",
+            ecosystem="npm",
+            purl="pkg:npm/lodash@4.17.20",
+        )
+        from_axios = SoftwareComponent(
+            product_version_id=from_pv.id,
+            name="axios",
+            version="0.24.0",
+            ecosystem="npm",
+            purl="pkg:npm/axios@0.24.0",
+        )
+        db.session.add_all([from_root, from_lodash, from_axios])
+        db.session.flush()
+
+        db.session.add_all([
+            ComponentDependency(
+                product_version_id=from_pv.id,
+                parent_component_id=from_root.id,
+                child_component_id=from_lodash.id,
+                dependency_path="app-core > lodash",
+                depth=1,
+                is_direct=True,
+            ),
+            ComponentDependency(
+                product_version_id=from_pv.id,
+                parent_component_id=from_root.id,
+                child_component_id=from_axios.id,
+                dependency_path="app-core > axios",
+                depth=1,
+                is_direct=True,
+            ),
+        ])
+
+        to_root = SoftwareComponent(
+            product_version_id=to_pv.id,
+            name="app-core",
+            version="2.0.0",
+            ecosystem="npm",
+            purl="pkg:npm/app-core@2.0.0",
+            component_type="application",
+        )
+        to_lodash = SoftwareComponent(
+            product_version_id=to_pv.id,
+            name="lodash",
+            version="4.17.21",
+            ecosystem="npm",
+            purl="pkg:npm/lodash@4.17.21",
+        )
+        to_axios = SoftwareComponent(
+            product_version_id=to_pv.id,
+            name="axios",
+            version="0.22.0",
+            ecosystem="npm",
+            purl="pkg:npm/axios@0.22.0",
+        )
+        to_dayjs = SoftwareComponent(
+            product_version_id=to_pv.id,
+            name="dayjs",
+            version="1.11.13",
+            ecosystem="npm",
+            purl="pkg:npm/dayjs@1.11.13",
+        )
+        db.session.add_all([to_root, to_lodash, to_axios, to_dayjs])
+        db.session.flush()
+
+        db.session.add_all([
+            ComponentDependency(
+                product_version_id=to_pv.id,
+                parent_component_id=to_root.id,
+                child_component_id=to_lodash.id,
+                dependency_path="app-core > lodash",
+                depth=1,
+                is_direct=True,
+            ),
+            ComponentDependency(
+                product_version_id=to_pv.id,
+                parent_component_id=to_root.id,
+                child_component_id=to_axios.id,
+                dependency_path="app-core > transitive > axios",
+                depth=2,
+                is_direct=False,
+            ),
+            ComponentDependency(
+                product_version_id=to_pv.id,
+                parent_component_id=to_root.id,
+                child_component_id=to_dayjs.id,
+                dependency_path="app-core > dayjs",
+                depth=1,
+                is_direct=True,
+            ),
+        ])
+
+        db.session.commit()
+        from_id = from_pv.id
+        to_id = to_pv.id
+
+    resp = client.get(
+        f"/api/product_versions/compare/components?from_product_version_id={from_id}&to_product_version_id={to_id}",
+        headers=auth_header(admin),
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["from_product_version"]["id"] == from_id
+    assert payload["to_product_version"]["id"] == to_id
+
+    assert payload["summary"]["added_components"] == 1
+    assert payload["summary"]["removed_components"] == 0
+    assert payload["summary"]["changed_components"] >= 3
+    assert payload["summary"]["version_upgrades"] == 2
+    assert payload["summary"]["version_downgrades"] == 1
+
+    added_names = {row["name"] for row in payload["components"]["added"]}
+    assert added_names == {"dayjs"}
+
+    upgrades = {(row["name"], row["from_version"], row["to_version"]) for row in payload["version_deltas"]["upgrades"]}
+    assert ("app-core", "1.0.0", "2.0.0") in upgrades
+    assert ("lodash", "4.17.20", "4.17.21") in upgrades
+
+    downgrades = {(row["name"], row["from_version"], row["to_version"]) for row in payload["version_deltas"]["downgrades"]}
+    assert ("axios", "0.24.0", "0.22.0") in downgrades
+
+    assert payload["summary"]["dependency_edges_added"] == 1
+    assert payload["summary"]["dependency_edges_removed"] == 0
+    assert payload["summary"]["dependency_edges_changed"] == 1

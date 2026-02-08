@@ -9,6 +9,7 @@ import { AdminLogsView } from "../views/admin/adminLogsView.js";
 import { AdminPluginsView } from "../views/admin/adminPluginsView.js";
 import { AdminNotificationRulesView } from "../views/admin/adminNotificationRulesView.js";
 import { ProductsView } from "../views/products/productsView.js";
+import { ProductComponentDiffView } from "../views/products/productComponentDiffView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
 
 export const ROUTES = [
@@ -24,6 +25,7 @@ export const ROUTES = [
   // placeholders for later:
   { path: "/controls", view: ControlsView, guard: () => requireAuth() },
   { path: "/products", view: ProductsView, guard: () => requireAuth() },
+  { path: "/products/component-diff", view: ProductComponentDiffView, guard: () => requireAuth() },
   { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },

@@ -5,6 +5,7 @@ from sqlalchemy import asc
 
 from ..auth import login_required, role_required
 from ..models import ComponentDependency, ProductVersion, SoftwareComponent
+from ..services.component_diff import compare_product_version_components
 from ..services.sbom_ingest import SbomFormatError, ingest_sbom
 
 bp = Blueprint("components_api", __name__, url_prefix="/api")
@@ -67,3 +68,19 @@ def import_sbom(product_version_id: int):
         return jsonify({"error": str(exc)}), 400
 
     return jsonify({"ok": True, "stats": stats})
+
+
+@bp.get("/product_versions/compare/components")
+@login_required
+def compare_components_between_versions():
+    from_product_version_id = request.args.get("from_product_version_id", type=int)
+    to_product_version_id = request.args.get("to_product_version_id", type=int)
+
+    if not from_product_version_id or not to_product_version_id:
+        return jsonify({"error": "from_product_version_id and to_product_version_id are required"}), 400
+
+    result = compare_product_version_components(
+        from_product_version_id=from_product_version_id,
+        to_product_version_id=to_product_version_id,
+    )
+    return jsonify(result)

@@ -58,6 +58,7 @@ export function renderSidebar() {
     navLink("Vulnerabilities", "/vulnerabilities"),
     navLink("Controls", "/controls"),
     navLink("Products", "/products"),
+    navLink("Component Diff", "/products/component-diff"),
   );
 
   if (admin) {
