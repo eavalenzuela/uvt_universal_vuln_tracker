@@ -12,6 +12,8 @@ import {
   listVulnerabilityWatchers,
   watchVulnerability,
   unwatchVulnerability,
+  listMergeCandidates,
+  mergeVulnerability,
 } from "../../api/vulnerabilities.js";
 
 function formatDate(value) {
@@ -52,6 +54,23 @@ function renderActivityItem(item) {
     el("div", { style: "font-weight:600;", text: summary }),
     el("div", { class: "muted", text: `${formatDateTime(item.created_at)} by ${actor}` }),
     el("pre", { style: "white-space:pre-wrap; margin:8px 0 0; background:#f8fafc; padding:8px; border-radius:8px;" }, delta),
+  );
+}
+
+
+function renderMergeCandidateRow(item, onMerge) {
+  const candidate = item?.candidate || {};
+  return el(
+    "div",
+    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
+    el("div", { style: "font-weight:600;", text: `${candidate.title || `Vulnerability ${candidate.id}`} (${candidate.severity || "-"})` }),
+    el("div", { class: "muted", text: `ID ${candidate.id}${candidate.cve_id ? ` • ${candidate.cve_id}` : ""}` }),
+    el("div", { class: "muted", text: `Score: ${item.score} • Reasons: ${(item.reasons || []).join(", ") || "-"}` }),
+    el("button", {
+      class: "btn danger",
+      text: "Merge into this vulnerability",
+      onClick: () => onMerge(candidate),
+    }),
   );
 }
 
@@ -107,12 +126,14 @@ export async function VulnDetailView(params = {}) {
 
   async function render() {
     try {
-      const [vuln, activity, comments, watchers] = await Promise.all([
+      const [vuln, activity, comments, watchers, mergeCandidatesPayload] = await Promise.all([
         getVulnerability(vulnId),
         listVulnerabilityActivity(vulnId).catch(() => []),
         listVulnerabilityComments(vulnId).catch(() => []),
         listVulnerabilityWatchers(vulnId).catch(() => []),
+        listMergeCandidates(vulnId).catch(() => ({ items: [] })),
       ]);
+      const mergeCandidates = mergeCandidatesPayload?.items || [];
 
       const isWatching = watchers.some((watcher) => watcher.user_id === currentUser?.id);
 
@@ -138,6 +159,7 @@ export async function VulnDetailView(params = {}) {
           el("button", { class: "btn", onClick: () => navigate("/vulnerabilities") }, "Back to list"),
         ),
         vuln.cve_id ? el("p", { class: "muted", text: vuln.cve_id }) : null,
+        vuln.is_merged ? el("p", { class: "muted", text: `Merged into vulnerability #${vuln.merged_into_id || "-"}` }) : null,
         el("p", { text: vuln.description || "No description provided." }),
         el(
           "div",
@@ -178,6 +200,32 @@ export async function VulnDetailView(params = {}) {
               })
             : null,
         ),
+        ["Admin", "Analyst"].includes(currentUser?.role) && !vuln.is_merged
+          ? el(
+              "div",
+              { class: "card", style: "margin-top:12px;" },
+              el("h3", { style: "margin-top:0;", text: "Merge candidates" }),
+              !mergeCandidates.length
+                ? el("div", { class: "muted", text: "No high-confidence merge candidates found." })
+                : el(
+                    "div",
+                    { style: "display:flex; flex-direction:column; gap:8px;" },
+                    ...mergeCandidates.map((candidate) =>
+                      renderMergeCandidateRow(candidate, async (choice) => {
+                        const confirm = window.confirm(
+                          `Merge vulnerability #${choice.id} into #${vuln.id}? This will move versions, components, comments, and watchers.`,
+                        );
+                        if (!confirm) return;
+                        const reason = window.prompt("Optional merge reason", "") || undefined;
+                        await mergeVulnerability(vuln.id, choice.id, reason);
+                        toast({ title: "Vulnerabilities merged", message: `Merged #${choice.id} into #${vuln.id}` });
+                        await render();
+                      }),
+                    ),
+                  ),
+            )
+          : null,
+
         el(
           "div",
           { class: "card", style: "margin-top:12px;" },

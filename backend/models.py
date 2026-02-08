@@ -202,12 +202,16 @@ class Vulnerability(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    is_merged = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    merged_into_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="SET NULL"), index=True)
+    merge_metadata_json = db.Column(db.JSON, default=dict, nullable=False)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"))
 
     creator = db.relationship("User", foreign_keys=[created_by])
     assignee = db.relationship("User", foreign_keys=[assigned_to])
+    merged_into = db.relationship("Vulnerability", remote_side=[id], foreign_keys=[merged_into_id])
 
     versions = db.relationship("VulnerabilityVersion", back_populates="vulnerability", cascade="all, delete-orphan")
     attack_vectors = db.relationship("VulnerabilityAttackVector", back_populates="vulnerability", cascade="all, delete-orphan")
