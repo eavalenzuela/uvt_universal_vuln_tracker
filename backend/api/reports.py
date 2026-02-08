@@ -1,13 +1,19 @@
 import csv
+import hashlib
 import io
+import json
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
+from uuid import uuid4
 
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, current_app, jsonify, request, Response, send_file
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy import desc, func
 
 from ..auth import login_required, role_required
 from ..database import db
-from ..models import Product, ProductVersion, ReportSchedule, Vulnerability, VulnerabilityVersion
+from ..models import Product, ProductVersion, ReportArtifact, ReportSchedule, Vulnerability, VulnerabilityVersion
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..services.email_delivery import EmailDeliveryError, send_email
 from ..rate_limiter import rate_limit
@@ -42,6 +48,9 @@ ALLOWED_CHANNELS = {"email", "slack"}
 ALLOWED_REPORT_TYPES = {"vulnerabilities", "dashboard_summary"}
 SEVERITY_WEIGHTS = {"Critical": 10, "High": 6, "Medium": 3, "Low": 1, "None": 0}
 OPEN_STATUSES = {"Open", "In Progress"}
+
+ALLOWED_EXPORT_FORMATS = {"csv", "json", "pdf"}
+REPORT_EXPORT_TOKEN_SALT = "reports-artifact-download"
 
 
 def _parse_csv_ints(value):
@@ -281,6 +290,107 @@ def _csv_response(filename, fieldnames, rows):
     )
 
 
+def _json_bytes(payload):
+    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+
+
+def _pdf_bytes(title, payload):
+    lines = [title, "", json.dumps(payload, indent=2, sort_keys=True)]
+    text = "\n".join(lines)
+    safe = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 10 Tf 40 780 Td ({safe}) Tj ET"
+    content = stream.encode("latin-1", errors="replace")
+    objects = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
+        f"5 0 obj << /Length {len(content)} >> stream\n".encode("ascii") + content + b"\nendstream endobj",
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(output))
+        output.extend(obj + b"\n")
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(offsets)}\n".encode("ascii"))
+    output.extend(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        output.extend(f"{off:010d} 00000 n \n".encode("ascii"))
+    output.extend(f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode("ascii"))
+    return bytes(output)
+
+
+def _report_serializer():
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt=REPORT_EXPORT_TOKEN_SALT)
+
+
+def _report_dir():
+    root = current_app.config.get("REPORT_ARTIFACT_DIR") or os.path.join(current_app.instance_path, "report_artifacts")
+    Path(root).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _build_export_artifact(*, report_type, export_format, filters, payload, filename_prefix):
+    if export_format == "csv":
+        if report_type == "dashboard_summary":
+            content_bytes = _csv_content_bytes(["metric", "group", "value"], _summary_rows(payload))
+        else:
+            content_bytes = _csv_content_bytes(EXPORT_FIELDS, payload)
+        content_type = "text/csv"
+        extension = "csv"
+    elif export_format == "json":
+        content_bytes = _json_bytes(payload)
+        content_type = "application/json"
+        extension = "json"
+    else:
+        content_bytes = _pdf_bytes(f"UVT {report_type} report", payload)
+        content_type = "application/pdf"
+        extension = "pdf"
+
+    digest = hashlib.sha256(content_bytes).hexdigest()
+    storage_name = f"{filename_prefix}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}.{extension}"
+    storage_path = os.path.join(_report_dir(), storage_name)
+    with open(storage_path, "wb") as handle:
+        handle.write(content_bytes)
+
+    artifact = ReportArtifact(
+        report_type=report_type,
+        format=export_format,
+        storage_path=storage_path,
+        checksum=digest,
+        size=len(content_bytes),
+        content_type=content_type,
+        filters_json=dict(filters or {}),
+        created_by=request.user.id,
+    )
+    db.session.add(artifact)
+    db.session.commit()
+    return artifact
+
+
+def _artifact_download_url(artifact):
+    token = _report_serializer().dumps({"artifact_id": artifact.id, "user_id": request.user.id})
+    return f"/api/reports/artifacts/{artifact.id}/download?token={token}"
+
+
+def _report_artifact_json(artifact):
+    return {
+        "id": artifact.id,
+        "report_type": artifact.report_type,
+        "format": artifact.format,
+        "content_type": artifact.content_type,
+        "size": artifact.size,
+        "checksum": artifact.checksum,
+        "created_at": artifact.created_at.isoformat() if artifact.created_at else None,
+        "download_url": _artifact_download_url(artifact),
+    }
+
+
+def _csv_content_bytes(fieldnames, rows):
+    return _csv_content(fieldnames, rows).encode("utf-8")
+
+
 def _dashboard_summary(filters):
     q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
     total = q.count()
@@ -312,25 +422,81 @@ def _summary_rows(summary):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_vuln_export")
 def export_vulnerabilities():
+    export_format = (request.args.get("format") or "csv").lower()
+    if export_format not in ALLOWED_EXPORT_FORMATS:
+        return error_response("format must be one of csv, json, pdf", status_code=400)
+    filters = request.args.to_dict(flat=True)
+    filters.pop("format", None)
     try:
-        items, _ = build_vulnerability_query(request.args, base_query=Vulnerability.query)
+        items, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
         items = items.all()
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     rows = [_vuln_row(v) for v in items]
-    return _csv_response("vulnerabilities_export.csv", EXPORT_FIELDS, rows)
+    artifact = _build_export_artifact(
+        report_type="vulnerabilities",
+        export_format=export_format,
+        filters=filters,
+        payload=rows,
+        filename_prefix="vulnerabilities_export",
+    )
+    return jsonify({"artifact": _report_artifact_json(artifact)})
 
 
 @bp.get("/reports/dashboard/export")
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_dashboard_export")
 def export_dashboard_summary():
+    export_format = (request.args.get("format") or "csv").lower()
+    if export_format not in ALLOWED_EXPORT_FORMATS:
+        return error_response("format must be one of csv, json, pdf", status_code=400)
+    filters = request.args.to_dict(flat=True)
+    filters.pop("format", None)
     try:
-        summary = _dashboard_summary(request.args)
+        summary = _dashboard_summary(filters)
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
-    return _csv_response("dashboard_summary.csv", ["metric", "group", "value"], _summary_rows(summary))
+    artifact = _build_export_artifact(
+        report_type="dashboard_summary",
+        export_format=export_format,
+        filters=filters,
+        payload=summary,
+        filename_prefix="dashboard_summary",
+    )
+    return jsonify({"artifact": _report_artifact_json(artifact)})
 
+
+
+
+@bp.get("/reports/artifacts/<int:artifact_id>/download")
+@login_required
+def download_report_artifact(artifact_id):
+    artifact = ReportArtifact.query.filter_by(id=artifact_id).first()
+    if not artifact:
+        return error_response("Artifact not found", status_code=404)
+
+    token = request.args.get("token")
+    if not token:
+        return error_response("Missing token", status_code=403)
+
+    try:
+        payload = _report_serializer().loads(token, max_age=600)
+    except (BadSignature, SignatureExpired):
+        return error_response("Invalid token", status_code=403)
+
+    if payload.get("artifact_id") != artifact.id or payload.get("user_id") != request.user.id:
+        return error_response("Forbidden", status_code=403)
+
+    if request.user.role != "Admin" and artifact.created_by != request.user.id:
+        return error_response("Forbidden", status_code=403)
+
+    filename = f"{artifact.report_type}.{artifact.format}"
+    return send_file(
+        artifact.storage_path,
+        mimetype=artifact.content_type or "application/octet-stream",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 @bp.get("/dashboard/summary")
 @login_required

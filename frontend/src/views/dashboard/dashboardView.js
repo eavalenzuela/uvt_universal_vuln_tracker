@@ -9,7 +9,7 @@ import {
 import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
-import { exportDashboardSummaryCsv, getDashboardSummary, getRiskTrends } from "../../api/reports.js";
+import { downloadReportArtifact, exportDashboardSummary, getDashboardSummary, getRiskTrends } from "../../api/reports.js";
 import { toast } from "../../ui/components/toast.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
@@ -268,24 +268,31 @@ export async function DashboardView() {
     el("option", { value: "", text: "All severities" }),
     ...SEVERITY_OPTIONS.map((severity) => el("option", { value: severity, text: severity })),
   );
+  const exportFormatSelect = el("select", { class: "input", style: "max-width: 140px;" },
+    el("option", { value: "csv", text: "CSV" }),
+    el("option", { value: "json", text: "JSON" }),
+    el("option", { value: "pdf", text: "PDF" }),
+  );
   const exportBtn = el("button", { class: "btn", type: "button" }, "Export current view");
   exportBtn.addEventListener("click", async () => {
     exportBtn.disabled = true;
     try {
-      const csv = await exportDashboardSummaryCsv({
+      const response = await exportDashboardSummary({
         status: exportStatusSelect.value || undefined,
         severity: exportSeveritySelect.value || undefined,
-      });
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      }, exportFormatSelect.value);
+      const artifact = response?.artifact;
+      if (!artifact?.download_url) throw new Error("Export artifact missing download URL");
+      const blob = await downloadReportArtifact(artifact.download_url);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "dashboard_summary.csv";
+      a.download = `dashboard_summary.${artifact.format || exportFormatSelect.value}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast({ title: "Export ready", message: "Downloaded dashboard summary CSV." });
+      toast({ title: "Export ready", message: `Downloaded dashboard summary ${String((artifact.format || exportFormatSelect.value)).toUpperCase()}.` });
     } catch (error) {
       toast({ title: "Export failed", message: error?.message || "Unable to export dashboard summary" });
     } finally {
@@ -299,7 +306,7 @@ export async function DashboardView() {
     el("h1", { class: "page-title", text: "Dashboard" }),
     el("p", { class: "muted", text: `Signed in as ${user?.username || "?"} (${user?.role || "?"}).` }),
     el("p", { class: "muted", text: "Drag widgets to reorder or use the move controls for keyboard access." }),
-    el("div", { class: "row", style: "gap: 8px; flex-wrap: wrap; align-items: center;" }, exportStatusSelect, exportSeveritySelect, exportBtn),
+    el("div", { class: "row", style: "gap: 8px; flex-wrap: wrap; align-items: center;" }, exportStatusSelect, exportSeveritySelect, exportFormatSelect, exportBtn),
   );
 
   const gridWrapper = el("div", { style: "display:flex; flex-direction:column; gap:12px;" });

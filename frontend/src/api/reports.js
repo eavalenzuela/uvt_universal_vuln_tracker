@@ -1,4 +1,6 @@
 import { apiFetch } from "./client.js";
+import { CONFIG } from "../config.js";
+import { getState } from "../state/store.js";
 
 function withParams(base, params = {}) {
   const qs = new URLSearchParams();
@@ -9,12 +11,23 @@ function withParams(base, params = {}) {
   return suffix ? `${base}?${suffix}` : base;
 }
 
-export function exportVulnerabilitiesCsv(filters = {}) {
-  return apiFetch(withParams("/api/reports/vulnerabilities/export", filters), { method: "GET" });
+export function exportVulnerabilities(filters = {}, format = "csv") {
+  return apiFetch(withParams("/api/reports/vulnerabilities/export", { ...filters, format }), { method: "GET" });
 }
 
-export function exportDashboardSummaryCsv(filters = {}) {
-  return apiFetch(withParams("/api/reports/dashboard/export", filters), { method: "GET" });
+export function exportDashboardSummary(filters = {}, format = "csv") {
+  return apiFetch(withParams("/api/reports/dashboard/export", { ...filters, format }), { method: "GET" });
+}
+
+export async function downloadReportArtifact(downloadUrl) {
+  const token = getState()?.session?.token;
+  const finalUrl = downloadUrl.startsWith("http") ? downloadUrl : `${CONFIG.API_BASE}${downloadUrl}`;
+  const response = await fetch(finalUrl, {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error(`Download failed (HTTP ${response.status})`);
+  return response.blob();
 }
 
 export function listReportSchedules() {

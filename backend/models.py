@@ -640,3 +640,20 @@ class ReportSchedule(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     creator = db.relationship("User", foreign_keys=[created_by])
+
+
+class ReportArtifact(db.Model):
+    __tablename__ = "report_artifacts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    report_type = db.Column(db.String(30), nullable=False, index=True)
+    format = db.Column(db.String(10), nullable=False)
+    storage_path = db.Column(db.String(1024), nullable=False)
+    checksum = db.Column(db.String(256))
+    size = db.Column(db.BigInteger)
+    content_type = db.Column(db.String(255))
+    filters_json = db.Column(db.JSON)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    creator = db.relationship("User", foreign_keys=[created_by])
