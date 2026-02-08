@@ -8,7 +8,7 @@ export async function LoginView() {
   const currentSession = getState()?.session || { token: null, user: null };
   try {
     const fresh = await me();
-    setSession({ token: currentSession.token, user: fresh });
+    setSession({ token: currentSession.token, refreshToken: currentSession.refreshToken, user: fresh });
     navigate("/");
     return null;
   } catch {
@@ -32,11 +32,11 @@ export async function LoginView() {
       }
 
       const res = await login(username, password);
-      setSession({ token: res.token, user: res.user });
+      setSession({ token: res.token, refreshToken: res.refresh_token || null, user: res.user });
 
       try {
         const fresh = await me();
-        setSession({ token: res.token, user: fresh });
+        setSession({ token: res.token, refreshToken: res.refresh_token || null, user: fresh });
       } catch {
         // fine if /me not implemented yet
       }

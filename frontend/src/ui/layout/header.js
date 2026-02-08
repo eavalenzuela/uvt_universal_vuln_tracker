@@ -1,4 +1,5 @@
 import { el } from "../dom/el.js";
+import { logout } from "../../api/auth.js";
 import { getState, logoutSession } from "../../state/store.js";
 import { isAuthed } from "../../state/permissions.js";
 import { navigate } from "../../router/router.js";
@@ -19,7 +20,15 @@ export function renderHeader() {
     right.appendChild(el("div", { class: "muted" }, `${user?.username || "user"} (${user?.role || "?"})`));
     right.appendChild(el("button", {
       class: "btn",
-      onclick: () => {
+      onclick: async () => {
+        try {
+          const refreshToken = getState()?.session?.refreshToken;
+          if (refreshToken) {
+            await logout(refreshToken);
+          }
+        } catch {
+          // clear local session regardless of backend availability
+        }
         logoutSession();
         navigate("/login");
       }

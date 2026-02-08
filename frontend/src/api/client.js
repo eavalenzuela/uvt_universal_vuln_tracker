@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { getState } from "../state/store.js";
+import { getState, logoutSession, setSession } from "../state/store.js";
 
 export class ApiError extends Error {
   constructor(message, status, payload) {
@@ -13,6 +13,7 @@ export class ApiError extends Error {
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_RETRIES = 1;
 const RETRY_STATUS = new Set([502, 503, 504]);
+let refreshInFlight = null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,6 +39,46 @@ async function parsePayload(res) {
   return text === "" ? null : text;
 }
 
+async function tryRefreshToken() {
+  if (refreshInFlight) return refreshInFlight;
+
+  const state = getState();
+  const refreshToken = state?.session?.refreshToken;
+  if (!refreshToken) return false;
+
+  refreshInFlight = (async () => {
+    const url = `${CONFIG.API_BASE}/api/auth/refresh`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
+    });
+
+    const payload = await parsePayload(res);
+    if (!res.ok || !payload?.token) {
+      logoutSession();
+      return false;
+    }
+
+    setSession({
+      token: payload.token,
+      refreshToken: payload.refresh_token || refreshToken,
+      user: payload.user || state?.session?.user || null,
+    });
+    return true;
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
 export async function apiFetch(
   path,
   {
@@ -48,18 +89,18 @@ export async function apiFetch(
     retries = DEFAULT_RETRIES,
     retryDelayMs = 500,
     signal,
+    _skipRefresh = false,
   } = {},
 ) {
   const url = `${CONFIG.API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
-
-  const state = getState();
-  const token = state?.session?.token;
 
   const finalHeaders = {
     "Accept": "application/json",
     ...headers,
   };
 
+  const state = getState();
+  const token = state?.session?.token;
   if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
 
   let finalBody = body;
@@ -103,6 +144,22 @@ export async function apiFetch(
       const payload = await parsePayload(res);
 
       if (!res.ok) {
+        if (res.status === 401 && !_skipRefresh && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
+          const refreshed = await tryRefreshToken();
+          if (refreshed) {
+            return apiFetch(path, {
+              method,
+              headers,
+              body,
+              timeoutMs,
+              retries,
+              retryDelayMs,
+              signal,
+              _skipRefresh: true,
+            });
+          }
+        }
+
         if (RETRY_STATUS.has(res.status) && attempt <= retries) {
           await sleep(retryDelayMs * attempt);
           continue;

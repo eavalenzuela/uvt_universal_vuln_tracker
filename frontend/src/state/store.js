@@ -1,7 +1,7 @@
 import { loadSession, saveSession, clearSession } from "./session.js";
 
 const state = {
-  session: loadSession(), // { token, user }
+  session: loadSession(), // { token, refreshToken, user }
 };
 
 const listeners = new Set();
@@ -20,13 +20,17 @@ function emit() {
 }
 
 export function setSession(session) {
-  state.session = session;
-  saveSession(session);
+  state.session = {
+    token: session?.token || null,
+    refreshToken: session?.refreshToken || null,
+    user: session?.user || null,
+  };
+  saveSession(state.session);
   emit();
 }
 
 export function logoutSession() {
-  state.session = { token: null, user: null };
+  state.session = { token: null, refreshToken: null, user: null };
   clearSession();
   emit();
 }
