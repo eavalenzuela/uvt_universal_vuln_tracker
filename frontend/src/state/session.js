@@ -1,22 +1,24 @@
 const KEY = "uvt_session_v1";
 
+function emptySession() {
+  return { user: null };
+}
+
 export function loadSession() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { token: null, refreshToken: null, user: null };
+    if (!raw) return emptySession();
     const parsed = JSON.parse(raw);
     return {
-      token: parsed.token || null,
-      refreshToken: parsed.refreshToken || null,
-      user: parsed.user || null,
+      user: parsed?.user || null,
     };
   } catch {
-    return { token: null, refreshToken: null, user: null };
+    return emptySession();
   }
 }
 
-export function saveSession({ token, refreshToken, user }) {
-  localStorage.setItem(KEY, JSON.stringify({ token, refreshToken, user }));
+export function saveSession({ user }) {
+  localStorage.setItem(KEY, JSON.stringify({ user: user || null }));
 }
 
 export function clearSession() {

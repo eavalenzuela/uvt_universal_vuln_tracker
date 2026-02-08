@@ -1,6 +1,5 @@
 import { apiFetch } from "./client.js";
 import { CONFIG } from "../config.js";
-import { getState } from "../state/store.js";
 
 function withParams(base, params = {}) {
   const qs = new URLSearchParams();
@@ -20,11 +19,9 @@ export function exportDashboardSummary(filters = {}, format = "csv") {
 }
 
 export async function downloadReportArtifact(downloadUrl) {
-  const token = getState()?.session?.token;
   const finalUrl = downloadUrl.startsWith("http") ? downloadUrl : `${CONFIG.API_BASE}${downloadUrl}`;
   const response = await fetch(finalUrl, {
     credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) throw new Error(`Download failed (HTTP ${response.status})`);
   return response.blob();

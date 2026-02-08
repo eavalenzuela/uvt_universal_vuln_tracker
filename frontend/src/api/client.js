@@ -57,7 +57,6 @@ async function tryRefreshToken() {
       body: JSON.stringify({ refresh_token: refreshToken }),
       credentials: "include",
     });
-
     const payload = await parsePayload(res);
     if (!res.ok || !payload?.token) {
       logoutSession();
@@ -66,7 +65,7 @@ async function tryRefreshToken() {
 
     setSession({
       token: payload.token,
-      refreshToken: payload.refresh_token || refreshToken,
+      refreshToken: payload.refresh_token || refreshToken || null,
       user: payload.user || state?.session?.user || null,
     });
     return true;
@@ -101,7 +100,11 @@ export async function apiFetch(
 
   const state = getState();
   const token = state?.session?.token;
-  if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
+  const hasAuthHeader = Object.keys(finalHeaders).some((h) => h.toLowerCase() === "authorization");
+  if (!hasAuthHeader && token) {
+    // Backward-compatible rollout: prefer cookie auth, but keep bearer fallback when token exists in-memory.
+    finalHeaders["Authorization"] = `Bearer ${token}`;
+  }
 
   let finalBody = body;
   if (body && typeof body === "object" && !(body instanceof FormData)) {

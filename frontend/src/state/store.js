@@ -1,7 +1,13 @@
 import { loadSession, saveSession, clearSession } from "./session.js";
 
+const persistedSession = loadSession();
+
 const state = {
-  session: loadSession(), // { token, refreshToken, user }
+  session: {
+    token: null,
+    refreshToken: null,
+    user: persistedSession.user,
+  },
   liveNotifications: [],
 };
 
@@ -26,7 +32,7 @@ export function setSession(session) {
     refreshToken: session?.refreshToken || null,
     user: session?.user || null,
   };
-  saveSession(state.session);
+  saveSession({ user: state.session.user });
   emit();
 }
 

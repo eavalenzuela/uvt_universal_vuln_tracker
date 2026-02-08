@@ -7,17 +7,17 @@ export async function login(username, password) {
   });
 }
 
-export async function refresh(refreshToken) {
+export async function refresh(refreshToken = null) {
   return apiFetch("/api/auth/refresh", {
     method: "POST",
-    body: { refresh_token: refreshToken },
+    body: refreshToken ? { refresh_token: refreshToken } : {},
   });
 }
 
-export async function logout(refreshToken) {
+export async function logout(refreshToken = null) {
   return apiFetch("/api/auth/logout", {
     method: "POST",
-    body: { refresh_token: refreshToken },
+    body: refreshToken ? { refresh_token: refreshToken } : {},
   });
 }
 

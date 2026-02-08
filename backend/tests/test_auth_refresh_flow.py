@@ -8,6 +8,9 @@ def test_login_returns_refresh_token_and_persists_hash(client, admin_user):
     payload = res.get_json()
     assert payload["token"]
     assert payload["refresh_token"]
+    set_cookie = res.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=" in set_cookie
+    assert "HttpOnly" in set_cookie
 
     with client.application.app_context():
         saved = RefreshToken.query.one()
@@ -25,6 +28,9 @@ def test_refresh_rotates_refresh_token(client, admin_user):
     payload = refresh.get_json()
     assert payload["token"]
     assert payload["refresh_token"]
+    set_cookie = refresh.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=" in set_cookie
+    assert "HttpOnly" in set_cookie
     assert payload["refresh_token"] != first["refresh_token"]
 
     with client.application.app_context():
