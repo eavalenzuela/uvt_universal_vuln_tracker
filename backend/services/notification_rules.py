@@ -94,14 +94,16 @@ def _passes_product_scope(rule: NotificationRule, vulnerability: Vulnerability) 
     if not scope:
         return True
     scoped_ids = {int(pid) for pid in scope}
-    version_rows = VulnerabilityVersion.query.filter_by(vulnerability_id=vulnerability.id).all()
-    if not version_rows:
-        return False
-    for mapping in version_rows:
-        pv = ProductVersion.query.get(mapping.product_version_id)
-        if pv and int(pv.product_id) in scoped_ids:
-            return True
-    return False
+    match = (
+        db.session.query(VulnerabilityVersion.id)
+        .join(ProductVersion, VulnerabilityVersion.product_version_id == ProductVersion.id)
+        .filter(
+            VulnerabilityVersion.vulnerability_id == vulnerability.id,
+            ProductVersion.product_id.in_(scoped_ids),
+        )
+        .first()
+    )
+    return match is not None
 
 
 def _event_allowed(rule: NotificationRule, event: NotificationEvent) -> bool:
