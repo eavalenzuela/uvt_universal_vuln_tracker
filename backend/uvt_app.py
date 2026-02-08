@@ -44,6 +44,8 @@ def create_app():
     app.config["OIDC_ROLE_MAPPING"] = os.getenv("OIDC_ROLE_MAPPING", "")
 
     app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("1", "true", "yes")
+    app.config["RATE_LIMIT_BACKEND"] = os.getenv("RATE_LIMIT_BACKEND", "memory")
+    app.config["REDIS_URL"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     app.config["RATE_LIMIT_AUTH_LOGIN_LIMIT"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_LIMIT", "5"))
     app.config["RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", "60"))
     app.config["RATE_LIMIT_VULN_LIST_LIMIT"] = int(os.getenv("RATE_LIMIT_VULN_LIST_LIMIT", "60"))
