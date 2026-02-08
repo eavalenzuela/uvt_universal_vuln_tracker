@@ -23,6 +23,7 @@ from ..models import (
 from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
 from .email_delivery import EmailDeliveryError, send_email
+from ..live_notifications import publish_user_event
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
 
@@ -55,6 +56,19 @@ def trigger_mention_notifications(*, vulnerability_id: int, actor_id: int | None
         )
         db.session.add(row)
         notifications.append(row)
+        publish_user_event(
+            user_id=user.id,
+            event_type="mention_notification_created",
+            payload={
+                "notification": {
+                    "user_id": user.id,
+                    "vulnerability_id": vulnerability_id,
+                    "message": row.message,
+                    "is_read": False,
+                    "comment_id": comment_id,
+                }
+            },
+        )
 
     return notifications
 
@@ -236,10 +250,36 @@ def _resolve_targets(rule: NotificationRule, step: int) -> tuple[list[str], list
     return channels, recipients
 
 
+def _publish_rule_trigger_event(event: NotificationEvent, vulnerability: Vulnerability) -> None:
+    if not (event.status_changed or event.assignment_changed):
+        return
+    user_ids = {vulnerability.created_by}
+    if vulnerability.assigned_to:
+        user_ids.add(vulnerability.assigned_to)
+    if event.actor_id:
+        user_ids.add(event.actor_id)
+
+    payload = {
+        "event_type": event.event_type,
+        "vulnerability_id": vulnerability.id,
+        "title": vulnerability.title,
+        "status": vulnerability.status,
+        "severity": vulnerability.severity,
+        "status_changed": bool(event.status_changed),
+        "assignment_changed": bool(event.assignment_changed),
+    }
+    for user_id in user_ids:
+        if user_id is None:
+            continue
+        publish_user_event(user_id=user_id, event_type="rule_triggered", payload=payload)
+
+
 def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id: int | None = None) -> list[NotificationDeliveryLog]:
     vulnerability = Vulnerability.query.get(event.vulnerability_id)
     if not vulnerability:
         return []
+
+    _publish_rule_trigger_event(event, vulnerability)
 
     query = NotificationRule.query.filter_by(is_enabled=True)
     if dry_run_rule_id is not None:
@@ -332,6 +372,26 @@ def run_scheduled_notification_scan(now: datetime | None = None, *, dry_run: boo
             )
             db.session.add(log_row)
             logs.append(log_row)
+
+            if step > 0:
+                user_ids = {vulnerability.created_by}
+                if vulnerability.assigned_to:
+                    user_ids.add(vulnerability.assigned_to)
+                for user_id in user_ids:
+                    if user_id is None:
+                        continue
+                    publish_user_event(
+                        user_id=user_id,
+                        event_type="scheduled_scan_escalation_logged",
+                        payload={
+                            "vulnerability_id": vulnerability.id,
+                            "title": vulnerability.title,
+                            "severity": vulnerability.severity,
+                            "status": vulnerability.status,
+                            "escalation_step": step,
+                            "rule_id": rule.id,
+                        },
+                    )
 
             if checkpoint is None:
                 checkpoint = NotificationDeliveryCheckpoint(

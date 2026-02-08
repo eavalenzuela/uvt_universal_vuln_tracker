@@ -11,6 +11,7 @@ from .vulnerability_filters import bp as vulnerability_filters_bp
 from .sla_policy import bp as sla_policy_bp
 from .reports import bp as reports_bp
 from .components import bp as components_bp
+from .live_notifications import bp as live_notifications_bp
 
 
 def register_api(app):
@@ -27,3 +28,4 @@ def register_api(app):
     app.register_blueprint(sla_policy_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(components_bp)
+    app.register_blueprint(live_notifications_bp)

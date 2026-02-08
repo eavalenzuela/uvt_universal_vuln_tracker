@@ -2,6 +2,7 @@ import { loadSession, saveSession, clearSession } from "./session.js";
 
 const state = {
   session: loadSession(), // { token, refreshToken, user }
+  liveNotifications: [],
 };
 
 const listeners = new Set();
@@ -31,6 +32,18 @@ export function setSession(session) {
 
 export function logoutSession() {
   state.session = { token: null, refreshToken: null, user: null };
+  state.liveNotifications = [];
   clearSession();
+  emit();
+}
+
+export function pushLiveNotification(event) {
+  if (!event || typeof event !== "object") return;
+  state.liveNotifications = [event, ...state.liveNotifications].slice(0, 30);
+  emit();
+}
+
+export function clearLiveNotifications() {
+  state.liveNotifications = [];
   emit();
 }
