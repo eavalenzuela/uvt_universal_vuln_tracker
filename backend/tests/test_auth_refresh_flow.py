@@ -45,6 +45,25 @@ def test_logout_revokes_refresh_token_and_blocks_future_refresh(client, admin_us
     assert refresh.status_code == 401
 
 
+
+
+def test_logout_all_revokes_access_token_and_refresh_tokens(client, admin_user):
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    payload = login.get_json()
+
+    before = client.get("/api/auth/me", headers={"Authorization": f"Bearer {payload['token']}"})
+    assert before.status_code == 200
+
+    logout_all = client.post("/api/auth/logout_all", headers={"Authorization": f"Bearer {payload['token']}"})
+    assert logout_all.status_code == 200
+
+    after = client.get("/api/auth/me", headers={"Authorization": f"Bearer {payload['token']}"})
+    assert after.status_code == 401
+
+    refresh = client.post("/api/auth/refresh", json={"refresh_token": payload["refresh_token"]})
+    assert refresh.status_code == 401
+
+
 def test_logout_all_revokes_all_refresh_tokens(client, admin_user, auth_header):
     first = client.post("/api/auth/login", json={"username": "admin", "password": "secret"}).get_json()
     second = client.post("/api/auth/login", json={"username": "admin", "password": "secret"}).get_json()

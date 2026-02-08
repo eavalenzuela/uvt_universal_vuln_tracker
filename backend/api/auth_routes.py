@@ -8,6 +8,7 @@ from ..auth import (
     create_user,
     generate_token,
     login_required,
+    revoke_tokens,
     revoke_all_refresh_tokens,
     revoke_refresh_token,
     rotate_refresh_token,
@@ -77,6 +78,7 @@ def logout():
 @bp.post("/logout_all")
 @login_required
 def logout_all():
+    revoke_tokens(request.user)
     revoke_all_refresh_tokens(request.user)
     db.session.commit()
     return jsonify({"ok": True})
