@@ -11,7 +11,7 @@ async function refreshSessionFromServer() {
 
   try {
     const user = await me();
-    setSession({ token: state.session.token, user });
+    setSession({ token: state.session.token, refreshToken: state.session.refreshToken, user });
   } catch {
     // token invalid/expired, etc.
     logoutSession();

@@ -31,6 +31,7 @@ def create_app():
     # Config (SQLite by default so it boots instantly)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "dev-jwt-secret")
+    app.config["REFRESH_TOKEN_LIFETIME_DAYS"] = int(os.getenv("REFRESH_TOKEN_LIFETIME_DAYS", "30"))
     app.config["ALLOW_PUBLIC_REGISTRATION"] = os.getenv("ALLOW_PUBLIC_REGISTRATION", "false").lower() in ("1", "true", "yes")
 
     app.config["OIDC_ENABLED"] = os.getenv("OIDC_ENABLED", "false").lower() in ("1", "true", "yes")

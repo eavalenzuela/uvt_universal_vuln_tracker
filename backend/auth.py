@@ -1,4 +1,6 @@
 import datetime
+import hashlib
+import secrets
 from functools import wraps
 
 import jwt
@@ -7,7 +9,7 @@ from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from .database import db
-from .models import User
+from .models import RefreshToken, User
 from .permissions import role_has_scope, scope_for_request
 
 
@@ -16,11 +18,14 @@ def revoke_tokens(user: User):
     user.last_revoked_at = datetime.datetime.utcnow()
     db.session.add(user)
 
+
 def hash_password(password: str) -> str:
     return generate_password_hash(password)
 
+
 def verify_password(password: str, hashed_password: str) -> bool:
     return check_password_hash(hashed_password, password)
+
 
 def generate_token(user_id: int, username: str, role: str, token_version: int = 1, last_revoked_at=None) -> str:
     now = datetime.datetime.utcnow()
@@ -35,8 +40,87 @@ def generate_token(user_id: int, username: str, role: str, token_version: int = 
     }
     return jwt.encode(payload, current_app.config["JWT_SECRET"], algorithm="HS256")
 
+
 def verify_token(token: str):
     return jwt.decode(token, current_app.config["JWT_SECRET"], algorithms=["HS256"])
+
+
+def _refresh_token_lifetime_days() -> int:
+    return int(current_app.config.get("REFRESH_TOKEN_LIFETIME_DAYS", 30))
+
+
+def _refresh_token_hash(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def create_refresh_token(user: User):
+    raw_token = secrets.token_urlsafe(48)
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=_refresh_token_lifetime_days())
+    token_record = RefreshToken(
+        token_hash=_refresh_token_hash(raw_token),
+        user_id=user.id,
+        expires_at=expires_at,
+        revoked=False,
+    )
+    db.session.add(token_record)
+    return raw_token, token_record
+
+
+def find_refresh_token(raw_token: str):
+    if not raw_token:
+        return None
+    return RefreshToken.query.filter_by(token_hash=_refresh_token_hash(raw_token)).first()
+
+
+def revoke_refresh_token(raw_token: str):
+    token_record = find_refresh_token(raw_token)
+    if not token_record or token_record.revoked:
+        return False
+    token_record.revoked = True
+    token_record.revoked_at = datetime.datetime.utcnow()
+    db.session.add(token_record)
+    return True
+
+
+def revoke_all_refresh_tokens(user: User):
+    now = datetime.datetime.utcnow()
+    RefreshToken.query.filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked.is_(False),
+    ).update(
+        {
+            RefreshToken.revoked: True,
+            RefreshToken.revoked_at: now,
+        },
+        synchronize_session=False,
+    )
+
+
+def rotate_refresh_token(raw_token: str):
+    token_record = find_refresh_token(raw_token)
+    if not token_record:
+        return None, "invalid"
+    if token_record.revoked:
+        return None, "revoked"
+    if token_record.expires_at <= datetime.datetime.utcnow():
+        return None, "expired"
+
+    user = User.query.get(token_record.user_id)
+    if not user or not user.is_active:
+        return None, "inactive"
+
+    token_record.revoked = True
+    token_record.revoked_at = datetime.datetime.utcnow()
+    db.session.add(token_record)
+
+    raw_new_refresh, _ = create_refresh_token(user)
+    access_token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
+    return {
+        "access_token": access_token,
+        "refresh_token": raw_new_refresh,
+        "user": user,
+    }, None
+
 
 def _get_bearer_token():
     auth = request.headers.get("Authorization", "")
@@ -48,6 +132,7 @@ def _get_bearer_token():
         return cookie_token
 
     return None
+
 
 def authenticate_request():
     token = _get_bearer_token()
@@ -82,7 +167,7 @@ def authenticate_request():
         except Exception:
             return None, None, (jsonify({"error": "Invalid token"}), 401)
 
-    request.user = user  # simple attachment for downstream use
+    request.user = user
     request.jwt_claims = claims
     return user, claims, None
 
@@ -95,7 +180,9 @@ def login_required(f):
             if error:
                 return error
         return f(*args, **kwargs)
+
     return wrapper
+
 
 def admin_required(f):
     @wraps(f)
@@ -104,7 +191,9 @@ def admin_required(f):
         if getattr(request, "user", None) is None or request.user.role != "Admin":
             return jsonify({"error": "Admin required"}), 403
         return f(*args, **kwargs)
+
     return wrapper
+
 
 def role_required(*allowed_roles: str):
     """
@@ -123,7 +212,9 @@ def role_required(*allowed_roles: str):
             if user.role not in allowed:
                 return jsonify({"error": f"Requires role(s): {', '.join(sorted(allowed))}"}), 403
             return f(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -146,11 +237,14 @@ def enforce_scopes(app):
             return jsonify({"error": "Forbidden"}), 403
         return None
 
+
 def get_user_by_id(user_id: int):
     return User.query.get(user_id)
 
+
 def get_user_by_username(username: str):
     return User.query.filter_by(username=username).first()
+
 
 def get_user_by_identity(identity: str):
     return User.query.filter(
@@ -159,6 +253,7 @@ def get_user_by_identity(identity: str):
             User.email == identity,
         )
     ).first()
+
 
 def create_user(username, email, password, role="Analyst"):
     if get_user_by_username(username):
@@ -170,6 +265,7 @@ def create_user(username, email, password, role="Analyst"):
     db.session.add(user)
     db.session.commit()
     return user
+
 
 def authenticate_user(username, password):
     user = get_user_by_identity(username)

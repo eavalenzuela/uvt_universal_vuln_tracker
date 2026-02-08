@@ -1,12 +1,32 @@
 from flask import Blueprint, jsonify, request, current_app, redirect
 
+from ..database import db
 from ..models import User
-from ..auth import authenticate_user, create_user, generate_token, login_required
+from ..auth import (
+    authenticate_user,
+    create_refresh_token,
+    create_user,
+    generate_token,
+    login_required,
+    revoke_all_refresh_tokens,
+    revoke_refresh_token,
+    rotate_refresh_token,
+)
 from ..rate_limiter import rate_limit
 from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
+
+
+def _auth_response(user, access_token, refresh_token=None):
+    payload = {
+        "token": access_token,
+        "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role},
+    }
+    if refresh_token:
+        payload["refresh_token"] = refresh_token
+    return payload
 
 
 @bp.post("/login")
@@ -24,10 +44,42 @@ def login():
         return error_response("Invalid credentials", status_code=401)
 
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
-    return jsonify({
-        "token": token,
-        "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}
-    })
+    refresh_token, _ = create_refresh_token(user)
+    db.session.commit()
+    return jsonify(_auth_response(user, token, refresh_token))
+
+
+@bp.post("/refresh")
+def refresh():
+    data = request.get_json(silent=True) or {}
+    refresh_token = data.get("refresh_token")
+    if not isinstance(refresh_token, str) or not refresh_token.strip():
+        return error_response("Missing refresh token", field="refresh_token", status_code=400)
+
+    result, reason = rotate_refresh_token(refresh_token.strip())
+    if reason:
+        return error_response("Invalid refresh token", status_code=401)
+
+    db.session.commit()
+    return jsonify(_auth_response(result["user"], result["access_token"], result["refresh_token"]))
+
+
+@bp.post("/logout")
+def logout():
+    data = request.get_json(silent=True) or {}
+    refresh_token = data.get("refresh_token")
+    if isinstance(refresh_token, str) and refresh_token.strip():
+        revoke_refresh_token(refresh_token.strip())
+        db.session.commit()
+    return jsonify({"ok": True})
+
+
+@bp.post("/logout_all")
+@login_required
+def logout_all():
+    revoke_all_refresh_tokens(request.user)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @bp.get("/providers")
@@ -105,10 +157,9 @@ def register():
         return error_response(str(e), status_code=400)
 
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
-    return jsonify({
-        "token": token,
-        "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role}
-    }), 201
+    refresh_token, _ = create_refresh_token(user)
+    db.session.commit()
+    return jsonify(_auth_response(user, token, refresh_token)), 201
 
 
 @bp.get("/me")

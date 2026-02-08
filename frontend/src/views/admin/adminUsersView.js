@@ -1,6 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
-import { setSession } from "../../state/store.js";
+import { getState, setSession } from "../../state/store.js";
 import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
 
 function pill(label, color, subtle = false) {
@@ -167,7 +167,7 @@ export async function AdminUsersView() {
               return;
             }
             const res = await impersonateUser(user.id, { reason });
-            setSession({ token: res.token, user: res.user });
+            setSession({ token: res.token, refreshToken: res.refresh_token || getState()?.session?.refreshToken || null, user: res.user });
             toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
           } catch (e) {
             toast({ title: "Impersonation failed", message: e?.message || "Unable to impersonate user" });
