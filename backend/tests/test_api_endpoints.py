@@ -1509,6 +1509,65 @@ def test_notification_trigger_on_vulnerability_status_change(app, client):
     assert any(log["vulnerability_id"] == vuln_id and log["event_type"] == "status_change" for log in logs)
 
 
+def test_notification_delivery_attempts_list_retry_and_replay(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    vuln_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Delivery retry target", "severity": "High", "status": "Open"},
+    )
+    assert vuln_resp.status_code == 201
+    vuln_id = vuln_resp.get_json()["id"]
+
+    rule_resp = client.post(
+        "/api/notification-rules",
+        headers=headers,
+        json={
+            "name": "retryable rule",
+            "delivery_adapter": "webhook",
+            "severity_threshold": "Low",
+            "notify_on_status_change": True,
+            "notify_on_assignment_change": True,
+            "delivery_config": {"webhook_url": "http://127.0.0.1:9/nope"},
+        },
+    )
+    assert rule_resp.status_code == 201
+
+    trigger_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"status": "In Progress"},
+    )
+    assert trigger_resp.status_code == 200
+
+    attempts_resp = client.get("/api/notification-delivery-attempts?limit=20&failed_only=true", headers=headers)
+    assert attempts_resp.status_code == 200
+    attempts = attempts_resp.get_json()
+    assert attempts
+    attempt = attempts[0]
+    assert attempt["status"] == "failed"
+    assert attempt["channel"] == "webhook"
+    assert isinstance(attempt["retry_count"], int)
+
+    retry_resp = client.post(f"/api/notification-delivery-attempts/{attempt['id']}/retry", headers=headers)
+    assert retry_resp.status_code == 200
+    assert retry_resp.get_json()["ok"] is True
+
+    replay_resp = client.post(f"/api/notification-delivery-attempts/{attempt['id']}/replay", headers=headers)
+    assert replay_resp.status_code == 200
+    assert replay_resp.get_json()["ok"] is True
+
+    retry_audit = _latest_audit(app, action="RETRY_NOTIFICATION_DELIVERY", table_name="notification_delivery_logs")
+    assert retry_audit is not None
+    assert retry_audit.record_id == attempt["id"]
+
+    replay_audit = _latest_audit(app, action="REPLAY_NOTIFICATION_DELIVERY", table_name="notification_delivery_logs")
+    assert replay_audit is not None
+    assert replay_audit.record_id == attempt["id"]
+
+
 def test_saved_vulnerability_filters_crud_and_visibility(app, client):
     admin = create_admin(app)
     analyst = create_user_direct(app, "analyst_filters", "analyst_filters@example.com", role="Analyst")
