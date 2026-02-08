@@ -1,5 +1,3 @@
-from urllib.parse import quote
-
 from flask import Blueprint, jsonify, request, current_app, redirect
 
 from ..models import User
@@ -67,8 +65,17 @@ def oidc_callback():
         return error_response("OIDC authentication failed", status_code=401)
 
     frontend_redirect = current_app.config.get("FRONTEND_LOGIN_SUCCESS_URL", "http://127.0.0.1:5173/login")
-    token = quote(result["token"])
-    return redirect(f"{frontend_redirect}?token={token}", code=302)
+    response = redirect(frontend_redirect, code=302)
+    response.set_cookie(
+        "uvt_auth_token",
+        result["token"],
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+        max_age=12 * 60 * 60,
+        path="/",
+    )
+    return response
 
 
 @bp.post("/register")

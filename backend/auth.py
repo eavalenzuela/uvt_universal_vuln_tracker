@@ -42,6 +42,11 @@ def _get_bearer_token():
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         return auth.split(" ", 1)[1].strip()
+
+    cookie_token = request.cookies.get("uvt_auth_token")
+    if cookie_token:
+        return cookie_token
+
     return None
 
 def authenticate_request():

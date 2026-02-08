@@ -78,3 +78,40 @@ def test_complete_oidc_login_rejects_invalid_state(app):
         app.config["JWT_SECRET"] = "secret"
         with pytest.raises(Exception):
             complete_oidc_login(app.config, "code", "invalid-state")
+
+
+def test_oidc_callback_redirect_sets_secure_cookie_without_token_in_url(app, client, monkeypatch):
+    with app.app_context():
+        app.config["OIDC_ENABLED"] = True
+        app.config["JWT_SECRET"] = "secret"
+        app.config["FRONTEND_LOGIN_SUCCESS_URL"] = "http://127.0.0.1:5173/login"
+
+    monkeypatch.setattr(
+        "backend.api.auth_routes.complete_oidc_login",
+        lambda config, code, state: {
+            "token": "jwt-token-value",
+            "user": {"id": 1, "username": "oidc-user", "email": "oidc@example.com", "role": "Analyst"},
+        },
+    )
+
+    response = client.get("/api/auth/oidc/callback?code=abc&state=valid-state")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "http://127.0.0.1:5173/login"
+    assert "token=" not in response.headers["Location"]
+
+    set_cookie = response.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=jwt-token-value" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Secure" in set_cookie
+    assert "SameSite=Lax" in set_cookie
+
+
+def test_oidc_callback_missing_params_returns_400(app, client):
+    with app.app_context():
+        app.config["OIDC_ENABLED"] = True
+
+    response = client.get("/api/auth/oidc/callback")
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Missing OIDC callback parameters"

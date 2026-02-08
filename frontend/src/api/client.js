@@ -97,6 +97,7 @@ export async function apiFetch(
         headers: finalHeaders,
         body: finalBody,
         signal: controller.signal,
+        credentials: "include",
       });
 
       const payload = await parsePayload(res);

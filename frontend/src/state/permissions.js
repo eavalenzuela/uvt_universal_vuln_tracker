@@ -1,5 +1,5 @@
 export function isAuthed(state) {
-  return Boolean(state?.session?.token);
+  return Boolean(state?.session?.token || state?.session?.user);
 }
 
 export function role(state) {
