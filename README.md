@@ -25,6 +25,7 @@ pip install -r requirements.txt
 - `SECRET_KEY` – Flask session secret; defaults to `dev-secret`
 - `JWT_SECRET` – Secret used to sign auth tokens; defaults to `dev-jwt-secret`
 - `ALLOW_PUBLIC_REGISTRATION` – Set to `true` to allow `/api/auth/register`; defaults to `false`
+- `CORS_ALLOWED_ORIGINS` – Optional comma-separated list of allowed CORS origins for `/api/*` (for example: `http://localhost:5173,https://uvt.example.com`). If unset, UVT uses local dev defaults (`http://127.0.0.1:5173`, `http://localhost:5173`, `http://127.0.0.1:5000`, `http://localhost:5000`). Values must be full origins (`http://` or `https://` only, no paths/query/fragments); invalid values fail fast at startup.
 
 #### Auth / OIDC cookie settings
 - `AUTH_COOKIE_SECURE` – Controls the `Secure` auth cookie flag. Defaults to `true` in production-like environments (`ENV`/`FLASK_ENV` = `production`), and `false` otherwise. Set explicitly for local HTTPS/non-HTTPS behavior.
@@ -60,7 +61,7 @@ cd frontend
 python -m http.server 5173
 ```
 
-Point the UI at a different API base by defining a global before `src/main.js` loads (CORS is already configured for `http://localhost:5173` in development):
+Point the UI at a different API base by defining a global before `src/main.js` loads (ensure your frontend origin is included in `CORS_ALLOWED_ORIGINS` when not using defaults):
 ```html
 <script>
   window.__UVT_API_BASE__ = "http://127.0.0.1:5000";
@@ -74,7 +75,9 @@ Point the UI at a different API base by defining a global before `src/main.js` l
 
 ## Development tips
 - Use `flask --app backend.uvt_app shell` for quick database inspection via `db` and models
-- Default CORS allowlist already includes `http://localhost:5000` and `http://localhost:5173`
+- Default CORS allowlist covers common local dev origins; override for deployment with `CORS_ALLOWED_ORIGINS`
+- Example (local): `export CORS_ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"`
+- Example (deployed): `export CORS_ALLOWED_ORIGINS="https://uvt.example.com,https://admin.uvt.example.com"`
 - Update `frontend/src/config.js` if you prefer a hard-coded API base instead of the global variable
 
 ## Repository hygiene
