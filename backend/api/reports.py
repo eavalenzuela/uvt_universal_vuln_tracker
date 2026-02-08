@@ -9,6 +9,7 @@ from ..auth import login_required, role_required
 from ..database import db
 from ..models import Product, ProductVersion, ReportSchedule, Vulnerability, VulnerabilityVersion
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
+from ..services.email_delivery import EmailDeliveryError, send_email
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, required_string
 from ..services.vulnerability_query import build_vulnerability_query
@@ -430,13 +431,22 @@ def _csv_content(fieldnames, rows):
 
 def _deliver_report(schedule, content):
     if schedule.delivery_channel == "email":
-        # Placeholder for real email integration.
-        return {
-            "channel": "email",
-            "recipient": schedule.recipient,
-            "bytes": len(content.encode("utf-8")),
-            "note": "Email delivery stub executed",
-        }
+        try:
+            return send_email(
+                recipient=schedule.recipient,
+                subject=f"UVT scheduled report: {schedule.name} ({schedule.frequency})",
+                body_text=(
+                    f"UVT scheduled report generated\n"
+                    f"Report: {schedule.name}\n"
+                    f"Type: {schedule.report_type}\n"
+                    f"Frequency: {schedule.frequency}\n"
+                    f"CSV bytes: {len(content.encode('utf-8'))}\n\n"
+                    f"{content}"
+                ),
+                plugin_id="email",
+            )
+        except EmailDeliveryError as exc:
+            return exc.as_dict()
 
     try:
         client = SlackWebhookClient(schedule.recipient)

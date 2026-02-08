@@ -22,6 +22,7 @@ from ..models import (
 )
 from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
+from .email_delivery import EmailDeliveryError, send_email
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
 
@@ -157,7 +158,30 @@ def _webhook_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, 
 
 
 def _email_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    return {"status": "stub", "message": "email adapter entrypoint", "payload": payload, "config": config}
+    text = str(payload.get("text") or "")
+    vuln_id = payload.get("vulnerability_id")
+    event_type = payload.get("event_type")
+    recipients = config.get("recipients")
+    if isinstance(recipients, str):
+        recipients = [item.strip() for item in recipients.split(",") if item.strip()]
+    recipients = recipients or ([config.get("recipient")] if config.get("recipient") else [])
+    if not recipients:
+        raise EmailDeliveryError("invalid_recipient", "Email delivery requires recipient or recipients in config")
+
+    results = []
+    for recipient in recipients:
+        subject = f"UVT notification: vulnerability #{vuln_id} ({event_type})"
+        body = f"{text}\n\nEvent: {event_type}\nVulnerability ID: {vuln_id}"
+        results.append(
+            send_email(
+                recipient=str(recipient),
+                subject=subject,
+                body_text=body,
+                config_overrides=config,
+                plugin_id="email",
+            )
+        )
+    return {"channel": "email", "deliveries": results, "count": len(results)}
 
 
 def _deliver(rule: NotificationRule, vulnerability: Vulnerability, event: NotificationEvent, dry_run: bool = False) -> tuple[bool, dict[str, Any] | None, str | None]:
@@ -182,6 +206,8 @@ def _deliver(rule: NotificationRule, vulnerability: Vulnerability, event: Notifi
         else:
             return False, None, f"Unsupported delivery_adapter '{rule.delivery_adapter}'"
         return True, payload, None
+    except EmailDeliveryError as exc:
+        return False, exc.as_dict(), exc.message
     except (SlackWebhookError, JiraApiError, ValueError, TypeError) as exc:
         return False, None, str(exc)
 
