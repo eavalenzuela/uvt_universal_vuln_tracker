@@ -157,6 +157,21 @@ export async function deleteSavedVulnerabilityFilter(id) {
   return apiFetch(`/api/vulnerabilities/filters/${id}`, { method: "DELETE" });
 }
 
+
+
+export async function listMergeCandidates(id, { limit = 20 } = {}) {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  return apiFetch(`/api/vulnerabilities/${id}/merge_candidates?${params.toString()}`, { method: "GET" });
+}
+
+export async function mergeVulnerability(targetId, sourceVulnerabilityId, reason) {
+  return apiFetch(`/api/vulnerabilities/${targetId}/merge`, {
+    method: "POST",
+    body: { source_vulnerability_id: sourceVulnerabilityId, reason },
+  });
+}
+
 export async function listVulnerabilityComments(id) {
   return apiFetch(`/api/vulnerabilities/${id}/comments`, { method: "GET" });
 }

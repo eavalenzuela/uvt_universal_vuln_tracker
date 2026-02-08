@@ -29,6 +29,7 @@ from ..services.cve_enrichment import (
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
+from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -198,6 +199,9 @@ def list_vulnerabilities():
             "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
             "sla_state": compute_sla_state(v, policy),
             "affected_components_count": len(v.affected_components or []),
+            "is_merged": bool(v.is_merged),
+            "merged_into_id": v.merged_into_id,
+            "merge_metadata_json": v.merge_metadata_json or {},
         } for v in items.items],
         "page": page,
         "page_size": page_size,
@@ -393,7 +397,59 @@ def get_vulnerability(vuln_id: int):
         "attack_vectors": attack_vector_rows,
         "terminal_impacts": terminal_impact_rows,
         "affected_components": component_rows,
+        "is_merged": bool(v.is_merged),
+        "merged_into_id": v.merged_into_id,
+        "merge_metadata_json": v.merge_metadata_json or {},
     })
+
+
+@bp.get("/vulnerabilities/<int:vuln_id>/merge_candidates")
+@role_required("Admin", "Analyst")
+def list_vulnerability_merge_candidates(vuln_id: int):
+    v = Vulnerability.query.get_or_404(vuln_id)
+    try:
+        limit = parse_int(request.args.get("limit"), field="limit", minimum=1) or 20
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    return jsonify({"items": get_merge_candidates(v, limit=limit)})
+
+
+@bp.post("/vulnerabilities/<int:target_vuln_id>/merge")
+@role_required("Admin", "Analyst")
+def merge_vulnerability_into_target(target_vuln_id: int):
+    target = Vulnerability.query.get_or_404(target_vuln_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        source_vuln_id = parse_int(data.get("source_vulnerability_id"), field="source_vulnerability_id", minimum=1, required=True)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if source_vuln_id == target_vuln_id:
+        return error_response("source_vulnerability_id must be different from target", field="source_vulnerability_id")
+
+    source = Vulnerability.query.get(source_vuln_id)
+    if not source:
+        return error_response("Source vulnerability not found", field="source_vulnerability_id", status_code=404)
+
+    reason = (data.get("reason") or "").strip() or None
+
+    try:
+        result = merge_vulnerabilities(target=target, source=source, actor_id=request.user.id, reason=reason)
+    except ValueError as exc:
+        return error_response(str(exc), status_code=400)
+
+    _audit(
+        request.user.id,
+        "MERGE",
+        "vulnerabilities",
+        target.id,
+        old_values={"target_id": target.id, "source_id": source.id},
+        new_values={"target_id": target.id, "source_id": source.id, "reason": reason},
+    )
+
+    db.session.commit()
+    return jsonify({"ok": True, **result})
 
 
 @bp.get("/vulnerabilities/<int:vuln_id>/activity")

@@ -11,7 +11,10 @@ from backend.models import (
     SoftwareComponent,
     User,
     Vulnerability,
+    VulnerabilityComponent,
     VulnerabilityVersion,
+    VulnerabilityComment,
+    VulnerabilityWatcher,
 )
 
 
@@ -425,6 +428,79 @@ def test_vulnerability_endpoints(app, client):
     delete_resp = client.delete(f"/api/vulnerabilities/{vuln_id}", headers=headers)
     assert delete_resp.status_code == 200
 
+
+
+def test_vulnerability_merge_candidates_and_merge_flow(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+    _, pv = create_product_with_version(app, owner_id=admin.id, version="3.0")
+
+    create_target = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={
+            "cve_id": "CVE-2024-9000",
+            "title": "SQL Injection in Widget Service",
+            "severity": "High",
+            "affected_versions": [pv.id],
+        },
+    )
+    assert create_target.status_code == 201
+    target_id = create_target.get_json()["id"]
+
+    create_source = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={
+            "title": "SQL injection in widget-service",
+            "severity": "High",
+            "affected_versions": [pv.id],
+        },
+    )
+    assert create_source.status_code == 201
+    source_id = create_source.get_json()["id"]
+
+    with app.app_context():
+        component = SoftwareComponent(
+            product_version_id=pv.id,
+            name="widget-core",
+            version="1.0.0",
+            ecosystem="pypi",
+        )
+        db.session.add(component)
+        db.session.flush()
+        db.session.add(VulnerabilityComponent(vulnerability_id=source_id, component_id=component.id, source="manual", match_type="direct"))
+        db.session.add(VulnerabilityComment(vulnerability_id=source_id, author_id=admin.id, body="dedup me"))
+        db.session.add(VulnerabilityWatcher(vulnerability_id=source_id, user_id=admin.id, added_by=admin.id))
+        db.session.commit()
+
+    candidates = client.get(f"/api/vulnerabilities/{target_id}/merge_candidates", headers=headers)
+    assert candidates.status_code == 200
+    items = candidates.get_json()["items"]
+    assert any(item["candidate"]["id"] == source_id for item in items)
+
+    merge_resp = client.post(
+        f"/api/vulnerabilities/{target_id}/merge",
+        headers=headers,
+        json={"source_vulnerability_id": source_id, "reason": "duplicate ingest"},
+    )
+    assert merge_resp.status_code == 200
+
+    target_detail = client.get(f"/api/vulnerabilities/{target_id}", headers=headers)
+    assert target_detail.status_code == 200
+    target_payload = target_detail.get_json()
+    assert target_payload["is_merged"] is False
+    assert any(component["name"] == "widget-core" for component in target_payload["affected_components"])
+
+    source_detail = client.get(f"/api/vulnerabilities/{source_id}", headers=headers)
+    assert source_detail.status_code == 200
+    source_payload = source_detail.get_json()
+    assert source_payload["is_merged"] is True
+    assert source_payload["merged_into_id"] == target_id
+
+    comments = client.get(f"/api/vulnerabilities/{target_id}/comments", headers=headers)
+    assert comments.status_code == 200
+    assert any(comment["body"] == "dedup me" for comment in comments.get_json())
 
 
 def test_vulnerability_rejects_invalid_cve_id(app, client):
