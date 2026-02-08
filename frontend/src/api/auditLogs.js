@@ -1,8 +1,9 @@
 import { apiFetch } from "./client.js";
 
-export async function listAuditLogs({ limit = 100, action, table } = {}) {
+export async function listAuditLogs({ page = 1, page_size = 100, action, table } = {}) {
   const params = new URLSearchParams();
-  if (limit) params.set("limit", limit);
+  if (page) params.set("page", page);
+  if (page_size) params.set("page_size", page_size);
   if (action) params.set("action", action);
   if (table) params.set("table", table);
 

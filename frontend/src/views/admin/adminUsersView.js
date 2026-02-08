@@ -74,6 +74,12 @@ export async function AdminUsersView() {
     el("option", { value: "Analyst", text: "Analyst" }),
     el("option", { value: "Viewer", text: "Viewer" }),
   );
+  const pageSizeSelect = el("select", { class: "input" },
+    el("option", { value: "10", text: "10 / page" }),
+    el("option", { value: "25", text: "25 / page", selected: "true" }),
+    el("option", { value: "50", text: "50 / page" }),
+    el("option", { value: "100", text: "100 / page" }),
+  );
 
   const inviteBtn = el("button", { class: "btn primary" }, "Invite user");
   const exportBtn = el("button", { class: "btn" }, "Export CSV");
@@ -83,6 +89,7 @@ export async function AdminUsersView() {
     searchInput,
     statusSelect,
     roleSelect,
+    pageSizeSelect,
     applyBtn,
     el("div", { class: "spacer" }),
     inviteBtn,
@@ -90,10 +97,10 @@ export async function AdminUsersView() {
   );
 
   const statsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
-    statCard("Total users", totalEl, "Includes all active and disabled"),
-    statCard("Active", activeEl, "Allowed to sign in"),
+    statCard("Total users", totalEl, "Across current filters"),
+    statCard("Active (page)", activeEl, "Shown on this page"),
     statCard("Pending", pendingEl, "Awaiting activation"),
-    statCard("Disabled", disabledEl, "Access revoked"),
+    statCard("Disabled (page)", disabledEl, "Shown on this page"),
   );
 
   const inviteUsername = el("input", { class: "input", placeholder: "Username", required: "true" });
@@ -128,12 +135,24 @@ export async function AdminUsersView() {
   );
 
   const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" });
+  const pageInfo = el("div", { class: "muted", text: "Page 1" });
+  const prevBtn = el("button", { class: "btn" }, "Previous");
+  const nextBtn = el("button", { class: "btn" }, "Next");
 
-  function applyStats(data) {
-    const total = data.length;
-    const active = data.filter((u) => u.is_active).length;
-    const disabled = total - active;
-    totalEl.textContent = total.toString();
+  const pagination = el("div", { class: "row", style: "gap:8px; align-items:center; margin-top:12px;" },
+    pageInfo,
+    el("div", { class: "spacer" }),
+    prevBtn,
+    nextBtn,
+  );
+
+  let currentPage = 1;
+  let lastTotal = 0;
+
+  function applyStats(items, total) {
+    const active = items.filter((u) => u.is_active).length;
+    const disabled = items.length - active;
+    totalEl.textContent = String(total || 0);
     activeEl.textContent = active.toString();
     disabledEl.textContent = disabled.toString();
     pendingEl.textContent = "0";
@@ -143,22 +162,26 @@ export async function AdminUsersView() {
     userList.innerHTML = "";
     userList.appendChild(el("div", { class: "muted", text: "Loading users..." }));
     try {
-      const data = await listUsers({
+      const pageSize = parseInt(pageSizeSelect.value || "25", 10) || 25;
+      const res = await listUsers({
         search: searchInput.value.trim() || undefined,
         role: roleSelect.value || undefined,
         status: statusSelect.value || undefined,
+        page: currentPage,
+        page_size: pageSize,
       });
+      const items = res?.items || [];
+      const total = res?.total || 0;
+      const page = res?.page || currentPage;
+      const effectiveSize = res?.page_size || pageSize;
 
       userList.innerHTML = "";
-      if (!data?.length) {
+      if (!items.length) {
         userList.appendChild(el("div", { class: "muted", text: "No users found." }));
-        applyStats([]);
-        return;
       }
 
-      applyStats(data);
-
-      data.forEach((u) => userList.appendChild(userCard(u, {
+      applyStats(items, total);
+      items.forEach((u) => userList.appendChild(userCard(u, {
         onImpersonate: async (user) => {
           try {
             const reason = window.prompt(`Why are you impersonating ${user.username}?`);
@@ -166,8 +189,8 @@ export async function AdminUsersView() {
               toast({ title: "Impersonation cancelled", message: "A reason is required" });
               return;
             }
-            const res = await impersonateUser(user.id, { reason });
-            setSession({ token: res.token, refreshToken: res.refresh_token || getState()?.session?.refreshToken || null, user: res.user });
+            const resp = await impersonateUser(user.id, { reason });
+            setSession({ token: resp.token, refreshToken: resp.refresh_token || getState()?.session?.refreshToken || null, user: resp.user });
             toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
           } catch (e) {
             toast({ title: "Impersonation failed", message: e?.message || "Unable to impersonate user" });
@@ -183,6 +206,13 @@ export async function AdminUsersView() {
           }
         },
       })));
+
+      lastTotal = total;
+      currentPage = page;
+      const totalPages = Math.max(1, Math.ceil(total / effectiveSize));
+      pageInfo.textContent = `Page ${page} of ${totalPages} • ${total} total`;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = page >= totalPages;
     } catch (e) {
       userList.innerHTML = "";
       toast({ title: "Failed to load users", message: e?.message || "Unable to fetch users" });
@@ -190,7 +220,28 @@ export async function AdminUsersView() {
     }
   }
 
-  applyBtn.addEventListener("click", loadUsersList);
+  applyBtn.addEventListener("click", () => {
+    currentPage = 1;
+    loadUsersList();
+  });
+  pageSizeSelect.addEventListener("change", () => {
+    currentPage = 1;
+    loadUsersList();
+  });
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage -= 1;
+      loadUsersList();
+    }
+  });
+  nextBtn.addEventListener("click", () => {
+    const pageSize = parseInt(pageSizeSelect.value || "25", 10) || 25;
+    const totalPages = Math.max(1, Math.ceil(lastTotal / pageSize));
+    if (currentPage < totalPages) {
+      currentPage += 1;
+      loadUsersList();
+    }
+  });
 
   inviteBtn.addEventListener("click", () => {
     const next = inviteCard.style.display === "none";
@@ -274,6 +325,7 @@ export async function AdminUsersView() {
       controls,
       inviteCard,
       userList,
+      pagination,
     ),
   );
 }
