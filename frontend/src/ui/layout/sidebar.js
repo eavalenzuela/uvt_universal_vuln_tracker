@@ -59,6 +59,7 @@ export function renderSidebar() {
     navLink("Controls", "/controls"),
     navLink("Products", "/products"),
     navLink("Component Diff", "/products/component-diff"),
+    navLink("API Tokens", "/admin/api-tokens"),
   );
 
   if (admin) {

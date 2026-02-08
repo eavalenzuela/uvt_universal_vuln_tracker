@@ -43,3 +43,18 @@ export async function exportUsers({ search, role, status } = {}) {
 export async function listActiveUsers() {
   return apiFetch("/api/users/active", { method: "GET" });
 }
+
+export async function listMyApiTokens() {
+  return apiFetch("/api/users/me/api-tokens", { method: "GET" });
+}
+
+export async function createMyApiToken({ name, scopes, expires_in_days } = {}) {
+  return apiFetch("/api/users/me/api-tokens", {
+    method: "POST",
+    body: { name, scopes, expires_in_days },
+  });
+}
+
+export async function revokeMyApiToken(tokenId) {
+  return apiFetch(`/api/users/me/api-tokens/${tokenId}/revoke`, { method: "POST" });
+}
