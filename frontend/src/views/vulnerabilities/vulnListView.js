@@ -26,7 +26,7 @@ import {
 } from "../../api/vulnerabilities.js";
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
-import { exportVulnerabilitiesCsv } from "../../api/reports.js";
+import { downloadReportArtifact, exportVulnerabilities } from "../../api/reports.js";
 import { navigate } from "../../router/router.js";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
@@ -1015,6 +1015,11 @@ export async function VulnListView(params = {}) {
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
   applyBtn.addEventListener("click", load);
 
+  const exportFormatSelect = el("select", { class: "input", style: "max-width: 120px;" },
+    el("option", { value: "csv", text: "CSV" }),
+    el("option", { value: "json", text: "JSON" }),
+    el("option", { value: "pdf", text: "PDF" }),
+  );
   const exportBtn = el("button", { class: "btn", type: "button" }, "Export current view");
   exportBtn.addEventListener("click", async () => {
     exportBtn.disabled = true;
@@ -1031,17 +1036,19 @@ export async function VulnListView(params = {}) {
       componentDepthInput,
     });
     try {
-      const csv = await exportVulnerabilitiesCsv(filters);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const response = await exportVulnerabilities(filters, exportFormatSelect.value);
+      const artifact = response?.artifact;
+      if (!artifact?.download_url) throw new Error("Export artifact missing download URL");
+      const blob = await downloadReportArtifact(artifact.download_url);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "vulnerabilities_export.csv";
+      a.download = `vulnerabilities_export.${artifact.format || exportFormatSelect.value}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast({ title: "Export ready", message: "Downloaded vulnerabilities CSV." });
+      toast({ title: "Export ready", message: `Downloaded vulnerabilities ${String((artifact.format || exportFormatSelect.value)).toUpperCase()}.` });
     } catch (e) {
       toast({ title: "Export failed", message: e?.message || "Unable to export vulnerabilities" });
     } finally {

@@ -10,7 +10,7 @@ globalThis.localStorage = {
 };
 
 const { setSession } = await import('../../src/state/store.js');
-const { exportVulnerabilitiesCsv } = await import('../../src/api/reports.js');
+const { exportVulnerabilities } = await import('../../src/api/reports.js');
 
 test('reports API adapter smoke: builds query string and auth header', async () => {
   setSession({ token: 'smoke-token', user: { id: 1, role: 'Admin' } });
@@ -27,9 +27,9 @@ test('reports API adapter smoke: builds query string and auth header', async () 
     };
   };
 
-  await exportVulnerabilitiesCsv({ severity: 'High', status: 'Open', empty: '' });
+  await exportVulnerabilities({ severity: 'High', status: 'Open', empty: '' }, 'csv');
 
-  assert.equal(captured.url, 'http://api.local/api/reports/vulnerabilities/export?severity=High&status=Open');
+  assert.equal(captured.url, 'http://api.local/api/reports/vulnerabilities/export?severity=High&status=Open&format=csv');
   assert.equal(captured.options.method, 'GET');
   assert.equal(captured.options.headers.Authorization, 'Bearer smoke-token');
 });

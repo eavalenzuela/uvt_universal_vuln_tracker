@@ -1511,14 +1511,20 @@ def test_reports_export_endpoints_apply_filters_and_schema(app, client):
         headers=headers,
     )
     assert export_resp.status_code == 200
-    body = export_resp.get_data(as_text=True)
+    export_payload = export_resp.get_json()
+    export_download = client.get(export_payload["artifact"]["download_url"], headers=headers)
+    assert export_download.status_code == 200
+    body = export_download.get_data(as_text=True)
     assert "id,cve_id,title,severity,cvss_score,status" in body
     assert "Critical item" in body
     assert "Low item" not in body
 
     dashboard_resp = client.get("/api/reports/dashboard/export?severity=Critical", headers=headers)
     assert dashboard_resp.status_code == 200
-    dashboard_csv = dashboard_resp.get_data(as_text=True)
+    dashboard_payload = dashboard_resp.get_json()
+    dashboard_download = client.get(dashboard_payload["artifact"]["download_url"], headers=headers)
+    assert dashboard_download.status_code == 200
+    dashboard_csv = dashboard_download.get_data(as_text=True)
     assert "metric,group,value" in dashboard_csv
     assert "severity,Critical,1" in dashboard_csv
 
@@ -1747,7 +1753,10 @@ def test_vulnerability_component_filters_and_export(app, client):
         headers=auth_header(admin),
     )
     assert exported.status_code == 200
-    csv = exported.get_data(as_text=True)
+    export_payload = exported.get_json()
+    downloaded = client.get(export_payload["artifact"]["download_url"], headers=auth_header(admin))
+    assert downloaded.status_code == 200
+    csv = downloaded.get_data(as_text=True)
     assert "component_ecosystems" in csv
 
 
