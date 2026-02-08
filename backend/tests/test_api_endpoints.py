@@ -444,6 +444,86 @@ def test_vulnerability_endpoints(app, client):
 
 
 
+def test_vulnerability_batch_update_mutation(app, client):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "batch-analyst", "batch-analyst@example.com")
+    headers = auth_header(admin)
+
+    vuln_ids = []
+    for idx in range(2):
+        resp = client.post(
+            "/api/vulnerabilities",
+            headers=headers,
+            json={
+                "title": f"Batch vuln {idx}",
+                "severity": "Medium",
+                "status": "Open",
+            },
+        )
+        assert resp.status_code == 201
+        vuln_ids.append(resp.get_json()["id"])
+
+    update_resp = client.patch(
+        "/api/vulnerabilities/batch",
+        headers=headers,
+        json={
+            "vulnerability_ids": vuln_ids,
+            "status": "Resolved",
+            "severity": "High",
+            "assigned_to": analyst.id,
+            "sla_due_at": "2026-01-01T08:30:00",
+        },
+    )
+    assert update_resp.status_code == 200
+    payload = update_resp.get_json()
+    assert payload["updated_count"] == 2
+    assert payload["missing_count"] == 0
+    assert payload["skipped_count"] == 0
+
+    detail = client.get(f"/api/vulnerabilities/{vuln_ids[0]}", headers=headers)
+    assert detail.status_code == 200
+    detail_json = detail.get_json()
+    assert detail_json["status"] == "Resolved"
+    assert detail_json["severity"] == "High"
+    assert detail_json["assigned_to"] == analyst.id
+    assert detail_json["sla_due_at"].startswith("2026-01-01T08:30:00")
+
+    log = _latest_audit(app, action="BATCH_UPDATE", table_name="vulnerabilities")
+    assert log is not None
+    assert log.record_id in vuln_ids
+    assert "field_diff" in (log.new_values or {})
+
+
+def test_vulnerability_batch_update_validation_and_missing(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Validation batch vuln", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    invalid_resp = client.patch(
+        "/api/vulnerabilities/batch",
+        headers=headers,
+        json={"vulnerability_ids": [vuln_id], "status": "Bad Status"},
+    )
+    assert invalid_resp.status_code == 400
+
+    partial_resp = client.patch(
+        "/api/vulnerabilities/batch",
+        headers=headers,
+        json={"vulnerability_ids": [vuln_id, 999999], "status": "Closed"},
+    )
+    assert partial_resp.status_code == 200
+    partial_json = partial_resp.get_json()
+    assert partial_json["updated_count"] == 1
+    assert partial_json["missing_count"] == 1
+
+
 def test_vulnerability_merge_candidates_and_merge_flow(app, client):
     admin = create_admin(app)
     headers = auth_header(admin)

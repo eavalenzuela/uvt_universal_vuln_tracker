@@ -70,6 +70,10 @@ export async function updateVulnerability(id, data) {
   return apiFetch(`/api/vulnerabilities/${id}`, { method: "PUT", body: data });
 }
 
+export async function batchUpdateVulnerabilities(data) {
+  return apiFetch("/api/vulnerabilities/batch", { method: "PATCH", body: data });
+}
+
 export async function listVulnerabilityActivity(id) {
   return apiFetch(`/api/vulnerabilities/${id}/activity`, { method: "GET" });
 }

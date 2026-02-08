@@ -5,6 +5,7 @@ import {
   createVulnerability,
   getVulnerability,
   updateVulnerability,
+  batchUpdateVulnerabilities,
   deleteVulnerability,
   listProductVersions,
   listAttackVectors,
@@ -658,7 +659,8 @@ function renderTerminalImpactsSection(detailData, vulnId, reloadDetails, canEdit
   return container;
 }
 
-function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
+function renderVulnerabilityCard(vuln, reloadList, options = {}) {
+  const { autoOpen = false, writable = false, selectedIds = null, onToggleSelect = null } = options;
   const detailContent = el("div", {});
   const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
   let detailData = null;
@@ -885,6 +887,15 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
 
   if (!canEdit) editBtn.style.display = "none";
 
+  const selectionCheckbox = writable
+    ? el("input", {
+      type: "checkbox",
+      checked: selectedIds?.has(vuln.id) || false,
+      onChange: (event) => onToggleSelect?.(vuln.id, event.target.checked),
+      title: "Select vulnerability",
+    })
+    : null;
+
   const header = el(
     "div",
     { class: "card", style: "padding: 12px;" },
@@ -893,9 +904,14 @@ function renderVulnerabilityCard(vuln, reloadList, { autoOpen = false } = {}) {
       { class: "row", style: "justify-content: space-between; align-items: baseline; gap: 8px;" },
       el(
         "div",
-        {},
-        el("div", { class: "muted", text: vuln.cve_id || `VULN-${vuln.id}` }),
-        el("div", { style: "font-weight: 600;", text: vuln.title }),
+        { class: "row", style: "gap: 8px; align-items: flex-start;" },
+        selectionCheckbox,
+        el(
+          "div",
+          {},
+          el("div", { class: "muted", text: vuln.cve_id || `VULN-${vuln.id}` }),
+          el("div", { style: "font-weight: 600;", text: vuln.title }),
+        ),
       ),
       el("div", { class: "row", style: "gap: 6px;" },
         el("button", { class: "btn", type: "button", onClick: () => navigate(`/vulnerabilities/${vuln.id}`) }, "Open page"),
@@ -980,6 +996,115 @@ export async function VulnListView(params = {}) {
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
   );
+  const selectedIds = new Set();
+  let currentItems = [];
+
+  const selectAllCheckbox = el("input", { type: "checkbox" });
+  const selectedCountLabel = el("span", { class: "muted", text: "0 selected" });
+  const bulkSeveritySelect = el(
+    "select",
+    { class: "input", style: "max-width: 170px;" },
+    el("option", { value: "", text: "Severity (no change)" }),
+    ...SEVERITY_OPTIONS.map((value) => el("option", { value, text: value })),
+  );
+  const bulkStatusSelect = el(
+    "select",
+    { class: "input", style: "max-width: 170px;" },
+    el("option", { value: "", text: "Status (no change)" }),
+    ...STATUS_OPTIONS.map((value) => el("option", { value, text: value })),
+  );
+  const bulkAssigneeInput = el("input", { class: "input", type: "number", min: "1", placeholder: "Assignee user ID", style: "max-width: 170px;" });
+  const bulkSlaInput = el("input", { class: "input", type: "datetime-local", style: "max-width: 220px;" });
+  const applyBulkBtn = el("button", { class: "btn", type: "button" }, "Apply to selected");
+
+  const bulkToolbar = el(
+    "div",
+    { class: "card", style: "margin-top: 8px; padding: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;" },
+    el("label", { class: "row", style: "gap: 6px; align-items: center;" }, selectAllCheckbox, el("span", { text: "Select all on page" })),
+    selectedCountLabel,
+    bulkSeveritySelect,
+    bulkStatusSelect,
+    bulkAssigneeInput,
+    bulkSlaInput,
+    applyBulkBtn,
+  );
+
+  const refreshSelectionUi = () => {
+    selectedCountLabel.textContent = `${selectedIds.size} selected`;
+    if (!currentItems.length) {
+      selectAllCheckbox.checked = false;
+      selectAllCheckbox.indeterminate = false;
+      return;
+    }
+    const selectedOnPage = currentItems.filter((item) => selectedIds.has(item.id)).length;
+    selectAllCheckbox.checked = selectedOnPage > 0 && selectedOnPage === currentItems.length;
+    selectAllCheckbox.indeterminate = selectedOnPage > 0 && selectedOnPage < currentItems.length;
+  };
+
+  const toggleSelection = (id, checked) => {
+    if (checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    refreshSelectionUi();
+  };
+
+  selectAllCheckbox.addEventListener("change", () => {
+    if (selectAllCheckbox.checked) {
+      currentItems.forEach((item) => selectedIds.add(item.id));
+    } else {
+      currentItems.forEach((item) => selectedIds.delete(item.id));
+    }
+    load();
+  });
+
+  applyBulkBtn.addEventListener("click", async () => {
+    if (!selectedIds.size) {
+      toast({ title: "Nothing selected", message: "Select at least one vulnerability." });
+      return;
+    }
+
+    const updates = {};
+    if (bulkSeveritySelect.value) updates.severity = bulkSeveritySelect.value;
+    if (bulkStatusSelect.value) updates.status = bulkStatusSelect.value;
+    if (bulkAssigneeInput.value !== "") updates.assigned_to = Number(bulkAssigneeInput.value);
+    if (bulkSlaInput.value) updates.sla_due_at = new Date(bulkSlaInput.value).toISOString();
+
+    if (!Object.keys(updates).length) {
+      toast({ title: "No changes selected", message: "Choose one or more fields to update." });
+      return;
+    }
+
+    applyBulkBtn.disabled = true;
+    try {
+      const result = await batchUpdateVulnerabilities({
+        vulnerability_ids: Array.from(selectedIds),
+        ...updates,
+      });
+      const updatedCount = Number(result?.updated_count || 0);
+      const missingCount = Number(result?.missing_count || 0);
+      const skippedCount = Number(result?.skipped_count || 0);
+
+      if (updatedCount > 0) {
+        toast({ title: "Bulk update completed", message: `Updated ${updatedCount} vulnerabilities.` });
+      }
+      if (missingCount > 0 || skippedCount > 0) {
+        toast({
+          title: "Bulk update partial",
+          message: `Updated ${updatedCount}. Missing ${missingCount}. Unchanged ${skippedCount}.`,
+        });
+      }
+      if (updatedCount === 0 && missingCount === 0 && skippedCount === 0) {
+        toast({ title: "Bulk update", message: "No vulnerabilities were changed." });
+      }
+
+      selectedIds.clear();
+      refreshSelectionUi();
+      await load();
+    } catch (e) {
+      toast({ title: "Bulk update failed", message: e?.message || "Unable to apply bulk mutation" });
+    } finally {
+      applyBulkBtn.disabled = false;
+    }
+  });
 
   async function load() {
     list.innerHTML = "";
@@ -1000,13 +1125,24 @@ export async function VulnListView(params = {}) {
 
       list.innerHTML = "";
       if (!data?.items?.length) {
+        currentItems = [];
+        refreshSelectionUi();
         list.appendChild(el("div", { class: "muted", text: "No vulnerabilities found." }));
         return;
       }
 
-      data.items.forEach((v) => list.appendChild(renderVulnerabilityCard(v, load, { autoOpen: targetId === v.id })));
+      currentItems = data.items || [];
+      refreshSelectionUi();
+      data.items.forEach((v) => list.appendChild(renderVulnerabilityCard(v, load, {
+        autoOpen: targetId === v.id,
+        writable,
+        selectedIds,
+        onToggleSelect: toggleSelection,
+      })));
     } catch (e) {
       list.innerHTML = "";
+      currentItems = [];
+      refreshSelectionUi();
       toast({ title: "Failed to load", message: e?.message || "Unable to fetch vulnerabilities" });
       list.appendChild(el("div", { class: "muted", text: "Unable to load vulnerabilities." }));
     }
@@ -1358,6 +1494,7 @@ export async function VulnListView(params = {}) {
     el("h1", { class: "page-title", text: "Vulnerabilities" }),
     el("p", { class: "muted", text: "Review, triage, and track vulnerability records." }),
     controls,
+    writable ? bulkToolbar : null,
     creationCard,
     list,
   );
