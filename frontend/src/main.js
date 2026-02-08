@@ -1,12 +1,28 @@
 import { startRouter, navigate } from "./router/router.js";
 import { renderShell } from "./ui/layout/shell.js";
-import { getState, setSession, logoutSession, subscribe, pushLiveNotification } from "./state/store.js";
+import { getState, setSession, logoutSession, subscribe, pushLiveNotification, setNotifications } from "./state/store.js";
 import { isAuthed } from "./state/permissions.js";
 import { me } from "./api/auth.js";
+import { listNotifications } from "./api/notifications.js";
 import { toast } from "./ui/components/toast.js";
 import { CONFIG } from "./config.js";
 
 let liveStream = null;
+
+async function refreshNotifications() {
+  try {
+    const payload = await listNotifications({ page: 1, page_size: 25 });
+    setNotifications(payload);
+  } catch {
+    // fail open; notification endpoints may be temporarily unavailable.
+  }
+}
+
+function handleLiveEvent(evt, onToast) {
+  const data = JSON.parse(evt.data || "{}");
+  pushLiveNotification(data);
+  if (onToast) onToast(data?.payload || {});
+}
 
 function startLiveNotificationStream() {
   if (liveStream) return;
@@ -14,29 +30,26 @@ function startLiveNotificationStream() {
   liveStream = new EventSource(`${CONFIG.API_BASE}/api/notifications/stream`, { withCredentials: true });
 
   liveStream.addEventListener("mention_notification_created", (evt) => {
-    const data = JSON.parse(evt.data || "{}");
-    const payload = data?.payload || {};
-    pushLiveNotification(data);
-    toast({ title: "Mention", message: payload?.notification?.message || "You were mentioned." });
+    handleLiveEvent(evt, (payload) => {
+      toast({ title: "Mention", message: payload?.notification?.message || "You were mentioned." });
+    });
   });
 
   liveStream.addEventListener("rule_triggered", (evt) => {
-    const data = JSON.parse(evt.data || "{}");
-    const payload = data?.payload || {};
-    pushLiveNotification(data);
-    toast({
-      title: "Rule triggered",
-      message: `Vulnerability #${payload?.vulnerability_id || "?"} updated (${payload?.event_type || "event"}).`,
+    handleLiveEvent(evt, (payload) => {
+      toast({
+        title: "Rule triggered",
+        message: `Vulnerability #${payload?.vulnerability_id || "?"} updated (${payload?.event_type || "event"}).`,
+      });
     });
   });
 
   liveStream.addEventListener("scheduled_scan_escalation_logged", (evt) => {
-    const data = JSON.parse(evt.data || "{}");
-    const payload = data?.payload || {};
-    pushLiveNotification(data);
-    toast({
-      title: "Escalation logged",
-      message: `Vulnerability #${payload?.vulnerability_id || "?"} escalation step ${payload?.escalation_step || 0}.`,
+    handleLiveEvent(evt, (payload) => {
+      toast({
+        title: "Escalation logged",
+        message: `Vulnerability #${payload?.vulnerability_id || "?"} escalation step ${payload?.escalation_step || 0}.`,
+      });
     });
   });
 
@@ -84,6 +97,7 @@ function boot() {
   refreshSessionFromServer();
   if (isAuthed(getState())) {
     startLiveNotificationStream();
+    refreshNotifications();
   }
 }
 

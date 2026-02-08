@@ -55,17 +55,20 @@ def trigger_mention_notifications(*, vulnerability_id: int, actor_id: int | None
             ),
         )
         db.session.add(row)
+        db.session.flush()
         notifications.append(row)
         publish_user_event(
             user_id=user.id,
             event_type="mention_notification_created",
             payload={
                 "notification": {
+                    "id": row.id,
                     "user_id": user.id,
                     "vulnerability_id": vulnerability_id,
                     "message": row.message,
                     "is_read": False,
                     "comment_id": comment_id,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
                 }
             },
         )
