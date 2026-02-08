@@ -1,16 +1,15 @@
 import csv
 import io
 import secrets
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
 
-from datetime import datetime
-
 from ..database import db
-from ..models import User, AuditLog
-from ..auth import role_required, hash_password, generate_token, revoke_tokens
-from ..permissions import ALL_ROLES
+from ..models import ApiToken, User, AuditLog
+from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
+from ..permissions import ALL_ROLES, ROLE_SCOPES
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
@@ -57,6 +56,60 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
         )
     )
 
+
+def _api_token_json(token: ApiToken):
+    return {
+        "id": token.id,
+        "name": token.name,
+        "owner_id": token.owner_id,
+        "scopes": token.scopes or [],
+        "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+        "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+        "revoked_at": token.revoked_at.isoformat() if token.revoked_at else None,
+        "created_at": token.created_at.isoformat(),
+        "updated_at": token.updated_at.isoformat(),
+    }
+
+
+def _parse_token_create_payload(data, owner: User):
+    try:
+        name = required_string(data, "name")
+    except ValidationError as exc:
+        return None, error_response(exc.error, field=exc.field, details=exc.details)
+
+    requested_scopes = data.get("scopes")
+    if not isinstance(requested_scopes, list) or not requested_scopes:
+        return None, error_response("scopes must be a non-empty array", field="scopes")
+
+    allowed_scopes = ROLE_SCOPES.get(owner.role, set())
+    scopes = []
+    for item in requested_scopes:
+        if not isinstance(item, str) or not item.strip():
+            return None, error_response("scope must be a non-empty string", field="scopes")
+        scope = item.strip()
+        if scope not in allowed_scopes:
+            return None, error_response(
+                "scope not permitted for owner role",
+                field="scopes",
+                details={"scope": scope, "allowed": sorted(allowed_scopes)},
+            )
+        scopes.append(scope)
+
+    expires_in_days = data.get("expires_in_days")
+    expires_at = None
+    if expires_in_days is not None:
+        try:
+            days = parse_int(expires_in_days, field="expires_in_days", minimum=1, maximum=3650, required=True)
+        except ValidationError as exc:
+            return None, error_response(exc.error, field=exc.field, details=exc.details)
+        expires_at = datetime.utcnow() + timedelta(days=days)
+
+    return {
+        "name": name,
+        "scopes": sorted(set(scopes)),
+        "expires_at": expires_at,
+    }, None
+
 @bp.get("/users")
 @role_required("Admin")
 def list_users():
@@ -101,6 +154,77 @@ def list_users():
         "page": page,
         "page_size": page_size,
     })
+
+
+@bp.get("/users/me/api-tokens")
+@role_required("Admin", "Analyst", "Viewer")
+def list_my_api_tokens():
+    tokens = (
+        ApiToken.query.filter_by(owner_id=request.user.id)
+        .order_by(ApiToken.created_at.desc())
+        .all()
+    )
+    return jsonify([_api_token_json(token) for token in tokens])
+
+
+@bp.post("/users/me/api-tokens")
+@role_required("Admin", "Analyst", "Viewer")
+def create_my_api_token():
+    payload = request.get_json(silent=True) or {}
+    parsed, err = _parse_token_create_payload(payload, request.user)
+    if err:
+        return err
+
+    plaintext, token = create_api_token(request.user, parsed["name"], parsed["scopes"], parsed["expires_at"])
+    db.session.commit()
+    return jsonify({"token": plaintext, "api_token": _api_token_json(token)}), 201
+
+
+@bp.post("/users/me/api-tokens/<int:token_id>/revoke")
+@role_required("Admin", "Analyst", "Viewer")
+def revoke_my_api_token(token_id: int):
+    token = ApiToken.query.get_or_404(token_id)
+    if token.owner_id != request.user.id:
+        return error_response("Forbidden", status_code=403)
+    if token.revoked_at is None:
+        token.revoked_at = datetime.utcnow()
+        db.session.add(token)
+        db.session.commit()
+    return jsonify(_api_token_json(token))
+
+
+@bp.get("/users/<int:user_id>/api-tokens")
+@role_required("Admin")
+def list_user_api_tokens(user_id: int):
+    User.query.get_or_404(user_id)
+    tokens = ApiToken.query.filter_by(owner_id=user_id).order_by(ApiToken.created_at.desc()).all()
+    return jsonify([_api_token_json(token) for token in tokens])
+
+
+@bp.post("/users/<int:user_id>/api-tokens")
+@role_required("Admin")
+def create_user_api_token(user_id: int):
+    owner = User.query.get_or_404(user_id)
+    payload = request.get_json(silent=True) or {}
+    parsed, err = _parse_token_create_payload(payload, owner)
+    if err:
+        return err
+    plaintext, token = create_api_token(owner, parsed["name"], parsed["scopes"], parsed["expires_at"])
+    db.session.commit()
+    return jsonify({"token": plaintext, "api_token": _api_token_json(token)}), 201
+
+
+@bp.post("/users/<int:user_id>/api-tokens/<int:token_id>/revoke")
+@role_required("Admin")
+def revoke_user_api_token(user_id: int, token_id: int):
+    token = ApiToken.query.get_or_404(token_id)
+    if token.owner_id != user_id:
+        return error_response("Token does not belong to user", status_code=404)
+    if token.revoked_at is None:
+        token.revoked_at = datetime.utcnow()
+        db.session.add(token)
+        db.session.commit()
+    return jsonify(_api_token_json(token))
 
 @bp.post("/users")
 @role_required("Admin")

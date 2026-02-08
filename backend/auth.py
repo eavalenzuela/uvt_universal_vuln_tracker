@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from .database import db
-from .models import RefreshToken, User
+from .models import ApiToken, RefreshToken, User
 from .permissions import role_has_scope, scope_for_request
 
 
@@ -51,6 +51,47 @@ def _refresh_token_lifetime_days() -> int:
 
 def _refresh_token_hash(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _api_token_hash(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _generate_api_token_secret() -> str:
+    return f"uvt_{secrets.token_urlsafe(48)}"
+
+
+def create_api_token(owner: User, name: str, scopes: list[str], expires_at=None):
+    plaintext = _generate_api_token_secret()
+    token_record = ApiToken(
+        name=name,
+        secret_hash=_api_token_hash(plaintext),
+        owner_id=owner.id,
+        scopes=sorted(set(scopes)),
+        expires_at=expires_at,
+    )
+    db.session.add(token_record)
+    return plaintext, token_record
+
+
+def authenticate_api_token(raw_token: str):
+    token_record = ApiToken.query.filter_by(secret_hash=_api_token_hash(raw_token)).first()
+    if not token_record or token_record.revoked_at is not None:
+        return None, (jsonify({"error": "Invalid token"}), 401)
+
+    if token_record.expires_at and token_record.expires_at <= datetime.datetime.utcnow():
+        return None, (jsonify({"error": "Token expired"}), 401)
+
+    user = User.query.get(token_record.owner_id)
+    if not user or not user.is_active:
+        return None, (jsonify({"error": "User inactive or not found"}), 401)
+
+    token_record.last_used_at = datetime.datetime.utcnow()
+    db.session.add(token_record)
+    request.user = user
+    request.jwt_claims = None
+    request.api_token = token_record
+    return user, None
 
 
 def create_refresh_token(user: User):
@@ -141,9 +182,15 @@ def authenticate_request():
     try:
         claims = verify_token(token)
     except jwt.ExpiredSignatureError:
-        return None, None, (jsonify({"error": "Token expired"}), 401)
+        user, error = authenticate_api_token(token)
+        if error:
+            return None, None, (jsonify({"error": "Token expired"}), 401)
+        return user, None, None
     except jwt.InvalidTokenError:
-        return None, None, (jsonify({"error": "Invalid token"}), 401)
+        user, error = authenticate_api_token(token)
+        if error:
+            return None, None, (jsonify({"error": "Invalid token"}), 401)
+        return user, None, None
 
     user = User.query.get(int(claims["sub"]))
     if not user or not user.is_active:
@@ -169,6 +216,7 @@ def authenticate_request():
 
     request.user = user
     request.jwt_claims = claims
+    request.api_token = None
     return user, claims, None
 
 
@@ -234,6 +282,9 @@ def enforce_scopes(app):
         if user is None:
             return jsonify({"error": "Unauthorized"}), 401
         if not role_has_scope(user.role, scope):
+            return jsonify({"error": "Forbidden"}), 403
+        api_token = getattr(request, "api_token", None)
+        if api_token is not None and scope not in set(api_token.scopes or []):
             return jsonify({"error": "Forbidden"}), 403
         return None
 

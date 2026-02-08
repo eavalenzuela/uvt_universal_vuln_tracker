@@ -21,6 +21,25 @@ class User(db.Model):
     token_version = db.Column(db.Integer, default=1, nullable=False)
     last_revoked_at = db.Column(db.DateTime)
     refresh_tokens = db.relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    api_tokens = db.relationship("ApiToken", back_populates="owner", cascade="all, delete-orphan")
+
+
+class ApiToken(db.Model):
+    __tablename__ = "api_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    secret_hash = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    scopes = db.Column(db.JSON, default=list, nullable=False)
+    expires_at = db.Column(db.DateTime, index=True)
+    last_used_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner = db.relationship("User", back_populates="api_tokens")
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class RefreshToken(db.Model):
