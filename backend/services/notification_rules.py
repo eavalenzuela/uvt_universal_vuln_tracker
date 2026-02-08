@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import json
 import re
 from typing import Any
 from urllib import request as urllib_request
@@ -145,9 +146,9 @@ def _webhook_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, 
     webhook_url = config.get("webhook_url")
     if not webhook_url:
         raise ValueError("Missing webhook_url")
-    body = str(payload).encode("utf-8")
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     req = urllib_request.Request(webhook_url, data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
+    req.add_header("Content-Type", "application/json; charset=utf-8")
     try:
         with urllib_request.urlopen(req, timeout=10) as resp:
             return {"status": resp.status}
