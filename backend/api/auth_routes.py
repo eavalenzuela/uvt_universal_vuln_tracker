@@ -30,6 +30,20 @@ def _auth_response(user, access_token, refresh_token=None):
     return payload
 
 
+def _clear_auth_cookie(response):
+    response.set_cookie(
+        "uvt_auth_token",
+        "",
+        httponly=True,
+        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
+        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
+        max_age=0,
+        path="/",
+    )
+    return response
+
+
 @bp.post("/login")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
 def login():
@@ -72,7 +86,7 @@ def logout():
     if isinstance(refresh_token, str) and refresh_token.strip():
         revoke_refresh_token(refresh_token.strip())
         db.session.commit()
-    return jsonify({"ok": True})
+    return _clear_auth_cookie(jsonify({"ok": True}))
 
 
 @bp.post("/logout_all")
@@ -81,7 +95,7 @@ def logout_all():
     revoke_tokens(request.user)
     revoke_all_refresh_tokens(request.user)
     db.session.commit()
-    return jsonify({"ok": True})
+    return _clear_auth_cookie(jsonify({"ok": True}))
 
 
 @bp.get("/providers")

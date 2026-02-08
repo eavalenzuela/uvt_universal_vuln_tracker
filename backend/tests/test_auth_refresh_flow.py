@@ -45,6 +45,23 @@ def test_logout_revokes_refresh_token_and_blocks_future_refresh(client, admin_us
     assert refresh.status_code == 401
 
 
+def test_logout_clears_auth_cookie_with_or_without_refresh_token(client, admin_user):
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    refresh_token = login.get_json()["refresh_token"]
+
+    with_token = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    assert with_token.status_code == 200
+    with_token_cookie = with_token.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=" in with_token_cookie
+    assert "Max-Age=0" in with_token_cookie
+
+    without_token = client.post("/api/auth/logout", json={})
+    assert without_token.status_code == 200
+    without_token_cookie = without_token.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=" in without_token_cookie
+    assert "Max-Age=0" in without_token_cookie
+
+
 
 
 def test_logout_all_revokes_access_token_and_refresh_tokens(client, admin_user):
@@ -62,6 +79,17 @@ def test_logout_all_revokes_access_token_and_refresh_tokens(client, admin_user):
 
     refresh = client.post("/api/auth/refresh", json={"refresh_token": payload["refresh_token"]})
     assert refresh.status_code == 401
+
+
+def test_logout_all_clears_auth_cookie(client, admin_user):
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    payload = login.get_json()
+
+    logout_all = client.post("/api/auth/logout_all", headers={"Authorization": f"Bearer {payload['token']}"})
+    assert logout_all.status_code == 200
+    set_cookie = logout_all.headers.get("Set-Cookie", "")
+    assert "uvt_auth_token=" in set_cookie
+    assert "Max-Age=0" in set_cookie
 
 
 def test_logout_all_revokes_all_refresh_tokens(client, admin_user, auth_header):
