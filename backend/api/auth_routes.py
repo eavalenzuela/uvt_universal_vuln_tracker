@@ -44,6 +44,20 @@ def _clear_auth_cookie(response):
     return response
 
 
+def _set_auth_cookie(response, token):
+    response.set_cookie(
+        "uvt_auth_token",
+        token,
+        httponly=True,
+        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
+        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
+        max_age=12 * 60 * 60,
+        path="/",
+    )
+    return response
+
+
 @bp.post("/login")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
 def login():
@@ -61,7 +75,7 @@ def login():
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     refresh_token, _ = create_refresh_token(user)
     db.session.commit()
-    return jsonify(_auth_response(user, token, refresh_token))
+    return _set_auth_cookie(jsonify(_auth_response(user, token, refresh_token)), token)
 
 
 @bp.post("/refresh")
@@ -76,7 +90,10 @@ def refresh():
         return error_response("Invalid refresh token", status_code=401)
 
     db.session.commit()
-    return jsonify(_auth_response(result["user"], result["access_token"], result["refresh_token"]))
+    return _set_auth_cookie(
+        jsonify(_auth_response(result["user"], result["access_token"], result["refresh_token"])),
+        result["access_token"],
+    )
 
 
 @bp.post("/logout")
@@ -134,17 +151,7 @@ def oidc_callback():
 
     frontend_redirect = current_app.config.get("FRONTEND_LOGIN_SUCCESS_URL", "http://127.0.0.1:5173/login")
     response = redirect(frontend_redirect, code=302)
-    response.set_cookie(
-        "uvt_auth_token",
-        result["token"],
-        httponly=True,
-        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
-        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
-        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
-        max_age=12 * 60 * 60,
-        path="/",
-    )
-    return response
+    return _set_auth_cookie(response, result["token"])
 
 
 @bp.post("/register")

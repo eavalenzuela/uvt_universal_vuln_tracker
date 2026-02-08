@@ -9,12 +9,9 @@ import { CONFIG } from "./config.js";
 let liveStream = null;
 
 function startLiveNotificationStream() {
-  const token = getState()?.session?.token;
-  if (!token) return;
   if (liveStream) return;
 
-  const streamUrl = `${CONFIG.API_BASE}/api/notifications/stream?token=${encodeURIComponent(token)}`;
-  liveStream = new EventSource(streamUrl, { withCredentials: true });
+  liveStream = new EventSource(`${CONFIG.API_BASE}/api/notifications/stream`, { withCredentials: true });
 
   liveStream.addEventListener("mention_notification_created", (evt) => {
     const data = JSON.parse(evt.data || "{}");
@@ -62,7 +59,7 @@ async function refreshSessionFromServer() {
 
   try {
     const user = await me();
-    setSession({ token: state.session.token, refreshToken: state.session.refreshToken, user });
+    setSession({ user, token: state.session.token, refreshToken: state.session.refreshToken });
   } catch {
     // token invalid/expired, etc.
     logoutSession();
