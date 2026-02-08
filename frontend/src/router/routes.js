@@ -13,6 +13,7 @@ import { ProductsView } from "../views/products/productsView.js";
 import { ProductComponentDiffView } from "../views/products/productComponentDiffView.js";
 import { ProductDetailView } from "../views/products/productDetailView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
+import { NotificationsView } from "../views/notifications/notificationsView.js";
 
 export const ROUTES = [
   { path: "/login", view: LoginView, public: true },
@@ -29,6 +30,7 @@ export const ROUTES = [
   { path: "/products", view: ProductsView, guard: () => requireAuth() },
   { path: "/products/component-diff", view: ProductComponentDiffView, guard: () => requireAuth() },
   { path: "/products/:id", view: ProductDetailView, guard: () => requireAuth() },
+  { path: "/notifications", view: NotificationsView, guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/logs", view: AdminLogsView, guard: () => requireAuth() && requireRole("Admin") },

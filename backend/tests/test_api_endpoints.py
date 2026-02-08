@@ -2018,6 +2018,74 @@ def test_vulnerability_comment_mentions_create_notifications(app, client):
         assert "mentioned" in notifications[0].message.lower()
 
 
+
+
+def test_notifications_list_and_update_flow(app, client):
+    admin = create_admin(app)
+    other = create_user_direct(app, "notif_other", "notif_other@example.com", role="Analyst")
+
+    with app.app_context():
+        from backend.models import Notification
+
+        first = Notification(user_id=admin.id, message="First", is_read=False)
+        second = Notification(user_id=admin.id, message="Second", is_read=True)
+        hidden = Notification(user_id=other.id, message="Other user", is_read=False)
+        db.session.add_all([first, second, hidden])
+        db.session.commit()
+
+    listed = client.get("/api/notifications?page=1&page_size=1", headers=auth_header(admin))
+    assert listed.status_code == 200
+    payload = listed.get_json()
+    assert payload["ok"] is True
+    assert payload["data"]["pagination"]["total"] == 2
+    assert len(payload["data"]["items"]) == 1
+    assert payload["data"]["unread_count"] == 1
+
+    target_id = payload["data"]["items"][0]["id"]
+    updated = client.patch(
+        f"/api/notifications/{target_id}",
+        headers=auth_header(admin),
+        json={"is_read": False},
+    )
+    assert updated.status_code == 200
+    updated_payload = updated.get_json()
+    assert updated_payload["data"]["notification"]["is_read"] is False
+
+    not_found = client.patch(
+        "/api/notifications/999999",
+        headers=auth_header(admin),
+        json={"is_read": True},
+    )
+    assert not_found.status_code == 404
+
+
+def test_notifications_mark_all_and_archive_modes(app, client):
+    admin = create_admin(app)
+
+    with app.app_context():
+        from backend.models import Notification
+
+        row1 = Notification(user_id=admin.id, message="Unread 1", is_read=False)
+        row2 = Notification(user_id=admin.id, message="Unread 2", is_read=False)
+        db.session.add_all([row1, row2])
+        db.session.commit()
+        first_id = row1.id
+        second_id = row2.id
+
+    mark_all = client.post("/api/notifications/read-all", headers=auth_header(admin))
+    assert mark_all.status_code == 200
+    mark_payload = mark_all.get_json()
+    assert mark_payload["data"]["updated"] == 2
+    assert mark_payload["data"]["unread_count"] == 0
+
+    archived = client.delete(f"/api/notifications/{first_id}?mode=archive", headers=auth_header(admin))
+    assert archived.status_code == 200
+    archived_payload = archived.get_json()
+    assert archived_payload["data"]["mode"] == "archive"
+
+    bad_mode = client.delete(f"/api/notifications/{second_id}?mode=nope", headers=auth_header(admin))
+    assert bad_mode.status_code == 400
+
 def test_vulnerability_comment_permissions_author_or_admin(app, client):
     admin = create_admin(app)
     author = create_user_direct(app, "comment_author", "comment_author@example.com", role="Analyst")
