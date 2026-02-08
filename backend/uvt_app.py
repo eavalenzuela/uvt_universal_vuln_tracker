@@ -1,5 +1,6 @@
 import os
 import logging
+from urllib.parse import urlparse
 from flask import Flask, jsonify
 from flask_cors import CORS
 
@@ -24,18 +25,55 @@ def _env_cookie_samesite(default: str = "Lax") -> str:
     allowed = {"lax": "Lax", "strict": "Strict", "none": "None"}
     return allowed.get(raw, default)
 
+
+def _cors_allowed_origins() -> list[str]:
+    default_origins = [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5000",
+        "http://localhost:5000",
+    ]
+    raw_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+    if raw_origins is None:
+        return default_origins
+
+    parsed_origins: list[str] = []
+    invalid_origins: list[str] = []
+
+    for raw_origin in raw_origins.split(","):
+        origin = raw_origin.strip()
+        if not origin:
+            continue
+        parsed = urlparse(origin)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+            invalid_origins.append(origin)
+            continue
+        parsed_origins.append(f"{parsed.scheme}://{parsed.netloc}")
+
+    if invalid_origins:
+        raise ValueError(
+            "Invalid CORS_ALLOWED_ORIGINS value(s): "
+            f"{', '.join(invalid_origins)}. "
+            "Expected a comma-separated list of origin URLs like http://localhost:5173"
+        )
+
+    if not parsed_origins:
+        logging.warning(
+            "CORS_ALLOWED_ORIGINS is set but empty; falling back to local development defaults."
+        )
+        return default_origins
+
+    return parsed_origins
+
 def create_app():
     app = Flask(__name__)
+
+    cors_origins = _cors_allowed_origins()
 
     # CORS headers
     CORS(
         app,
-        resources={r"/api/*": {"origins": [
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            "http://127.0.0.1:5000",
-            "http://localhost:5000",
-        ]}},
+        resources={r"/api/*": {"origins": cors_origins}},
         supports_credentials=True,
         allow_headers=["Authorization", "Content-Type"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
