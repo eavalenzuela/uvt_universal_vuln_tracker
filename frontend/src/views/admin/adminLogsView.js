@@ -26,22 +26,48 @@ function logCard(log) {
 }
 
 export async function AdminLogsView() {
-  const limitInput = el("input", { class: "input", type: "number", min: 1, max: 500, value: 100 });
+  const pageSizeInput = el("input", { class: "input", type: "number", min: 1, max: 500, value: 100 });
+  const actionInput = el("input", { class: "input", placeholder: "Action (optional)" });
+  const tableInput = el("input", { class: "input", placeholder: "Table (optional)" });
   const refreshBtn = el("button", { class: "btn" }, "Refresh logs");
   const list = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const pageInfo = el("div", { class: "muted", text: "Page 1" });
+  const prevBtn = el("button", { class: "btn" }, "Previous");
+  const nextBtn = el("button", { class: "btn" }, "Next");
+
+  let currentPage = 1;
+  let lastTotal = 0;
 
   async function load() {
     list.innerHTML = "";
     list.appendChild(el("div", { class: "muted", text: "Loading audit logs..." }));
     try {
-      const limit = Math.min(Math.max(parseInt(limitInput.value || "0", 10) || 100, 1), 500);
-      const logs = await listAuditLogs({ limit });
+      const pageSize = Math.min(Math.max(parseInt(pageSizeInput.value || "0", 10) || 100, 1), 500);
+      const res = await listAuditLogs({
+        page: currentPage,
+        page_size: pageSize,
+        action: actionInput.value.trim() || undefined,
+        table: tableInput.value.trim() || undefined,
+      });
+
+      const items = res?.items || [];
+      const total = res?.total || 0;
+      const page = res?.page || currentPage;
+      const effectiveSize = res?.page_size || pageSize;
+      const totalPages = Math.max(1, Math.ceil(total / effectiveSize));
+
       list.innerHTML = "";
-      if (!logs?.length) {
+      if (!items.length) {
         list.appendChild(el("div", { class: "muted", text: "No audit logs yet." }));
-        return;
+      } else {
+        items.forEach((log) => list.appendChild(logCard(log)));
       }
-      logs.forEach((log) => list.appendChild(logCard(log)));
+
+      lastTotal = total;
+      currentPage = page;
+      pageInfo.textContent = `Page ${page} of ${totalPages} • ${total} total`;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = page >= totalPages;
     } catch (e) {
       list.innerHTML = "";
       toast({ title: "Failed to load logs", message: e?.message || "Unable to fetch audit logs" });
@@ -49,7 +75,25 @@ export async function AdminLogsView() {
     }
   }
 
-  refreshBtn.addEventListener("click", load);
+  refreshBtn.addEventListener("click", () => {
+    currentPage = 1;
+    load();
+  });
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage -= 1;
+      load();
+    }
+  });
+  nextBtn.addEventListener("click", () => {
+    const pageSize = Math.min(Math.max(parseInt(pageSizeInput.value || "0", 10) || 100, 1), 500);
+    const totalPages = Math.max(1, Math.ceil(lastTotal / pageSize));
+    if (currentPage < totalPages) {
+      currentPage += 1;
+      load();
+    }
+  });
+
   await load();
 
   return el("div", { style: "display:flex; flex-direction:column; gap:12px;" },
@@ -62,11 +106,19 @@ export async function AdminLogsView() {
         el("div", { style: "font-weight:700;", text: "Audit log feed" }),
         el("div", { class: "muted", text: "Latest entries from audit_logs" }),
         el("div", { class: "spacer" }),
-        el("label", { class: "muted", text: "Max rows" }),
-        limitInput,
+        actionInput,
+        tableInput,
+        el("label", { class: "muted", text: "Rows/page" }),
+        pageSizeInput,
         refreshBtn,
       ),
       list,
+      el("div", { class: "row", style: "gap:8px; align-items:center; margin-top:12px;" },
+        pageInfo,
+        el("div", { class: "spacer" }),
+        prevBtn,
+        nextBtn,
+      ),
     ),
   );
 }

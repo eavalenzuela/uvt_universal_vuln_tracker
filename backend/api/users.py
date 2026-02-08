@@ -62,6 +62,12 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
 def list_users():
     query = User.query
 
+    try:
+        page = parse_int(request.args.get("page"), field="page", minimum=1) or 1
+        page_size = parse_int(request.args.get("page_size"), field="page_size", minimum=1, maximum=500) or 25
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
     search = (request.args.get("search") or "").strip()
     role = (request.args.get("role") or "").strip()
     status = (request.args.get("status") or "").strip().lower()
@@ -87,8 +93,14 @@ def list_users():
             return error_response("status must be one of ['active', 'disabled']", field="status", details={"allowed": ["active", "disabled"]})
         query = query.filter(User.is_active.is_(status == "active"))
 
-    users = query.order_by(User.username.asc()).all()
-    return jsonify([_user_json(u) for u in users])
+    total = query.count()
+    users = query.order_by(User.username.asc()).offset((page - 1) * page_size).limit(page_size).all()
+    return jsonify({
+        "items": [_user_json(u) for u in users],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
 
 @bp.post("/users")
 @role_required("Admin")
@@ -314,9 +326,9 @@ def toggle_active(user_id: int):
 @bp.get("/audit-logs")
 @role_required("Admin")
 def list_audit_logs():
-    limit_raw = request.args.get("limit")
     try:
-        limit = parse_int(limit_raw, field="limit", minimum=1, maximum=500) if limit_raw is not None else 100
+        page = parse_int(request.args.get("page"), field="page", minimum=1) or 1
+        page_size = parse_int(request.args.get("page_size"), field="page_size", minimum=1, maximum=500) or 100
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
@@ -329,41 +341,65 @@ def list_audit_logs():
     if table:
         query = query.filter(AuditLog.table_name == table)
 
-    logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    total = query.count()
+    logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
     def _user_payload(log: AuditLog):
         if not log.user:
             return None
         return {"id": log.user.id, "username": log.user.username, "email": log.user.email}
 
-    return jsonify([
-        {
-            "id": log.id,
-            "action": log.action,
-            "table_name": log.table_name,
-            "record_id": log.record_id,
-            "old_values": log.old_values,
-            "new_values": log.new_values,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-            "user": _user_payload(log),
-        }
-        for log in logs
-    ])
+    return jsonify({
+        "items": [
+            {
+                "id": log.id,
+                "action": log.action,
+                "table_name": log.table_name,
+                "record_id": log.record_id,
+                "old_values": log.old_values,
+                "new_values": log.new_values,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "user": _user_payload(log),
+            }
+            for log in logs
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
 
 
 @bp.get("/users/export")
 @role_required("Admin")
 def export_users():
-    # reuse list filters for consistency
-    filtered = list_users()
-    # If list_users returned a tuple (response, status), handle errors
-    if isinstance(filtered, tuple):
-        resp, status = filtered
-        if status != 200:
-            return filtered
-        data = resp.get_json()
-    else:
-        data = filtered.get_json()
+    query = User.query
+
+    search = (request.args.get("search") or "").strip()
+    role = (request.args.get("role") or "").strip()
+    status = (request.args.get("status") or "").strip().lower()
+
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                User.username.ilike(like),
+                User.email.ilike(like),
+                User.first_name.ilike(like),
+                User.last_name.ilike(like),
+            )
+        )
+
+    if role:
+        if role not in _ALLOWED_ROLES:
+            return error_response("role must be one of allowed roles", field="role", details={"allowed": sorted(_ALLOWED_ROLES)})
+        query = query.filter(User.role == role)
+
+    if status:
+        if status not in {"active", "disabled"}:
+            return error_response("status must be one of ['active', 'disabled']", field="status", details={"allowed": ["active", "disabled"]})
+        query = query.filter(User.is_active.is_(status == "active"))
+
+    data = [_user_json(u) for u in query.order_by(User.username.asc()).all()]
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["username", "email", "role", "is_active", "created_at", "updated_at", "first_name", "last_name"])

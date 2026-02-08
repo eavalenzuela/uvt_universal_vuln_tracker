@@ -1,10 +1,12 @@
 import { apiFetch } from "./client.js";
 
-export async function listUsers({ search, role, status } = {}) {
+export async function listUsers({ search, role, status, page, page_size } = {}) {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (role) params.set("role", role);
   if (status) params.set("status", status);
+  if (page) params.set("page", page);
+  if (page_size) params.set("page_size", page_size);
 
   const qs = params.toString();
   const suffix = qs ? `?${qs}` : "";
