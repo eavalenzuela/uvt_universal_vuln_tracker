@@ -124,8 +124,9 @@ def oidc_callback():
         "uvt_auth_token",
         result["token"],
         httponly=True,
-        secure=True,
-        samesite="Lax",
+        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
+        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
         max_age=12 * 60 * 60,
         path="/",
     )
