@@ -243,6 +243,20 @@ def test_user_management_endpoints(app, client):
     reset_resp = client.post(f"/api/users/{analyst_id}/reset-password", headers=headers, json={"password": "newpass"})
     assert reset_resp.status_code == 200
 
+    reset_log = _latest_audit(app, action="RESET_PASSWORD", table_name="users")
+    assert reset_log is not None
+    assert reset_log.record_id == analyst_id
+    assert reset_log.old_values == {"password_reset": True}
+    assert reset_log.new_values is None
+    assert "password_hash" not in json.dumps(reset_log.old_values)
+
+    audit_resp = client.get("/api/audit-logs?action=RESET_PASSWORD&table=users", headers=headers)
+    assert audit_resp.status_code == 200
+    reset_entry = audit_resp.get_json()[0]
+    assert reset_entry["old_values"] == {"password_reset": True}
+    assert reset_entry["new_values"] is None
+    assert "password_hash" not in json.dumps(reset_entry)
+
     toggle_resp = client.post(f"/api/users/{analyst_id}/toggle-active", headers=headers)
     assert toggle_resp.status_code == 200
     assert toggle_resp.get_json()["is_active"] is True
