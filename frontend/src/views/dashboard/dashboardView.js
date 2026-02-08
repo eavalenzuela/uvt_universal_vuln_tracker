@@ -10,9 +10,16 @@ import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
 import { getState } from "../../state/store.js";
 import { downloadReportArtifact, exportDashboardSummary, getDashboardSummary, getRiskTrends } from "../../api/reports.js";
+import {
+  createDashboardLayoutPreset,
+  getDefaultDashboardLayoutPreset,
+  listDashboardLayoutPresets,
+  updateDashboardLayoutPreset,
+} from "../../api/dashboardLayoutPresets.js";
 import { toast } from "../../ui/components/toast.js";
 
 const STORAGE_KEY = "uvt.dashboard.widgets.v1";
+const LOCAL_PRESETS_KEY = "uvt.dashboard.layout_presets.v1";
 const DEFAULT_WIDGETS = [
   {
     id: "risk-overview",
@@ -222,11 +229,31 @@ async function ensureActiveUsers() {
   }
 }
 
+function getDefaultLayoutState() {
+  return {
+    order: DEFAULT_WIDGETS.map((widget) => widget.id),
+    visibility: {},
+    settings: {},
+  };
+}
+
+function normalizeLayoutState(state) {
+  if (!state || typeof state !== "object") return getDefaultLayoutState();
+  const widgetIds = new Set(DEFAULT_WIDGETS.map((widget) => widget.id));
+  const order = Array.isArray(state.order) ? state.order.filter((id) => widgetIds.has(id)) : [];
+  const completeOrder = [...order, ...DEFAULT_WIDGETS.map((w) => w.id).filter((id) => !order.includes(id))];
+  return {
+    order: completeOrder,
+    visibility: state.visibility && typeof state.visibility === "object" ? { ...state.visibility } : {},
+    settings: state.settings && typeof state.settings === "object" ? { ...state.settings } : {},
+  };
+}
+
 function loadDashboardState() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
-    return JSON.parse(stored);
+    return normalizeLayoutState(JSON.parse(stored));
   } catch (error) {
     console.warn("Unable to load dashboard layout.", error);
     return null;
@@ -235,27 +262,51 @@ function loadDashboardState() {
 
 function saveDashboardState(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeLayoutState(state)));
   } catch (error) {
     console.warn("Unable to save dashboard layout.", error);
   }
 }
 
+function loadLocalPresets() {
+  try {
+    const raw = localStorage.getItem(LOCAL_PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Unable to load local dashboard presets.", error);
+    return [];
+  }
+}
+
+function saveLocalPresets(presets) {
+  try {
+    localStorage.setItem(LOCAL_PRESETS_KEY, JSON.stringify(Array.isArray(presets) ? presets : []));
+  } catch (error) {
+    console.warn("Unable to save local dashboard presets.", error);
+  }
+}
+
+function serializePresetLayout(layoutState) {
+  return normalizeLayoutState(layoutState);
+}
+
 export async function DashboardView() {
   const user = getState()?.session?.user;
   const writable = canWrite(getState());
-  const savedState = loadDashboardState();
+  const savedState = loadDashboardState() || getDefaultLayoutState();
   const widgetById = new Map(DEFAULT_WIDGETS.map((widget) => [widget.id, widget]));
-  const order = savedState?.order?.length ? savedState.order : DEFAULT_WIDGETS.map((widget) => widget.id);
-  const visibility = savedState?.visibility || {};
-  const settings = savedState?.settings || {};
   let activeModal = null;
   let draggingId = null;
+  let presetsOnline = true;
+  let presets = [];
+  let selectedPresetId = "local-current";
 
   const layoutState = {
-    order: order.filter((id) => widgetById.has(id)),
-    visibility: { ...visibility },
-    settings: { ...settings },
+    order: savedState.order.filter((id) => widgetById.has(id)),
+    visibility: { ...savedState.visibility },
+    settings: { ...savedState.settings },
   };
 
   const container = el("div", { class: "card", style: "display:flex; flex-direction:column; gap:16px;" });
@@ -316,8 +367,147 @@ export async function DashboardView() {
   });
   const hiddenList = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
 
+  const presetSelect = el("select", { class: "input", style: "max-width: 260px;" });
+  const presetNameInput = el("input", { class: "input", type: "text", placeholder: "Preset name", style: "max-width: 220px;" });
+  const presetVisibilitySelect = el(
+    "select",
+    { class: "input", style: "max-width: 140px;" },
+    el("option", { value: "private", text: "Private" }),
+    el("option", { value: "team", text: "Team" }),
+  );
+
+  async function loadPresetsFromApi() {
+    const [items, defaultResponse] = await Promise.all([
+      listDashboardLayoutPresets(),
+      getDefaultDashboardLayoutPreset(),
+    ]);
+    presets = Array.isArray(items) ? items : [];
+    const defaultPreset = defaultResponse?.default;
+    if (defaultPreset?.id) {
+      selectedPresetId = String(defaultPreset.id);
+      const config = normalizeLayoutState(defaultPreset.widget_config_json);
+      layoutState.order = config.order;
+      layoutState.visibility = config.visibility;
+      layoutState.settings = config.settings;
+      saveDashboardState(layoutState);
+    }
+  }
+
   function persistState() {
     saveDashboardState(layoutState);
+    const localPresets = loadLocalPresets();
+    const current = {
+      id: "local-current",
+      name: "Current (local)",
+      visibility: "private",
+      is_default: false,
+      owner: { id: user?.id, username: user?.username },
+      widget_config_json: serializePresetLayout(layoutState),
+    };
+    const remaining = localPresets.filter((item) => item?.id !== "local-current");
+    saveLocalPresets([current, ...remaining]);
+  }
+
+  function renderPresetOptions() {
+    presetSelect.innerHTML = "";
+    const localItems = loadLocalPresets();
+    const all = presetsOnline ? presets : localItems;
+    presetSelect.append(
+      el("option", { value: "local-current", text: presetsOnline ? "Current (local)" : "Current (offline local)" }),
+      ...all.map((preset) =>
+        el("option", {
+          value: String(preset.id),
+          text: `${preset.name}${preset.is_default ? " • default" : ""}${preset.visibility === "team" ? " • team" : ""}`,
+          selected: String(preset.id) === String(selectedPresetId),
+        }),
+      ),
+    );
+  }
+
+  async function savePreset({ markDefault = false } = {}) {
+    const name = (presetNameInput.value || "").trim();
+    if (!name) {
+      toast({ title: "Preset name required", message: "Enter a name before saving your dashboard layout." });
+      return;
+    }
+
+    const payload = {
+      name,
+      visibility: presetVisibilitySelect.value,
+      is_default: markDefault,
+      widget_config_json: serializePresetLayout(layoutState),
+    };
+
+    try {
+      if (presetsOnline) {
+        const created = await createDashboardLayoutPreset(payload);
+        presets.push(created);
+        if (markDefault) {
+          selectedPresetId = String(created.id);
+        }
+      } else {
+        const local = loadLocalPresets();
+        const created = {
+          ...payload,
+          id: `local-${Date.now()}`,
+          owner: { id: user?.id, username: user?.username },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        if (markDefault) {
+          local.forEach((item) => {
+            item.is_default = false;
+          });
+        }
+        saveLocalPresets([...local.filter((item) => item.id !== created.id), created]);
+        selectedPresetId = String(created.id);
+      }
+      renderPresetOptions();
+      toast({ title: "Layout saved", message: "Dashboard layout preset saved." });
+    } catch (error) {
+      presetsOnline = false;
+      const local = loadLocalPresets();
+      const created = {
+        ...payload,
+        id: `local-${Date.now()}`,
+        owner: { id: user?.id, username: user?.username },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (markDefault) {
+        local.forEach((item) => {
+          item.is_default = false;
+        });
+      }
+      saveLocalPresets([...local.filter((item) => item.id !== created.id), created]);
+      selectedPresetId = String(created.id);
+      renderPresetOptions();
+      toast({ title: "Saved locally", message: "API unavailable; saved preset in local fallback storage." });
+      console.warn("Unable to save preset via API.", error);
+    }
+  }
+
+  async function applySelectedPreset() {
+    const value = presetSelect.value;
+    selectedPresetId = value;
+    if (value === "local-current") {
+      const current = loadDashboardState() || getDefaultLayoutState();
+      layoutState.order = current.order;
+      layoutState.visibility = current.visibility;
+      layoutState.settings = current.settings;
+      renderGrid();
+      return;
+    }
+
+    const source = presetsOnline ? presets : loadLocalPresets();
+    const preset = source.find((item) => String(item.id) === String(value));
+    if (!preset) return;
+    const config = normalizeLayoutState(preset.widget_config_json);
+    layoutState.order = config.order;
+    layoutState.visibility = config.visibility;
+    layoutState.settings = config.settings;
+    persistState();
+    renderGrid();
   }
 
   function moveWidget(id, direction) {
@@ -1186,11 +1376,62 @@ export async function DashboardView() {
     }
   }
 
+  persistState();
+  try {
+    await loadPresetsFromApi();
+    presetsOnline = true;
+  } catch (error) {
+    presetsOnline = false;
+    presets = loadLocalPresets();
+    console.warn("Unable to load dashboard presets from API.", error);
+    toast({ title: "Offline mode", message: "Dashboard preset API unavailable; using local fallback." });
+  }
+  renderPresetOptions();
   renderGrid();
 
-  gridWrapper.append(
-    el("div", { style: "display:flex; justify-content:space-between; align-items:center;" },
-      el("h2", { text: "Widget layout" }),
+  const controlsRow = el(
+    "div",
+    { style: "display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;" },
+    el("h2", { text: "Widget layout" }),
+    el(
+      "div",
+      { style: "display:flex; gap:8px; flex-wrap:wrap; align-items:center;" },
+      presetSelect,
+      el("button", { class: "btn", text: "Load", onClick: () => applySelectedPreset() }),
+      presetNameInput,
+      presetVisibilitySelect,
+      el("button", { class: "btn", text: "Save layout", onClick: () => savePreset({ markDefault: false }) }),
+      el("button", { class: "btn", text: "Save as default", onClick: () => savePreset({ markDefault: true }) }),
+      el("button", {
+        class: "btn",
+        text: "Mark selected default",
+        onClick: async () => {
+          const value = presetSelect.value;
+          if (!value || value === "local-current") {
+            toast({ title: "Select a preset", message: "Choose a saved preset to mark as default." });
+            return;
+          }
+          try {
+            if (presetsOnline) {
+              await updateDashboardLayoutPreset(Number(value), { is_default: true });
+              presets = presets.map((preset) => ({
+                ...preset,
+                is_default: String(preset.id) === String(value),
+              }));
+            } else {
+              const local = loadLocalPresets();
+              local.forEach((item) => {
+                item.is_default = String(item.id) === String(value);
+              });
+              saveLocalPresets(local);
+            }
+            renderPresetOptions();
+            toast({ title: "Default updated", message: "Selected layout is now default." });
+          } catch (error) {
+            toast({ title: "Unable to update default", message: error?.message || "Failed to update preset default." });
+          }
+        },
+      }),
       el("button", {
         class: "btn",
         text: "Reset layout",
@@ -1203,6 +1444,10 @@ export async function DashboardView() {
         },
       }),
     ),
+  );
+
+  gridWrapper.append(
+    controlsRow,
     grid,
     hiddenList,
   );

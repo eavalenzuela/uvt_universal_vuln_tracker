@@ -55,6 +55,26 @@ class SavedVulnerabilityFilter(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class DashboardLayoutPreset(db.Model):
+    __tablename__ = "dashboard_layout_presets"
+    __table_args__ = (
+        db.CheckConstraint("visibility IN ('private', 'team')", name="ck_dashboard_layout_presets_visibility"),
+        db.UniqueConstraint("owner_id", "name", name="unique_dashboard_layout_preset_owner_name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    widget_config_json = db.Column(db.JSON, nullable=False)
+    visibility = db.Column(db.String(20), default="private", nullable=False, index=True)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner = db.relationship("User", foreign_keys=[owner_id])
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class Product(db.Model):
     __tablename__ = "products"
 
