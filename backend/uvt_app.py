@@ -23,7 +23,7 @@ def create_app():
             "http://127.0.0.1:5000",
             "http://localhost:5000",
         ]}},
-        supports_credentials=False,
+        supports_credentials=True,
         allow_headers=["Authorization", "Content-Type"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )

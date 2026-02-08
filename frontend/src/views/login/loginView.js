@@ -1,22 +1,18 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 import { authProviders, login, me } from "../../api/auth.js";
-import { setSession } from "../../state/store.js";
+import { getState, setSession } from "../../state/store.js";
 import { navigate } from "../../router/router.js";
 
 export async function LoginView() {
-  const params = new URLSearchParams(window.location.search);
-  const oidcToken = params.get("token");
-  if (oidcToken) {
-    try {
-      setSession({ token: oidcToken, user: null });
-      const fresh = await me();
-      setSession({ token: oidcToken, user: fresh });
-      toast({ title: "Welcome", message: `Logged in as ${fresh.username}` });
-      navigate("/");
-    } catch {
-      toast({ title: "SSO failed", message: "Unable to complete single sign-on." });
-    }
+  const currentSession = getState()?.session || { token: null, user: null };
+  try {
+    const fresh = await me();
+    setSession({ token: currentSession.token, user: fresh });
+    navigate("/");
+    return null;
+  } catch {
+    // not authenticated yet
   }
 
   const usernameInput = el("input", { class: "input", type: "text", autocomplete: "username", placeholder: "Username" });
