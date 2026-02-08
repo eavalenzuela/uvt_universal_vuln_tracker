@@ -11,6 +11,19 @@ from .auth import enforce_scopes
 from .plugins import init_plugin_registry
 from .api.validation import ValidationError, error_response
 
+
+def _env_to_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_cookie_samesite(default: str = "Lax") -> str:
+    raw = os.getenv("AUTH_COOKIE_SAMESITE", default).strip().lower()
+    allowed = {"lax": "Lax", "strict": "Strict", "none": "None"}
+    return allowed.get(raw, default)
+
 def create_app():
     app = Flask(__name__)
 
@@ -43,6 +56,12 @@ def create_app():
     app.config["OIDC_GROUPS_CLAIM"] = os.getenv("OIDC_GROUPS_CLAIM", "groups")
     app.config["OIDC_DEFAULT_ROLE"] = os.getenv("OIDC_DEFAULT_ROLE", "Viewer")
     app.config["OIDC_ROLE_MAPPING"] = os.getenv("OIDC_ROLE_MAPPING", "")
+
+    runtime_env = os.getenv("FLASK_ENV", os.getenv("ENV", "production")).strip().lower()
+    auth_cookie_secure_default = runtime_env in ("prod", "production")
+    app.config["AUTH_COOKIE_SECURE"] = _env_to_bool("AUTH_COOKIE_SECURE", auth_cookie_secure_default)
+    app.config["AUTH_COOKIE_SAMESITE"] = _env_cookie_samesite(default="Lax")
+    app.config["AUTH_COOKIE_DOMAIN"] = os.getenv("AUTH_COOKIE_DOMAIN") or None
 
     app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("1", "true", "yes")
     app.config["RATE_LIMIT_BACKEND"] = os.getenv("RATE_LIMIT_BACKEND", "memory")

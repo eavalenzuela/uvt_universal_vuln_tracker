@@ -26,6 +26,11 @@ pip install -r requirements.txt
 - `JWT_SECRET` – Secret used to sign auth tokens; defaults to `dev-jwt-secret`
 - `ALLOW_PUBLIC_REGISTRATION` – Set to `true` to allow `/api/auth/register`; defaults to `false`
 
+#### Auth / OIDC cookie settings
+- `AUTH_COOKIE_SECURE` – Controls the `Secure` auth cookie flag. Defaults to `true` in production-like environments (`ENV`/`FLASK_ENV` = `production`), and `false` otherwise. Set explicitly for local HTTPS/non-HTTPS behavior.
+- `AUTH_COOKIE_SAMESITE` – Controls the auth cookie `SameSite` policy (`Lax`, `Strict`, or `None`); defaults to `Lax`.
+- `AUTH_COOKIE_DOMAIN` – Optional cookie domain override. Unset by default so the browser uses the response host.
+
 ### Running the API server
 The Flask app factory lives at `backend.uvt_app:create_app`. Use the Flask CLI so extensions (Migrate, custom commands) are available:
 ```bash
