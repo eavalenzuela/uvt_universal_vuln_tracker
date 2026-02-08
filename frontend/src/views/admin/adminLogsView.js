@@ -8,7 +8,7 @@ function logCard(log) {
   const detail = [];
   if (log.new_values?.reason) detail.push(`Reason: ${log.new_values.reason}`);
   if (log.new_values?.impersonated) detail.push(`Impersonated: ${log.new_values.impersonated}`);
-  if (log.action === "RESET_PASSWORD") detail.push("Password reset");
+  if (log.old_values?.password_reset || log.action === "RESET_PASSWORD") detail.push("Password reset");
   if (log.action === "TOGGLE_ACTIVE") detail.push(`Active: ${log.new_values?.is_active}`);
 
   return el("div", { class: "card", style: "padding: 12px; display:flex; flex-direction:column; gap:6px;" },

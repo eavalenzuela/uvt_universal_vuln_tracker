@@ -254,10 +254,16 @@ def reset_password(user_id: int):
     if not password:
         return error_response("password is required", field="password")
 
-    old_password_hash = u.password_hash
     u.password_hash = hash_password(password)
     revoke_tokens(u)
-    _audit(request.user.id, "RESET_PASSWORD", "users", u.id, old_values={"password_hash": old_password_hash}, new_values=None)
+    _audit(
+        request.user.id,
+        "RESET_PASSWORD",
+        "users",
+        u.id,
+        old_values={"password_reset": True},
+        new_values=None,
+    )
     db.session.commit()
     return jsonify({"ok": True})
 
