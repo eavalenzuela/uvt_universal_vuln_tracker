@@ -3,6 +3,17 @@ import { listProductVersions } from "../../api/vulnerabilities.js";
 import { compareProductVersionComponents } from "../../api/components.js";
 import { toast } from "../../ui/components/toast.js";
 
+
+function parseSelectionFromHash() {
+  const hash = window.location.hash || "";
+  const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+  const params = new URLSearchParams(query);
+  return {
+    from: Number(params.get("from") || 0) || null,
+    to: Number(params.get("to") || 0) || null,
+  };
+}
+
 function versionLabel(v) {
   const product = v.product_name || `Product ${v.product_id}`;
   return `${product} / ${v.version}${v.is_active ? "" : " (inactive)"}`;
@@ -58,9 +69,10 @@ export function ProductComponentDiffView() {
   async function loadVersionOptions() {
     try {
       const versions = await listProductVersions({ includeInactive: true });
-      populateSelect(fromSelect, versions);
-      populateSelect(toSelect, versions);
-      if (versions.length >= 2) {
+      const selected = parseSelectionFromHash();
+      populateSelect(fromSelect, versions, selected.from);
+      populateSelect(toSelect, versions, selected.to);
+      if ((!selected.from || !selected.to) && versions.length >= 2) {
         fromSelect.value = String(versions[0].id);
         toSelect.value = String(versions[1].id);
       }

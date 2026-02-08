@@ -3,13 +3,13 @@ import { LoginView } from "../views/login/loginView.js";
 import { DashboardView } from "../views/dashboard/dashboardView.js";
 import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
 import { VulnDetailView } from "../views/vulnerabilities/vulnDetailView.js";
-import { NotFoundView } from "../views/notFoundView.js";
 import { AdminUsersView } from "../views/admin/adminUsersView.js";
 import { AdminLogsView } from "../views/admin/adminLogsView.js";
 import { AdminPluginsView } from "../views/admin/adminPluginsView.js";
 import { AdminNotificationRulesView } from "../views/admin/adminNotificationRulesView.js";
 import { ProductsView } from "../views/products/productsView.js";
 import { ProductComponentDiffView } from "../views/products/productComponentDiffView.js";
+import { ProductDetailView } from "../views/products/productDetailView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
 
 export const ROUTES = [
@@ -26,7 +26,7 @@ export const ROUTES = [
   { path: "/controls", view: ControlsView, guard: () => requireAuth() },
   { path: "/products", view: ProductsView, guard: () => requireAuth() },
   { path: "/products/component-diff", view: ProductComponentDiffView, guard: () => requireAuth() },
-  { path: "/products/:id", view: () => NotFoundView({ message: "Product detail not wired yet." }), guard: () => requireAuth() },
+  { path: "/products/:id", view: ProductDetailView, guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/logs", view: AdminLogsView, guard: () => requireAuth() && requireRole("Admin") },
