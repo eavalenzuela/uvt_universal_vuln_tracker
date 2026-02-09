@@ -5,6 +5,7 @@ import { getState } from "../../state/store.js";
 import {
   getVulnerability,
   listVulnerabilityActivity,
+  listVulnerabilityHistory,
   listVulnerabilityComments,
   createVulnerabilityComment,
   updateVulnerabilityComment,
@@ -53,6 +54,20 @@ function renderActivityItem(item) {
     { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
     el("div", { style: "font-weight:600;", text: summary }),
     el("div", { class: "muted", text: `${formatDateTime(item.created_at)} by ${actor}` }),
+    el("pre", { style: "white-space:pre-wrap; margin:8px 0 0; background:#f8fafc; padding:8px; border-radius:8px;" }, delta),
+  );
+}
+
+
+function renderHistoryItem(item) {
+  const actor = item?.actor?.username || "system";
+  const delta = item?.field_diff ? JSON.stringify(item.field_diff, null, 2) : "No field diff";
+
+  return el(
+    "div",
+    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
+    el("div", { style: "font-weight:600;", text: item.action || "-" }),
+    el("div", { class: "muted", text: `${formatDateTime(item.timestamp)} by ${actor}` }),
     el("pre", { style: "white-space:pre-wrap; margin:8px 0 0; background:#f8fafc; padding:8px; border-radius:8px;" }, delta),
   );
 }
@@ -126,9 +141,10 @@ export async function VulnDetailView(params = {}) {
 
   async function render() {
     try {
-      const [vuln, activity, comments, watchers, mergeCandidatesPayload] = await Promise.all([
+      const [vuln, activity, history, comments, watchers, mergeCandidatesPayload] = await Promise.all([
         getVulnerability(vulnId),
         listVulnerabilityActivity(vulnId).catch(() => []),
+        listVulnerabilityHistory(vulnId).catch(() => []),
         listVulnerabilityComments(vulnId).catch(() => []),
         listVulnerabilityWatchers(vulnId).catch(() => []),
         listMergeCandidates(vulnId).catch(() => ({ items: [] })),
@@ -241,6 +257,7 @@ export async function VulnDetailView(params = {}) {
             item.notes ? el("div", { class: "muted", text: item.notes }) : null,
           )
         ),
+        renderList("History", history, renderHistoryItem),
         renderList("Activity timeline", activity, renderActivityItem),
       );
     } catch (err) {
