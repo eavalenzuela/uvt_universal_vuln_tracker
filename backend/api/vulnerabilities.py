@@ -32,6 +32,7 @@ from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
+from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
@@ -349,6 +350,7 @@ def create_vulnerability():
         db.session.rollback()
         return error_response("Failed to create vulnerability (duplicate CVE? invalid data?)", status_code=400)
 
+    publish_vulnerability_metric_event(vulnerability=v, action="created")
     return jsonify({"id": v.id}), 201
 
 @bp.get("/vulnerabilities/<int:vuln_id>")
@@ -666,6 +668,12 @@ def update_vulnerability(vuln_id: int):
     ))
 
     db.session.commit()
+
+    publish_vulnerability_metric_event(
+        vulnerability=v,
+        action=classify_vulnerability_metric_action(previous_status=old.get("status"), current_status=v.status),
+        previous={"status": old.get("status"), "severity": old.get("severity")},
+    )
     return jsonify({"ok": True})
 
 @bp.patch("/vulnerabilities/batch")
