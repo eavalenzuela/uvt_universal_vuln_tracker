@@ -128,86 +128,109 @@ export async function apiFetch(
 
   let attempt = 0;
   let lastError;
+  let activeController = null;
+  let callerAborted = Boolean(signal?.aborted);
 
-  while (attempt <= retries) {
-    attempt += 1;
-    const controller = new AbortController();
-    let didTimeout = false;
-    let timeoutId = null;
-
-    if (timeoutMs) {
-      timeoutId = setTimeout(() => {
-        didTimeout = true;
-        controller.abort();
-      }, timeoutMs);
+  const onCallerAbort = () => {
+    callerAborted = true;
+    if (activeController) {
+      activeController.abort();
     }
+  };
 
-    if (signal) {
-      if (signal.aborted) {
+  if (signal) {
+    if (callerAborted) {
+      throw new ApiError("Request cancelled", 0, null);
+    }
+    signal.addEventListener("abort", onCallerAbort);
+  }
+
+  try {
+    while (attempt <= retries) {
+      attempt += 1;
+      const controller = new AbortController();
+      activeController = controller;
+      let didTimeout = false;
+      let timeoutId = null;
+
+      if (timeoutMs) {
+        timeoutId = setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, timeoutMs);
+      }
+
+      if (callerAborted) {
         throw new ApiError("Request cancelled", 0, null);
       }
-      signal.addEventListener("abort", () => controller.abort(), { once: true });
-    }
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: finalHeaders,
-        body: finalBody,
-        signal: controller.signal,
-        credentials: "include",
-      });
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: finalHeaders,
+          body: finalBody,
+          signal: controller.signal,
+          credentials: "include",
+        });
 
-      const payload = await parsePayload(res);
+        const payload = await parsePayload(res);
 
-      if (!res.ok) {
-        if (res.status === 401 && !_skipRefresh && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
-          const refreshed = await tryRefreshToken();
-          if (refreshed) {
-            return apiFetch(path, {
-              method,
-              headers,
-              body,
-              timeoutMs,
-              retries,
-              retryDelayMs,
-              signal,
-              _skipRefresh: true,
-            });
+        if (!res.ok) {
+          if (res.status === 401 && !_skipRefresh && !path.endsWith("/auth/refresh") && !path.endsWith("/auth/login")) {
+            const refreshed = await tryRefreshToken();
+            if (refreshed) {
+              return apiFetch(path, {
+                method,
+                headers,
+                body,
+                timeoutMs,
+                retries,
+                retryDelayMs,
+                signal,
+                _skipRefresh: true,
+              });
+            }
           }
+
+          if (RETRY_STATUS.has(res.status) && attempt <= retries) {
+            await sleep(retryDelayMs * attempt);
+            continue;
+          }
+          throw new ApiError(getErrorMessage(payload, res.status), res.status, payload);
         }
 
-        if (RETRY_STATUS.has(res.status) && attempt <= retries) {
+        return payload;
+      } catch (err) {
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (err?.name === "AbortError") {
+          if (didTimeout) {
+            lastError = new ApiError("Request timed out", 408, null);
+          } else {
+            lastError = new ApiError("Request cancelled", 0, null);
+          }
+        } else if (err instanceof ApiError) {
+          lastError = err;
+        } else {
+          lastError = new ApiError("Network error", 0, null);
+        }
+
+        if (attempt <= retries && (lastError.status === 0 || RETRY_STATUS.has(lastError.status))) {
           await sleep(retryDelayMs * attempt);
           continue;
         }
-        throw new ApiError(getErrorMessage(payload, res.status), res.status, payload);
-      }
 
-      return payload;
-    } catch (err) {
-      if (timeoutId) clearTimeout(timeoutId);
-
-      if (err?.name === "AbortError") {
-        if (didTimeout) {
-          lastError = new ApiError("Request timed out", 408, null);
-        } else {
-          lastError = new ApiError("Request cancelled", 0, null);
+        throw lastError;
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (activeController === controller) {
+          activeController = null;
         }
-      } else if (err instanceof ApiError) {
-        lastError = err;
-      } else {
-        lastError = new ApiError("Network error", 0, null);
       }
-
-      if (attempt <= retries && (lastError.status === 0 || RETRY_STATUS.has(lastError.status))) {
-        await sleep(retryDelayMs * attempt);
-        continue;
-      }
-
-      throw lastError;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
+    }
+  } finally {
+    if (signal) {
+      signal.removeEventListener("abort", onCallerAbort);
     }
   }
 
