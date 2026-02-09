@@ -1,7 +1,7 @@
 import datetime
 import json
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 import jwt
@@ -38,8 +38,9 @@ def discover_oidc_config(config):
 
 def build_login_redirect(config, next_path="/"):
     oidc = discover_oidc_config(config)
+    safe_next_path = validate_next_path(next_path)
     state_payload = {
-        "next": next_path or "/",
+        "next": safe_next_path,
         "nonce": secrets.token_urlsafe(16),
         "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
     }
@@ -110,18 +111,45 @@ def upsert_user_from_claims(claims: dict, config) -> User:
     return user
 
 
+def validate_next_path(next_path: str | None, fallback: str = "/") -> str:
+    if not isinstance(next_path, str):
+        return fallback
+
+    candidate = next_path.strip()
+    if not candidate:
+        return fallback
+
+    parsed = urlsplit(candidate)
+    if parsed.scheme or parsed.netloc:
+        return fallback
+    if not candidate.startswith("/") or candidate.startswith("//"):
+        return fallback
+
+    return candidate
+
+
 def complete_oidc_login(config, code: str, state: str):
-    jwt.decode(state, config["JWT_SECRET"], algorithms=["HS256"])
+    state_data = jwt.decode(state, config["JWT_SECRET"], algorithms=["HS256"])
     token_response, oidc_metadata = _exchange_code_for_tokens(config, code)
     id_token = token_response.get("id_token")
     if not id_token:
         raise ValueError("Missing id_token from provider")
 
     claims = validate_id_token(config, id_token, oidc_metadata)
+    state_nonce = state_data.get("nonce")
+    claim_nonce = claims.get("nonce")
+    if state_nonce is not None and claim_nonce != state_nonce:
+        raise ValueError("OIDC nonce validation failed")
+
     user = upsert_user_from_claims(claims, config)
 
     app_token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     return {
         "token": app_token,
         "user": {"id": user.id, "username": user.username, "email": user.email, "role": user.role},
+        "state": {
+            "next": validate_next_path(state_data.get("next"), "/"),
+            "nonce": state_nonce,
+            "exp": state_data.get("exp"),
+        },
     }

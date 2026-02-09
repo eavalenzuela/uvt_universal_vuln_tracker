@@ -1,3 +1,6 @@
+import datetime
+
+import jwt
 import pytest
 
 from backend.models import User
@@ -91,13 +94,14 @@ def test_oidc_callback_redirect_sets_secure_cookie_without_token_in_url(app, cli
         lambda config, code, state: {
             "token": "jwt-token-value",
             "user": {"id": 1, "username": "oidc-user", "email": "oidc@example.com", "role": "Analyst"},
+            "state": {"next": "/dashboard"},
         },
     )
 
     response = client.get("/api/auth/oidc/callback?code=abc&state=valid-state")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "http://127.0.0.1:5173/login"
+    assert response.headers["Location"] == "http://127.0.0.1:5173/login/dashboard"
     assert "token=" not in response.headers["Location"]
 
     set_cookie = response.headers.get("Set-Cookie", "")
@@ -115,3 +119,71 @@ def test_oidc_callback_missing_params_returns_400(app, client):
 
     assert response.status_code == 400
     assert response.get_json()["error"] == "Missing OIDC callback parameters"
+
+
+def test_complete_oidc_login_rejects_expired_state(app):
+    with app.app_context():
+        app.config["JWT_SECRET"] = "secret"
+        expired_state = jwt.encode(
+            {
+                "next": "/",
+                "nonce": "nonce-1",
+                "exp": datetime.datetime.utcnow() - datetime.timedelta(minutes=1),
+            },
+            app.config["JWT_SECRET"],
+            algorithm="HS256",
+        )
+
+        with pytest.raises(jwt.ExpiredSignatureError):
+            complete_oidc_login(app.config, "code", expired_state)
+
+
+def test_complete_oidc_login_rejects_nonce_mismatch(app, monkeypatch):
+    with app.app_context():
+        app.config["JWT_SECRET"] = "secret"
+
+        state = jwt.encode(
+            {
+                "next": "/",
+                "nonce": "expected-nonce",
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
+            },
+            app.config["JWT_SECRET"],
+            algorithm="HS256",
+        )
+
+        monkeypatch.setattr(
+            "backend.services.oidc._exchange_code_for_tokens",
+            lambda config, code: ({"id_token": "token"}, {"jwks_uri": "https://issuer/jwks"}),
+        )
+        monkeypatch.setattr(
+            "backend.services.oidc.validate_id_token",
+            lambda config, token, metadata: {
+                "email": "sso@example.com",
+                "preferred_username": "sso-user",
+                "nonce": "different-nonce",
+            },
+        )
+
+        with pytest.raises(ValueError, match="nonce"):
+            complete_oidc_login(app.config, "code", state)
+
+
+def test_oidc_callback_blocks_external_next_redirect(app, client, monkeypatch):
+    with app.app_context():
+        app.config["OIDC_ENABLED"] = True
+        app.config["FRONTEND_LOGIN_SUCCESS_URL"] = "http://127.0.0.1:5173/login"
+
+    monkeypatch.setattr(
+        "backend.api.auth_routes.complete_oidc_login",
+        lambda config, code, state: {
+            "token": "jwt-token-value",
+            "user": {"id": 1, "username": "oidc-user", "email": "oidc@example.com", "role": "Analyst"},
+            "state": {"next": "https://evil.example/phish"},
+        },
+    )
+
+    response = client.get("/api/auth/oidc/callback?code=abc&state=valid-state")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "http://127.0.0.1:5173/login"

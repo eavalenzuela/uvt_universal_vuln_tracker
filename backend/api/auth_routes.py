@@ -16,7 +16,7 @@ from ..auth import (
     rotate_refresh_token,
 )
 from ..rate_limiter import rate_limit
-from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled
+from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled, validate_next_path
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
@@ -192,6 +192,9 @@ def oidc_callback():
         return error_response("OIDC authentication failed", status_code=401)
 
     frontend_redirect = current_app.config.get("FRONTEND_LOGIN_SUCCESS_URL", "http://127.0.0.1:5173/login")
+    next_path = validate_next_path((result.get("state") or {}).get("next"), None)
+    if next_path:
+        frontend_redirect = f"{frontend_redirect.rstrip('/')}{next_path}"
     response = redirect(frontend_redirect, code=302)
     return _set_auth_cookie(response, result["token"])
 
