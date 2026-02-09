@@ -9,6 +9,7 @@ import { AdminPluginsView } from "../views/admin/adminPluginsView.js";
 import { AdminNotificationRulesView } from "../views/admin/adminNotificationRulesView.js";
 import { AdminNotificationDeliveryView } from "../views/admin/adminNotificationDeliveryView.js";
 import { AdminApiTokensView } from "../views/admin/adminApiTokensView.js";
+import { AdminReportsView } from "../views/admin/adminReportsView.js";
 import { ProductsView } from "../views/products/productsView.js";
 import { ProductComponentDiffView } from "../views/products/productComponentDiffView.js";
 import { ProductDetailView } from "../views/products/productDetailView.js";
@@ -40,4 +41,5 @@ export const ROUTES = [
   { path: "/admin/notification-rules", view: AdminNotificationRulesView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/notification-delivery", view: AdminNotificationDeliveryView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/api-tokens", view: AdminApiTokensView, guard: () => requireAuth() },
+  { path: "/admin/reports", view: AdminReportsView, guard: () => requireAuth() && requireRole("Admin") },
 ];

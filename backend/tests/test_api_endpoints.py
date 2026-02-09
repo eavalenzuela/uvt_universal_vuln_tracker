@@ -1767,6 +1767,11 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
     headers_analyst = auth_header(analyst)
     headers_viewer = auth_header(viewer)
 
+    monkeypatch.setattr(
+        "backend.api.reports.send_email",
+        lambda **_kwargs: {"channel": "email", "status": "sent", "ok": True},
+    )
+
     create_forbidden = client.post(
         "/api/reports/schedules",
         headers=headers_viewer,
@@ -1788,12 +1793,19 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
             "report_type": "vulnerabilities",
             "frequency": "daily",
             "delivery_channel": "email",
-            "recipient": "analyst@example.com",
+            "recipients": ["analyst@example.com", "secops@example.com"],
+            "timezone": "America/New_York",
+            "filter_preset": "critical-open",
+            "delivery_preferences": {"subject_suffix": "[SOC]"},
             "filters": {"severity": "Critical", "status": "Open"},
         },
     )
     assert create_resp.status_code == 201
-    schedule_id = create_resp.get_json()["id"]
+    created_payload = create_resp.get_json()
+    schedule_id = created_payload["id"]
+    assert created_payload["timezone"] == "America/New_York"
+    assert created_payload["recipients"] == ["analyst@example.com", "secops@example.com"]
+    assert created_payload["last_run_status"] == "never"
 
     analyst_list = client.get("/api/reports/schedules", headers=headers_analyst)
     assert analyst_list.status_code == 200
@@ -1803,6 +1815,15 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
     assert admin_list.status_code == 200
     assert any(item["id"] == schedule_id for item in admin_list.get_json())
 
+
+    update_resp = client.patch(
+        f"/api/reports/schedules/{schedule_id}",
+        headers=headers_analyst,
+        json={"frequency": "weekly", "timezone": "UTC", "recipients": ["owner@example.com"]},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.get_json()["frequency"] == "weekly"
+
     run_forbidden = client.post(f"/api/reports/schedules/{schedule_id}/run", headers=headers_viewer)
     assert run_forbidden.status_code == 403
 
@@ -1811,6 +1832,11 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
     payload = run_resp.get_json()
     assert payload["status"] == "sent"
     assert payload["delivery"]["channel"] == "email"
+    assert payload["schedule"]["last_run_status"] == "success"
+    assert payload["schedule"]["retry_count"] == 0
+
+    delete_forbidden = client.delete(f"/api/reports/schedules/{schedule_id}", headers=headers_viewer)
+    assert delete_forbidden.status_code == 403
 
     invalid_frequency = client.post(
         "/api/reports/schedules",
@@ -2472,3 +2498,41 @@ def test_compare_product_version_components_diff(app, client):
     assert payload["summary"]["dependency_edges_added"] == 1
     assert payload["summary"]["dependency_edges_removed"] == 0
     assert payload["summary"]["dependency_edges_changed"] == 1
+
+
+def test_report_schedule_retry_backoff_metadata_on_failure(app, client, monkeypatch):
+    analyst = create_user_direct(app, "sched_retry", "sched_retry@example.com", role="Analyst")
+    headers = auth_header(analyst)
+
+    created = client.post(
+        "/api/reports/schedules",
+        headers=headers,
+        json={
+            "name": "Retry schedule",
+            "report_type": "vulnerabilities",
+            "frequency": "daily",
+            "delivery_channel": "slack",
+            "recipients": ["https://hooks.slack.invalid/abc"],
+        },
+    )
+    assert created.status_code == 201
+    schedule_id = created.get_json()["id"]
+
+    class FakeSlackError(Exception):
+        pass
+
+    def _raise(*_args, **_kwargs):
+        from backend.services.slack_alerts import SlackWebhookError
+
+        raise SlackWebhookError("forced slack failure")
+
+    monkeypatch.setattr("backend.api.reports.SlackWebhookClient.send_message", _raise)
+
+    run_resp = client.post(f"/api/reports/schedules/{schedule_id}/run", headers=headers)
+    assert run_resp.status_code == 200
+    payload = run_resp.get_json()
+    assert payload["status"] == "failed"
+    assert payload["schedule"]["last_run_status"] == "retrying"
+    assert payload["schedule"]["retry_count"] == 1
+    assert payload["schedule"]["next_retry_at"] is not None
+    assert "forced slack failure" in (payload["schedule"]["last_failure_reason"] or "")
