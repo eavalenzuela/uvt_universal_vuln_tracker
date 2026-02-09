@@ -61,7 +61,7 @@ export async function updateVulnerability(id, data) {
 }
 
 export async function batchUpdateVulnerabilities(data) {
-  return apiFetch("/api/vulnerabilities/batch", { method: "PATCH", body: data });
+  return apiFetch("/api/vulnerabilities/bulk", { method: "PATCH", body: data });
 }
 
 export async function listVulnerabilityActivity(id) {

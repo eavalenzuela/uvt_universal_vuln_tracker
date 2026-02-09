@@ -625,6 +625,16 @@ def update_vulnerability(vuln_id: int):
 @bp.patch("/vulnerabilities/batch")
 @role_required("Admin", "Analyst")
 def batch_update_vulnerabilities():
+    return _bulk_update_vulnerabilities()
+
+
+@bp.patch("/vulnerabilities/bulk")
+@role_required("Admin", "Analyst")
+def bulk_update_vulnerabilities():
+    return _bulk_update_vulnerabilities()
+
+
+def _bulk_update_vulnerabilities():
     data = request.get_json(silent=True) or {}
 
     raw_ids = data.get("vulnerability_ids")
@@ -680,8 +690,13 @@ def batch_update_vulnerabilities():
 
     updated = []
     skipped = []
+    failed = []
 
     for vuln in vulnerabilities:
+        if vuln.is_merged:
+            failed.append({"id": vuln.id, "error": "merged vulnerabilities cannot be updated"})
+            continue
+
         old = {
             "severity": vuln.severity,
             "status": vuln.status,
@@ -689,33 +704,39 @@ def batch_update_vulnerabilities():
             "sla_due_at": vuln.sla_due_at.isoformat() if vuln.sla_due_at else None,
         }
 
-        for field, value in parsed_updates.items():
-            setattr(vuln, field, value)
+        try:
+            with db.session.begin_nested():
+                for field, value in parsed_updates.items():
+                    setattr(vuln, field, value)
 
-        if "sla_due_at" not in parsed_updates:
-            recompute_vulnerability_sla(vuln)
+                if "sla_due_at" not in parsed_updates:
+                    recompute_vulnerability_sla(vuln)
 
-        new_values = {
-            "severity": vuln.severity,
-            "status": vuln.status,
-            "assigned_to": vuln.assigned_to,
-            "sla_due_at": vuln.sla_due_at.isoformat() if vuln.sla_due_at else None,
-        }
-        field_diff = build_field_diff(old, new_values, ["severity", "status", "assigned_to", "sla_due_at"])
-        if not field_diff:
-            skipped.append(vuln.id)
-            continue
+                new_values = {
+                    "severity": vuln.severity,
+                    "status": vuln.status,
+                    "assigned_to": vuln.assigned_to,
+                    "sla_due_at": vuln.sla_due_at.isoformat() if vuln.sla_due_at else None,
+                }
+                field_diff = build_field_diff(old, new_values, ["severity", "status", "assigned_to", "sla_due_at"])
+                if not field_diff:
+                    skipped.append(vuln.id)
+                    continue
 
-        new_values["field_diff"] = field_diff
-        _audit(
-            request.user.id,
-            "BATCH_UPDATE",
-            "vulnerabilities",
-            vuln.id,
-            old_values=old,
-            new_values=new_values,
-        )
-        updated.append(vuln.id)
+                new_values["field_diff"] = field_diff
+                _audit(
+                    request.user.id,
+                    "BATCH_UPDATE",
+                    "vulnerabilities",
+                    vuln.id,
+                    old_values=old,
+                    new_values=new_values,
+                )
+                db.session.flush()
+                updated.append(vuln.id)
+        except Exception as exc:
+            db.session.rollback()
+            failed.append({"id": vuln.id, "error": str(exc)})
 
     db.session.commit()
 
@@ -727,6 +748,8 @@ def batch_update_vulnerabilities():
         "skipped_count": len(skipped),
         "missing_ids": missing_ids,
         "missing_count": len(missing_ids),
+        "failed": failed,
+        "failed_count": len(failed),
     })
 
 
