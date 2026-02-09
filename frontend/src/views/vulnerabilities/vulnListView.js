@@ -1082,17 +1082,18 @@ export async function VulnListView(params = {}) {
       const updatedCount = Number(result?.updated_count || 0);
       const missingCount = Number(result?.missing_count || 0);
       const skippedCount = Number(result?.skipped_count || 0);
+      const failedCount = Number(result?.failed_count || 0);
 
-      if (updatedCount > 0) {
+      if (updatedCount > 0 && missingCount === 0 && skippedCount === 0 && failedCount === 0) {
         toast({ title: "Bulk update completed", message: `Updated ${updatedCount} vulnerabilities.` });
       }
-      if (missingCount > 0 || skippedCount > 0) {
+      if (missingCount > 0 || skippedCount > 0 || failedCount > 0) {
         toast({
           title: "Bulk update partial",
-          message: `Updated ${updatedCount}. Missing ${missingCount}. Unchanged ${skippedCount}.`,
+          message: `Updated ${updatedCount}. Missing ${missingCount}. Unchanged ${skippedCount}. Failed ${failedCount}.`,
         });
       }
-      if (updatedCount === 0 && missingCount === 0 && skippedCount === 0) {
+      if (updatedCount === 0 && missingCount === 0 && skippedCount === 0 && failedCount === 0) {
         toast({ title: "Bulk update", message: "No vulnerabilities were changed." });
       }
 

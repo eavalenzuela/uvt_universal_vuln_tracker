@@ -10,7 +10,7 @@ globalThis.localStorage = {
 };
 
 const { setSession } = await import('../../src/state/store.js');
-const { listOpenHighCriticalVulnerabilities } = await import('../../src/api/vulnerabilities.js');
+const { listOpenHighCriticalVulnerabilities, batchUpdateVulnerabilities } = await import('../../src/api/vulnerabilities.js');
 
 test('vulnerabilities API helper uses a single multi-severity request', async () => {
   setSession({ token: 'smoke-token', user: { id: 1, role: 'Admin' } });
@@ -37,4 +37,28 @@ test('vulnerabilities API helper uses a single multi-severity request', async ()
   assert.equal(payload.total, 4);
   assert.equal(payload.page, 2);
   assert.equal(payload.page_size, 2);
+});
+
+
+test('vulnerabilities bulk update helper targets bulk endpoint', async () => {
+  setSession({ token: 'smoke-token', user: { id: 1, role: 'Admin' } });
+
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ ok: true, updated_count: 1, failed_count: 0 }),
+      text: async () => '',
+    };
+  };
+
+  const payload = await batchUpdateVulnerabilities({ vulnerability_ids: [1], status: 'Closed' });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://api.local/api/vulnerabilities/bulk');
+  assert.equal(calls[0].options.method, 'PATCH');
+  assert.equal(payload.updated_count, 1);
 });

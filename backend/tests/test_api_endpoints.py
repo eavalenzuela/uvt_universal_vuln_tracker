@@ -494,7 +494,7 @@ def test_vulnerability_batch_update_mutation(app, client):
         vuln_ids.append(resp.get_json()["id"])
 
     update_resp = client.patch(
-        "/api/vulnerabilities/batch",
+        "/api/vulnerabilities/bulk",
         headers=headers,
         json={
             "vulnerability_ids": vuln_ids,
@@ -537,14 +537,14 @@ def test_vulnerability_batch_update_validation_and_missing(app, client):
     vuln_id = create_resp.get_json()["id"]
 
     invalid_resp = client.patch(
-        "/api/vulnerabilities/batch",
+        "/api/vulnerabilities/bulk",
         headers=headers,
         json={"vulnerability_ids": [vuln_id], "status": "Bad Status"},
     )
     assert invalid_resp.status_code == 400
 
     partial_resp = client.patch(
-        "/api/vulnerabilities/batch",
+        "/api/vulnerabilities/bulk",
         headers=headers,
         json={"vulnerability_ids": [vuln_id, 999999], "status": "Closed"},
     )
@@ -552,6 +552,36 @@ def test_vulnerability_batch_update_validation_and_missing(app, client):
     partial_json = partial_resp.get_json()
     assert partial_json["updated_count"] == 1
     assert partial_json["missing_count"] == 1
+
+
+def test_vulnerability_bulk_update_reports_per_record_failures(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "Merged bulk vuln", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    with app.app_context():
+        vuln = Vulnerability.query.get(vuln_id)
+        vuln.is_merged = True
+        db.session.commit()
+
+    resp = client.patch(
+        "/api/vulnerabilities/bulk",
+        headers=headers,
+        json={"vulnerability_ids": [vuln_id], "status": "Closed"},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["updated_count"] == 0
+    assert payload["failed_count"] == 1
+    assert payload["failed"][0]["id"] == vuln_id
+    assert payload["failed"][0]["error"] == "merged vulnerabilities cannot be updated"
 
 
 def test_vulnerability_merge_candidates_and_merge_flow(app, client):
