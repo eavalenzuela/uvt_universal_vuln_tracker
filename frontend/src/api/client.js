@@ -15,6 +15,23 @@ const DEFAULT_RETRIES = 1;
 const RETRY_STATUS = new Set([502, 503, 504]);
 let refreshInFlight = null;
 
+function getCookieValue(name) {
+  if (typeof document === "undefined" || !document.cookie) return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  for (const part of document.cookie.split(";")) {
+    const cookie = part.trim();
+    if (cookie.startsWith(prefix)) {
+      return decodeURIComponent(cookie.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
+function isWriteMethod(method) {
+  const normalized = String(method || "GET").toUpperCase();
+  return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(normalized);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -98,12 +115,9 @@ export async function apiFetch(
     ...headers,
   };
 
-  const state = getState();
-  const token = state?.session?.token;
-  const hasAuthHeader = Object.keys(finalHeaders).some((h) => h.toLowerCase() === "authorization");
-  if (!hasAuthHeader && token) {
-    // Backward-compatible rollout: prefer cookie auth, but keep bearer fallback when token exists in-memory.
-    finalHeaders["Authorization"] = `Bearer ${token}`;
+  if (isWriteMethod(method) && !Object.keys(finalHeaders).some((h) => h.toLowerCase() === "x-csrf-token")) {
+    const csrfToken = getCookieValue("uvt_csrf_token");
+    if (csrfToken) finalHeaders["X-CSRF-Token"] = csrfToken;
   }
 
   let finalBody = body;

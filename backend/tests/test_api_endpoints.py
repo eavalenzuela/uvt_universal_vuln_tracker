@@ -116,6 +116,36 @@ def test_auth_guard_rails(app, client):
     assert invalid.status_code == 401
 
 
+def test_cookie_authenticated_write_requires_csrf_header(app, client):
+    create_admin(app)
+
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    assert login.status_code == 200
+    csrf_token = login.get_json()["csrf_token"]
+
+    missing = client.post("/api/products", json={"name": "csrf-product"})
+    assert missing.status_code == 403
+    assert missing.get_json()["error"] == "CSRF validation failed"
+
+    allowed = client.post(
+        "/api/products",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"name": "csrf-product"},
+    )
+    assert allowed.status_code == 201
+
+
+def test_bearer_authenticated_write_does_not_require_csrf(app, client):
+    admin = create_admin(app)
+
+    response = client.post(
+        "/api/products",
+        headers=auth_header(admin),
+        json={"name": "bearer-product"},
+    )
+    assert response.status_code == 201
+
+
 def test_scope_enforcement_for_newly_scoped_endpoints(app, client):
     admin = create_admin(app)
     analyst = create_user_direct(app, "analyst_scope", "analyst_scope@example.com", role="Analyst")

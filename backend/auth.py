@@ -175,6 +175,30 @@ def _get_bearer_token():
     return None
 
 
+
+
+def _is_cookie_authenticated_request() -> bool:
+    if not request.cookies.get("uvt_auth_token"):
+        return False
+    auth_header = request.headers.get("Authorization", "").strip()
+    return not auth_header.lower().startswith("bearer ")
+
+
+def _is_csrf_protected_request() -> bool:
+    if request.path.startswith("/api/auth/"):
+        return False
+    return request.method not in {"GET", "HEAD", "OPTIONS", "TRACE"}
+
+
+def _validate_csrf() -> tuple[bool, tuple | None]:
+    if not _is_cookie_authenticated_request() or not _is_csrf_protected_request():
+        return True, None
+    csrf_cookie = request.cookies.get("uvt_csrf_token")
+    csrf_header = request.headers.get("X-CSRF-Token")
+    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        return False, (jsonify({"error": "CSRF validation failed"}), 403)
+    return True, None
+
 def authenticate_request():
     token = _get_bearer_token()
     if not token:
@@ -271,6 +295,9 @@ def enforce_scopes(app):
     def _enforce_scopes():
         if request.method == "OPTIONS":
             return None
+        csrf_ok, csrf_error = _validate_csrf()
+        if not csrf_ok:
+            return csrf_error
         scope = scope_for_request(request.path, request.method)
         if not scope:
             return None
