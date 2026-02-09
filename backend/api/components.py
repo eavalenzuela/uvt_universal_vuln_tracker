@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
 from ..auth import login_required, role_required
-from ..models import ComponentDependency, ProductVersion, SoftwareComponent
+from ..models import ComponentDependency, ProductVersion, SoftwareComponent, Vulnerability, VulnerabilityComponent
 from ..services.component_diff import compare_product_version_components
 from ..services.sbom_ingest import SbomFormatError, ingest_sbom
 
@@ -84,3 +84,78 @@ def compare_components_between_versions():
         to_product_version_id=to_product_version_id,
     )
     return jsonify(result)
+
+
+@bp.get("/product_versions/<int:product_version_id>/dependency_graph")
+@login_required
+def get_dependency_graph(product_version_id: int):
+    ProductVersion.query.get_or_404(product_version_id)
+
+    components = (
+        SoftwareComponent.query
+        .filter_by(product_version_id=product_version_id)
+        .order_by(asc(SoftwareComponent.ecosystem), asc(SoftwareComponent.name), asc(SoftwareComponent.version))
+        .all()
+    )
+    component_ids = [component.id for component in components]
+
+    dependencies = (
+        ComponentDependency.query
+        .filter_by(product_version_id=product_version_id)
+        .order_by(asc(ComponentDependency.depth), asc(ComponentDependency.id))
+        .all()
+    )
+
+    vulnerability_map: dict[int, list[dict]] = {component_id: [] for component_id in component_ids}
+    if component_ids:
+        vulnerability_rows = (
+            VulnerabilityComponent.query
+            .join(Vulnerability, Vulnerability.id == VulnerabilityComponent.vulnerability_id)
+            .filter(VulnerabilityComponent.component_id.in_(component_ids))
+            .all()
+        )
+        for row in vulnerability_rows:
+            vulnerability_map.setdefault(row.component_id, []).append({
+                "id": row.vulnerability.id,
+                "title": row.vulnerability.title,
+                "severity": row.vulnerability.severity,
+                "status": row.vulnerability.status,
+            })
+
+    severity_order = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2, "None": 1}
+
+    incoming_node_ids = {dependency.child_component_id for dependency in dependencies}
+
+    return jsonify({
+        "product_version_id": product_version_id,
+        "nodes": [
+            {
+                "id": component.id,
+                "name": component.name,
+                "version": component.version,
+                "ecosystem": component.ecosystem,
+                "component_type": component.component_type,
+                "bom_ref": component.bom_ref,
+                "vulnerability_count": len(vulnerability_map.get(component.id, [])),
+                "max_severity": max(
+                    [vuln.get("severity") for vuln in vulnerability_map.get(component.id, [])],
+                    key=lambda severity: severity_order.get(severity or "", 0),
+                    default=None,
+                ),
+                "vulnerabilities": vulnerability_map.get(component.id, []),
+            }
+            for component in components
+        ],
+        "edges": [
+            {
+                "id": dependency.id,
+                "parent_component_id": dependency.parent_component_id,
+                "child_component_id": dependency.child_component_id,
+                "dependency_path": dependency.dependency_path,
+                "depth": dependency.depth,
+                "is_direct": dependency.is_direct,
+            }
+            for dependency in dependencies
+        ],
+        "root_node_ids": [component_id for component_id in component_ids if component_id not in incoming_node_ids],
+    })

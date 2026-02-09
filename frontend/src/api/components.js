@@ -18,3 +18,8 @@ export function compareProductVersionComponents({ fromProductVersionId, toProduc
   params.set("to_product_version_id", String(toProductVersionId));
   return apiFetch(`/api/product_versions/compare/components?${params.toString()}`, { method: "GET" });
 }
+
+
+export function getDependencyGraph(productVersionId) {
+  return apiFetch(`/api/product_versions/${productVersionId}/dependency_graph`, { method: "GET" });
+}
