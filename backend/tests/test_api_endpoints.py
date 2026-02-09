@@ -2647,3 +2647,74 @@ def test_report_schedule_retry_backoff_metadata_on_failure(app, client, monkeypa
     assert payload["schedule"]["retry_count"] == 1
     assert payload["schedule"]["next_retry_at"] is not None
     assert "forced slack failure" in (payload["schedule"]["last_failure_reason"] or "")
+
+
+def test_report_templates_crud_visibility_and_schedule_inheritance(app, client, monkeypatch):
+    admin = create_admin(app)
+    analyst = create_user_direct(app, "tpl_analyst", "tpl_analyst@example.com", role="Analyst")
+    other = create_user_direct(app, "tpl_other", "tpl_other@example.com", role="Analyst")
+
+    headers_admin = auth_header(admin)
+    headers_analyst = auth_header(analyst)
+    headers_other = auth_header(other)
+
+    monkeypatch.setattr(
+        "backend.api.reports.send_email",
+        lambda **_kwargs: {"channel": "email", "status": "sent", "ok": True},
+    )
+
+    create_template = client.post(
+        "/api/reports/templates",
+        headers=headers_analyst,
+        json={
+            "name": "Critical Team Template",
+            "report_type": "vulnerabilities",
+            "fields": ["id", "title", "severity"],
+            "filters": {"severity": "Critical"},
+            "format": "json",
+            "delivery_channel": "email",
+            "recipients": ["security@example.com"],
+            "visibility": "team",
+            "delivery_preferences": {"subject_suffix": "[TEMPLATE]"},
+        },
+    )
+    assert create_template.status_code == 201
+    template_payload = create_template.get_json()
+    template_id = template_payload["id"]
+
+    list_for_other = client.get("/api/reports/templates", headers=headers_other)
+    assert list_for_other.status_code == 200
+    assert any(item["id"] == template_id for item in list_for_other.get_json())
+
+    update_forbidden = client.patch(
+        f"/api/reports/templates/{template_id}",
+        headers=headers_other,
+        json={"name": "should fail"},
+    )
+    assert update_forbidden.status_code == 403
+
+    schedule_resp = client.post(
+        "/api/reports/schedules",
+        headers=headers_other,
+        json={
+            "name": "templated schedule",
+            "frequency": "daily",
+            "timezone": "UTC",
+            "report_template_id": template_id,
+        },
+    )
+    assert schedule_resp.status_code == 201
+    schedule = schedule_resp.get_json()
+    assert schedule["report_template_id"] == template_id
+
+    run_resp = client.post(f"/api/reports/schedules/{schedule['id']}/run", headers=headers_other)
+    assert run_resp.status_code == 200
+    payload = run_resp.get_json()
+    assert payload["status"] == "sent"
+    assert payload["schedule"]["report_template"]["id"] == template_id
+
+    export_resp = client.get(f"/api/reports/vulnerabilities/export?report_template_id={template_id}", headers=headers_admin)
+    assert export_resp.status_code == 200
+
+    delete_resp = client.delete(f"/api/reports/templates/{template_id}", headers=headers_analyst)
+    assert delete_resp.status_code == 200
