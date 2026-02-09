@@ -220,6 +220,11 @@ export async function ProductDetailView(params = {}) {
                 onClick: () => navigate(`/products/component-diff?from=${prev.id}&to=${version.id}`),
               }, "Inspect component diff")
             : el("span", { class: "muted", text: "N/A" });
+          const graphLink = el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => navigate(`/products/${productId}/versions/${version.id}/dependency-graph`),
+          }, "View dependency graph");
 
           versionTableBody.appendChild(
             el("tr", {},
@@ -227,7 +232,7 @@ export async function ProductDetailView(params = {}) {
               el("td", { text: fmtDate(version.release_date) }),
               el("td", { text: version.is_active ? "Active" : "Inactive" }),
               el("td", { text: String((componentMap.get(version.id) || []).length) }),
-              el("td", {}, diffLink),
+              el("td", {}, el("div", { class: "row", style: "gap:6px; flex-wrap:wrap;" }, diffLink, graphLink)),
             ),
           );
         });

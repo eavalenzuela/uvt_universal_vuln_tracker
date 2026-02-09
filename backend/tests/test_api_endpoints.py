@@ -1941,6 +1941,63 @@ def test_sbom_ingest_and_component_listing(app, client):
     assert rows[0]["ecosystem"] == "npm"
 
 
+def test_dependency_graph_endpoint_returns_nodes_edges_and_vulnerabilities(app, client):
+    admin = create_admin(app)
+    _, pv = create_product_with_version(app, owner_id=admin.id)
+
+    with app.app_context():
+        parent = SoftwareComponent(
+            product_version_id=pv.id,
+            name="app-core",
+            version="1.0.0",
+            ecosystem="npm",
+            bom_ref="pkg:npm/app-core@1.0.0",
+        )
+        child = SoftwareComponent(
+            product_version_id=pv.id,
+            name="lodash",
+            version="4.17.21",
+            ecosystem="npm",
+            bom_ref="pkg:npm/lodash@4.17.21",
+        )
+        db.session.add_all([parent, child])
+        db.session.flush()
+
+        dep = ComponentDependency(
+            product_version_id=pv.id,
+            parent_component_id=parent.id,
+            child_component_id=child.id,
+            dependency_path=f"{parent.bom_ref}>{child.bom_ref}",
+            depth=1,
+            is_direct=True,
+        )
+        vuln = Vulnerability(title="Lodash issue", severity="High", status="Open")
+        db.session.add_all([dep, vuln])
+        db.session.flush()
+        db.session.add(VulnerabilityComponent(
+            vulnerability_id=vuln.id,
+            component_id=child.id,
+            source="sbom",
+            match_type="purl",
+            transitive_depth=1,
+        ))
+        db.session.commit()
+
+    resp = client.get(f"/api/product_versions/{pv.id}/dependency_graph", headers=auth_header(admin))
+    assert resp.status_code == 200
+    payload = resp.get_json()
+
+    assert payload["product_version_id"] == pv.id
+    assert len(payload["nodes"]) == 2
+    assert len(payload["edges"]) == 1
+    vulnerable_node = next(node for node in payload["nodes"] if node["name"] == "lodash")
+    assert vulnerable_node["vulnerability_count"] == 1
+    assert vulnerable_node["max_severity"] == "High"
+    assert vulnerable_node["vulnerabilities"][0]["title"] == "Lodash issue"
+    root_node = next(node for node in payload["nodes"] if node["name"] == "app-core")
+    assert root_node["id"] in payload["root_node_ids"]
+
+
 def test_vulnerability_component_filters_and_export(app, client):
     admin = create_admin(app)
     _, pv = create_product_with_version(app, owner_id=admin.id)
