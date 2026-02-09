@@ -12,6 +12,14 @@ from backend.services.notification_rules import (
 )
 
 
+def _next_event_of_type(queue, event_type):
+    for _ in range(8):
+        event = queue.get(timeout=1)
+        if event.get("type") == event_type:
+            return event
+    raise AssertionError(f"Expected event type {event_type}")
+
+
 def test_notification_stream_requires_auth(client):
     response = client.get("/api/notifications/stream")
     assert response.status_code == 401
@@ -103,4 +111,49 @@ def test_scheduled_scan_escalation_publishes_event(app, admin_user):
         event = queue.get(timeout=1)
         assert event["type"] == "scheduled_scan_escalation_logged"
         assert event["payload"]["vulnerability_id"] == vuln.id
+        hub.unsubscribe(admin_user.id, queue)
+
+
+def test_dashboard_metric_events_published_on_create_update_and_resolve(app, client, admin_user, auth_header):
+    queue = hub.subscribe(admin_user.id)
+    try:
+        create_resp = client.post(
+            "/api/vulnerabilities",
+            headers=auth_header(admin_user),
+            json={"title": "Realtime metric", "severity": "High", "status": "Open"},
+        )
+        assert create_resp.status_code == 201
+        vuln_id = create_resp.get_json()["id"]
+
+        created_event = _next_event_of_type(queue, "dashboard_metric_change")
+        assert created_event["type"] == "dashboard_metric_change"
+        assert created_event["payload"]["action"] == "created"
+        assert created_event["payload"]["vulnerability_id"] == vuln_id
+
+        update_resp = client.put(
+            f"/api/vulnerabilities/{vuln_id}",
+            headers=auth_header(admin_user),
+            json={"severity": "Critical", "status": "In Progress"},
+        )
+        assert update_resp.status_code == 200
+
+        updated_event = _next_event_of_type(queue, "dashboard_metric_change")
+        assert updated_event["type"] == "dashboard_metric_change"
+        assert updated_event["payload"]["action"] == "updated"
+        assert updated_event["payload"]["previous_status"] == "Open"
+        assert updated_event["payload"]["status"] == "In Progress"
+
+        resolve_resp = client.put(
+            f"/api/vulnerabilities/{vuln_id}",
+            headers=auth_header(admin_user),
+            json={"status": "Resolved"},
+        )
+        assert resolve_resp.status_code == 200
+
+        resolved_event = _next_event_of_type(queue, "dashboard_metric_change")
+        assert resolved_event["type"] == "dashboard_metric_change"
+        assert resolved_event["payload"]["action"] == "resolved"
+        assert resolved_event["payload"]["previous_status"] == "In Progress"
+        assert resolved_event["payload"]["status"] == "Resolved"
+    finally:
         hub.unsubscribe(admin_user.id, queue)

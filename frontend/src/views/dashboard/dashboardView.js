@@ -8,7 +8,7 @@ import {
 } from "../../api/vulnerabilities.js";
 import { navigate } from "../../router/router.js";
 import { canWrite } from "../../state/permissions.js";
-import { getState } from "../../state/store.js";
+import { getState, subscribe } from "../../state/store.js";
 import { downloadReportArtifact, exportDashboardSummary, getDashboardSummary, getRiskTrends } from "../../api/reports.js";
 import {
   createDashboardLayoutPreset,
@@ -80,6 +80,7 @@ const WIDGET_BG = "rgba(15, 23, 42, 0.7)";
 const WIDGET_SURFACE = "rgba(30, 41, 59, 0.7)";
 const WIDGET_SUBTLE = "rgba(148, 163, 184, 0.18)";
 const WIDGET_BORDER_HIGHLIGHT = "rgba(106, 169, 255, 0.9)";
+const DASHBOARD_SUMMARY_POLL_MS = 30000;
 
 function formatAge(value) {
   if (!value) return "-";
@@ -152,6 +153,62 @@ function parseFilterList(filter, options) {
     .split(/[,/]/)
     .map((entry) => entry.trim())
     .filter((entry) => options.includes(entry));
+}
+
+function updateTrendCount(summary, delta) {
+  const buckets = Array.isArray(summary?.trend?.buckets) ? [...summary.trend.buckets] : [];
+  if (!buckets.length || !delta) return buckets;
+  const lastIndex = buckets.length - 1;
+  const last = buckets[lastIndex] || {};
+  const current = Number(last.count || 0);
+  buckets[lastIndex] = { ...last, count: Math.max(0, current + delta) };
+  return buckets;
+}
+
+export function applyDashboardMetricDelta(summary, event, widgetSettings = {}) {
+  if (!summary || !event || event?.type !== "dashboard_metric_change") return summary;
+  const payload = event.payload || {};
+  const statusFilters = parseFilterList(widgetSettings.filter, STATUS_OPTIONS);
+  const hasFilter = statusFilters.length > 0;
+  const previousStatus = payload.previous_status;
+  const nextStatus = payload.status;
+  const wasIncluded = hasFilter ? statusFilters.includes(previousStatus) : previousStatus != null;
+  const isIncluded = hasFilter ? statusFilters.includes(nextStatus) : nextStatus != null;
+
+  let totalDelta = 0;
+  if (payload.action === "created") {
+    totalDelta = isIncluded ? 1 : 0;
+  } else if (payload.action === "updated" || payload.action === "resolved") {
+    totalDelta = (isIncluded ? 1 : 0) - (wasIncluded ? 1 : 0);
+  }
+
+  if (!totalDelta && payload.previous_severity === payload.severity) {
+    return summary;
+  }
+
+  const bySeverity = { ...(summary.by_severity || {}) };
+  if (payload.action === "created") {
+    if (isIncluded && payload.severity) {
+      bySeverity[payload.severity] = (bySeverity[payload.severity] || 0) + 1;
+    }
+  } else {
+    if (wasIncluded && payload.previous_severity) {
+      bySeverity[payload.previous_severity] = Math.max(0, (bySeverity[payload.previous_severity] || 0) - 1);
+    }
+    if (isIncluded && payload.severity) {
+      bySeverity[payload.severity] = (bySeverity[payload.severity] || 0) + 1;
+    }
+  }
+
+  return {
+    ...summary,
+    total: Math.max(0, Number(summary.total || 0) + totalDelta),
+    by_severity: bySeverity,
+    trend: {
+      ...(summary.trend || {}),
+      buckets: updateTrendCount(summary, totalDelta),
+    },
+  };
 }
 
 async function listVulnerabilitiesWithFilters({ statusFilters, severityFilters, ...params }) {
@@ -776,56 +833,85 @@ export async function DashboardView() {
     const content = el("div", { class: "muted", text: "Loading risk overview..." });
     container.append(content);
 
+    let summaryState = null;
+    let syncing = false;
+    let seenEvents = new Set();
+
+    const renderSummary = () => {
+      if (!summaryState) return;
+      const counts = (summaryState?.trend?.buckets || []).map((bucket) => bucket.count || 0);
+      const totalUpdates = counts.reduce((sum, value) => sum + value, 0);
+
+      content.innerHTML = "";
+      const kpiRow = el(
+        "div",
+        { style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px;" },
+        el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+          el("div", { class: "muted", text: "Total" }),
+          el("div", { style: "font-size:20px; font-weight:600;", text: summaryState.total ?? 0 }),
+        ),
+        el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+          el("div", { class: "muted", text: "Critical" }),
+          el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: summaryState.by_severity?.Critical ?? 0 }),
+        ),
+        el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+          el("div", { class: "muted", text: "High" }),
+          el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: summaryState.by_severity?.High ?? 0 }),
+        ),
+      );
+
+      const trendBlock = el(
+        "div",
+        { style: `display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+        el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
+          el("div", { class: "muted", text: `Updates (${widgetSettings.range})` }),
+          el("div", { style: "font-size:16px; font-weight:600;", text: `${totalUpdates} updates` }),
+        ),
+        renderSparkline(counts),
+      );
+
+      content.append(kpiRow, trendBlock);
+    };
+
     const load = async () => {
+      if (syncing) return;
+      syncing = true;
       content.innerHTML = "";
       content.appendChild(el("div", { class: "muted", text: "Loading risk overview..." }));
       try {
         const statusFilters = parseFilterList(widgetSettings.filter, STATUS_OPTIONS);
-        const summary = await getDashboardSummary({
+        summaryState = await getDashboardSummary({
           status: statusFilters?.length ? statusFilters.join(",") : undefined,
           group_by: widgetSettings.grouping || "Severity",
           range: widgetSettings.range,
         });
-        const counts = (summary?.trend?.buckets || []).map((bucket) => bucket.count || 0);
-        const totalUpdates = counts.reduce((sum, value) => sum + value, 0);
-
-        content.innerHTML = "";
-        const kpiRow = el(
-          "div",
-          { style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px;" },
-          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
-            el("div", { class: "muted", text: "Total" }),
-            el("div", { style: "font-size:20px; font-weight:600;", text: summary.total ?? 0 }),
-          ),
-          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
-            el("div", { class: "muted", text: "Critical" }),
-            el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: summary.by_severity?.Critical ?? 0 }),
-          ),
-          el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
-            el("div", { class: "muted", text: "High" }),
-            el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: summary.by_severity?.High ?? 0 }),
-          ),
-        );
-
-        const trendBlock = el(
-          "div",
-          { style: `display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
-          el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
-            el("div", { class: "muted", text: `Updates (${widgetSettings.range})` }),
-            el("div", { style: "font-size:16px; font-weight:600;", text: `${totalUpdates} updates` }),
-          ),
-          renderSparkline(counts),
-        );
-
-        content.append(kpiRow, trendBlock);
+        renderSummary();
       } catch (error) {
         content.innerHTML = "";
         console.warn("Unable to load risk overview.", error);
         content.appendChild(el("div", { class: "muted", text: "Unable to load risk overview." }));
+      } finally {
+        syncing = false;
       }
     };
 
+    subscribe((state) => {
+      const events = state?.liveNotifications || [];
+      for (const event of events) {
+        const key = `${event.sent_at || ""}-${event.type || ""}-${event.payload?.vulnerability_id || ""}`;
+        if (seenEvents.has(key)) continue;
+        seenEvents.add(key);
+        if (event?.type !== "dashboard_metric_change") continue;
+        summaryState = applyDashboardMetricDelta(summaryState, event, widgetSettings);
+        renderSummary();
+      }
+      if (seenEvents.size > 120) {
+        seenEvents = new Set([...seenEvents].slice(-60));
+      }
+    });
+
     load();
+    setInterval(load, DASHBOARD_SUMMARY_POLL_MS);
     return container;
   }
 
