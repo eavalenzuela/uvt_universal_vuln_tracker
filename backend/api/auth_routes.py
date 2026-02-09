@@ -1,3 +1,5 @@
+import secrets
+
 from flask import Blueprint, jsonify, request, current_app, redirect
 
 from ..database import db
@@ -30,7 +32,35 @@ def _auth_response(user, access_token, refresh_token=None):
     return payload
 
 
+def _generate_csrf_token():
+    return secrets.token_urlsafe(32)
+
+
+def _set_csrf_cookie(response, csrf_token):
+    response.set_cookie(
+        "uvt_csrf_token",
+        csrf_token,
+        httponly=False,
+        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
+        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
+        max_age=12 * 60 * 60,
+        path="/",
+    )
+    return response
+
+
 def _clear_auth_cookie(response):
+    response.set_cookie(
+        "uvt_csrf_token",
+        "",
+        httponly=False,
+        secure=current_app.config.get("AUTH_COOKIE_SECURE", True),
+        samesite=current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax"),
+        domain=current_app.config.get("AUTH_COOKIE_DOMAIN"),
+        max_age=0,
+        path="/",
+    )
     response.set_cookie(
         "uvt_auth_token",
         "",
@@ -58,6 +88,13 @@ def _set_auth_cookie(response, token):
     return response
 
 
+def _issue_csrf_token(payload=None):
+    csrf_token = _generate_csrf_token()
+    if payload is not None:
+        payload["csrf_token"] = csrf_token
+    return csrf_token
+
+
 @bp.post("/login")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
 def login():
@@ -75,7 +112,11 @@ def login():
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     refresh_token, _ = create_refresh_token(user)
     db.session.commit()
-    return _set_auth_cookie(jsonify(_auth_response(user, token, refresh_token)), token)
+    payload = _auth_response(user, token, refresh_token)
+    csrf_token = _issue_csrf_token(payload)
+    response = jsonify(payload)
+    response = _set_auth_cookie(response, token)
+    return _set_csrf_cookie(response, csrf_token)
 
 
 @bp.post("/refresh")
@@ -90,10 +131,11 @@ def refresh():
         return error_response("Invalid refresh token", status_code=401)
 
     db.session.commit()
-    return _set_auth_cookie(
-        jsonify(_auth_response(result["user"], result["access_token"], result["refresh_token"])),
-        result["access_token"],
-    )
+    payload = _auth_response(result["user"], result["access_token"], result["refresh_token"])
+    csrf_token = _issue_csrf_token(payload)
+    response = jsonify(payload)
+    response = _set_auth_cookie(response, result["access_token"])
+    return _set_csrf_cookie(response, csrf_token)
 
 
 @bp.post("/logout")
@@ -184,6 +226,16 @@ def register():
     refresh_token, _ = create_refresh_token(user)
     db.session.commit()
     return jsonify(_auth_response(user, token, refresh_token)), 201
+
+
+@bp.get("/csrf")
+def csrf_token():
+    existing = request.cookies.get("uvt_csrf_token")
+    csrf_token = existing or _issue_csrf_token()
+    response = jsonify({"csrf_token": csrf_token})
+    if not existing:
+        response = _set_csrf_cookie(response, csrf_token)
+    return response
 
 
 @bp.get("/me")
