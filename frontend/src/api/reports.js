@@ -27,6 +27,23 @@ export async function downloadReportArtifact(downloadUrl) {
   return response.blob();
 }
 
+
+export function listReportTemplates() {
+  return apiFetch("/api/reports/templates", { method: "GET" });
+}
+
+export function createReportTemplate(payload) {
+  return apiFetch("/api/reports/templates", { method: "POST", body: payload });
+}
+
+export function updateReportTemplate(id, payload) {
+  return apiFetch(`/api/reports/templates/${id}`, { method: "PATCH", body: payload });
+}
+
+export function deleteReportTemplate(id) {
+  return apiFetch(`/api/reports/templates/${id}`, { method: "DELETE" });
+}
+
 export function listReportSchedules() {
   return apiFetch("/api/reports/schedules", { method: "GET" });
 }

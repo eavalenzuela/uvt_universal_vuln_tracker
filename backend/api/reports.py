@@ -9,11 +9,11 @@ from uuid import uuid4
 
 from flask import Blueprint, current_app, jsonify, request, Response, send_file
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from sqlalchemy import desc, func
+from sqlalchemy import asc, desc, func, or_
 
 from ..auth import login_required, role_required
 from ..database import db
-from ..models import Product, ProductVersion, ReportArtifact, ReportSchedule, Vulnerability, VulnerabilityVersion
+from ..models import Product, ProductVersion, ReportArtifact, ReportSchedule, ReportTemplate, Vulnerability, VulnerabilityVersion
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..services.email_delivery import EmailDeliveryError, send_email
 from ..rate_limiter import rate_limit
@@ -52,6 +52,82 @@ OPEN_STATUSES = {"Open", "In Progress"}
 
 ALLOWED_EXPORT_FORMATS = {"csv", "json", "pdf"}
 REPORT_EXPORT_TOKEN_SALT = "reports-artifact-download"
+
+
+VISIBILITY_OPTIONS = {"private", "team"}
+
+
+def _serialize_template(template):
+    owner = template.owner
+    return {
+        "id": template.id,
+        "name": template.name,
+        "report_type": template.report_type,
+        "fields": template.fields_json or [],
+        "filters": template.filters_json or {},
+        "format": template.export_format,
+        "delivery_channel": template.delivery_channel,
+        "recipients": template.recipients_json or [],
+        "delivery_preferences": template.delivery_preferences_json or {},
+        "visibility": template.visibility,
+        "owner": {
+            "id": owner.id if owner else None,
+            "username": owner.username if owner else None,
+        },
+        "created_at": template.created_at.isoformat() if template.created_at else None,
+        "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+    }
+
+
+def _query_visible_templates(user):
+    if user.role == "Admin":
+        return ReportTemplate.query
+    return ReportTemplate.query.filter(
+        or_(
+            ReportTemplate.owner_id == user.id,
+            ReportTemplate.visibility == "team",
+        )
+    )
+
+
+def _can_manage_template(user, template):
+    return user.role == "Admin" or template.owner_id == user.id
+
+
+def _resolve_template_for_user(template_id, *, user, required=False):
+    if template_id in (None, ""):
+        return None
+    try:
+        template_id = int(template_id)
+    except (TypeError, ValueError):
+        raise ValidationError("report_template_id must be an integer", field="report_template_id")
+
+    template = _query_visible_templates(user).filter(ReportTemplate.id == template_id).first()
+    if template is None and required:
+        raise ValidationError("report template not found", field="report_template_id")
+    return template
+
+
+def _merged_schedule_settings(schedule):
+    template = schedule.report_template
+    payload = {
+        "report_type": schedule.report_type,
+        "delivery_channel": schedule.delivery_channel,
+        "recipients": (schedule.recipients_json or []) or ([schedule.recipient] if schedule.recipient else []),
+        "filters": schedule.filters_json or {},
+        "delivery_preferences": schedule.delivery_preferences_json or {},
+        "format": "csv",
+        "fields": EXPORT_FIELDS,
+    }
+    if template:
+        payload["report_type"] = template.report_type or payload["report_type"]
+        payload["delivery_channel"] = template.delivery_channel or payload["delivery_channel"]
+        payload["recipients"] = template.recipients_json or payload["recipients"]
+        payload["filters"] = template.filters_json or payload["filters"]
+        payload["delivery_preferences"] = template.delivery_preferences_json or payload["delivery_preferences"]
+        payload["format"] = template.export_format or payload["format"]
+        payload["fields"] = template.fields_json or payload["fields"]
+    return payload
 
 
 def _parse_recipients(payload):
@@ -474,6 +550,14 @@ def export_vulnerabilities():
         return error_response("format must be one of csv, json, pdf", status_code=400)
     filters = request.args.to_dict(flat=True)
     filters.pop("format", None)
+    template = None
+    try:
+        template = _resolve_template_for_user(request.args.get("report_template_id"), user=request.user)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    if template:
+        filters = template.filters_json or filters
+        export_format = template.export_format or export_format
     try:
         items, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
         items = items.all()
@@ -499,6 +583,14 @@ def export_dashboard_summary():
         return error_response("format must be one of csv, json, pdf", status_code=400)
     filters = request.args.to_dict(flat=True)
     filters.pop("format", None)
+    template = None
+    try:
+        template = _resolve_template_for_user(request.args.get("report_template_id"), user=request.user)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    if template:
+        filters = template.filters_json or filters
+        export_format = template.export_format or export_format
     try:
         summary = _dashboard_summary(filters)
     except ValueError as exc:
@@ -570,6 +662,116 @@ def report_risk_trends():
     return jsonify(payload)
 
 
+@bp.get("/reports/templates")
+@login_required
+def list_report_templates():
+    templates = _query_visible_templates(request.user).order_by(
+        asc(ReportTemplate.name),
+        asc(ReportTemplate.id),
+    ).all()
+    return jsonify([_serialize_template(t) for t in templates])
+
+
+@bp.post("/reports/templates")
+@role_required("Admin", "Analyst")
+def create_report_template():
+    payload = request.get_json(silent=True) or {}
+    user = request.user
+    try:
+        name = required_string(payload, "name")
+        report_type = enum_value(payload.get("report_type") or "vulnerabilities", field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
+        export_format = enum_value((payload.get("format") or "csv").lower(), field="format", options=ALLOWED_EXPORT_FORMATS, required=True)
+        delivery_channel = enum_value((payload.get("delivery_channel") or "email").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
+        visibility = enum_value((payload.get("visibility") or "private").lower(), field="visibility", options=VISIBILITY_OPTIONS, required=True)
+        recipients = _parse_recipients(payload)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    filters = payload.get("filters") or {}
+    fields = payload.get("fields") or EXPORT_FIELDS
+    preferences = payload.get("delivery_preferences") or {}
+    if not isinstance(filters, dict):
+        return error_response("filters must be an object", field="filters")
+    if not isinstance(fields, list) or not all(isinstance(x, str) for x in fields):
+        return error_response("fields must be an array of strings", field="fields")
+    if not isinstance(preferences, dict):
+        return error_response("delivery_preferences must be an object", field="delivery_preferences")
+
+    template = ReportTemplate(
+        name=name,
+        report_type=report_type,
+        fields_json=fields,
+        filters_json=filters,
+        export_format=export_format,
+        delivery_channel=delivery_channel,
+        recipients_json=recipients,
+        delivery_preferences_json=preferences,
+        visibility=visibility,
+        owner_id=user.id,
+    )
+    db.session.add(template)
+    db.session.commit()
+    return jsonify(_serialize_template(template)), 201
+
+
+@bp.patch("/reports/templates/<int:template_id>")
+@role_required("Admin", "Analyst")
+def update_report_template(template_id):
+    user = request.user
+    template = ReportTemplate.query.get_or_404(template_id)
+    if not _can_manage_template(user, template):
+        return error_response("Forbidden", status_code=403)
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        if "name" in payload:
+            template.name = required_string(payload, "name")
+        if "report_type" in payload:
+            template.report_type = enum_value(payload.get("report_type"), field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
+        if "format" in payload:
+            template.export_format = enum_value((payload.get("format") or "").lower(), field="format", options=ALLOWED_EXPORT_FORMATS, required=True)
+        if "delivery_channel" in payload:
+            template.delivery_channel = enum_value((payload.get("delivery_channel") or "").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
+        if "visibility" in payload:
+            template.visibility = enum_value((payload.get("visibility") or "").lower(), field="visibility", options=VISIBILITY_OPTIONS, required=True)
+        if "recipient" in payload or "recipients" in payload:
+            template.recipients_json = _parse_recipients(payload)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if "filters" in payload:
+        filters = payload.get("filters") or {}
+        if not isinstance(filters, dict):
+            return error_response("filters must be an object", field="filters")
+        template.filters_json = filters
+    if "fields" in payload:
+        fields = payload.get("fields") or []
+        if not isinstance(fields, list) or not all(isinstance(x, str) for x in fields):
+            return error_response("fields must be an array of strings", field="fields")
+        template.fields_json = fields
+    if "delivery_preferences" in payload:
+        prefs = payload.get("delivery_preferences") or {}
+        if not isinstance(prefs, dict):
+            return error_response("delivery_preferences must be an object", field="delivery_preferences")
+        template.delivery_preferences_json = prefs
+
+    db.session.add(template)
+    db.session.commit()
+    return jsonify(_serialize_template(template))
+
+
+@bp.delete("/reports/templates/<int:template_id>")
+@role_required("Admin", "Analyst")
+def delete_report_template(template_id):
+    user = request.user
+    template = ReportTemplate.query.get_or_404(template_id)
+    if not _can_manage_template(user, template):
+        return error_response("Forbidden", status_code=403)
+    db.session.delete(template)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @bp.post("/reports/schedules")
 @role_required("Admin", "Analyst")
 def create_report_schedule():
@@ -579,8 +781,14 @@ def create_report_schedule():
         name = required_string(payload, "name")
         report_type = enum_value(payload.get("report_type") or "vulnerabilities", field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
         frequency = enum_value((payload.get("frequency") or "daily").lower(), field="frequency", options=ALLOWED_FREQUENCIES, required=True)
+        report_template = _resolve_template_for_user(payload.get("report_template_id"), user=request.user)
         delivery_channel = enum_value((payload.get("delivery_channel") or "email").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
-        recipients = _parse_recipients(payload)
+        if "recipient" in payload or "recipients" in payload:
+            recipients = _parse_recipients(payload)
+        elif report_template:
+            recipients = report_template.recipients_json or []
+        else:
+            raise ValidationError("recipient is required", field="recipient")
         timezone = str(payload.get("timezone") or "UTC").strip() or "UTC"
         filter_preset = (str(payload.get("filter_preset")).strip() if payload.get("filter_preset") is not None else None)
         delivery_preferences = payload.get("delivery_preferences") or {}
@@ -588,6 +796,13 @@ def create_report_schedule():
             raise ValidationError("delivery_preferences must be an object", field="delivery_preferences")
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
+
+    if report_template:
+        report_type = report_template.report_type
+        delivery_channel = report_template.delivery_channel
+        recipients = report_template.recipients_json or recipients
+        payload["filters"] = report_template.filters_json or payload.get("filters")
+        delivery_preferences = report_template.delivery_preferences_json or delivery_preferences
 
     schedule = ReportSchedule(
         name=name,
@@ -601,6 +816,7 @@ def create_report_schedule():
         filters_json=payload.get("filters") or {},
         delivery_preferences_json=delivery_preferences,
         created_by=request.user.id,
+        report_template_id=(report_template.id if report_template else None),
     )
     db.session.add(schedule)
     db.session.commit()
@@ -626,6 +842,10 @@ def update_report_schedule(schedule_id):
 
     payload = request.get_json(silent=True) or {}
     try:
+        if "report_template_id" in payload:
+            report_template = _resolve_template_for_user(payload.get("report_template_id"), user=request.user, required=payload.get("report_template_id") is not None)
+            schedule.report_template_id = report_template.id if report_template else None
+
         if "name" in payload:
             schedule.name = required_string(payload, "name")
         if "report_type" in payload:
@@ -676,14 +896,16 @@ def run_report_schedule(schedule_id):
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
 
-    filters = schedule.filters_json or {}
+    effective = _merged_schedule_settings(schedule)
+    filters = effective["filters"]
     try:
-        if schedule.report_type == "dashboard_summary":
+        if effective["report_type"] == "dashboard_summary":
             content = _csv_content(["metric", "group", "value"], _summary_rows(_dashboard_summary(filters)))
         else:
             query, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
             rows = [_vuln_row(v) for v in query.all()]
-            content = _csv_content(EXPORT_FIELDS, rows)
+            fieldnames = [f for f in effective["fields"] if f in EXPORT_FIELDS] or EXPORT_FIELDS
+            content = _csv_content(fieldnames, [{k: row.get(k) for k in fieldnames} for row in rows])
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
 
@@ -706,14 +928,15 @@ def _csv_content(fieldnames, rows):
 
 
 def _deliver_report(schedule, content):
-    recipients = (schedule.recipients_json or []) or ([schedule.recipient] if schedule.recipient else [])
-    prefs = schedule.delivery_preferences_json or {}
+    effective = _merged_schedule_settings(schedule)
+    recipients = effective["recipients"]
+    prefs = effective["delivery_preferences"]
     subject_suffix = prefs.get("subject_suffix")
     subject = f"UVT scheduled report: {schedule.name} ({schedule.frequency})"
     if subject_suffix:
         subject = f"{subject} {subject_suffix}".strip()
 
-    if schedule.delivery_channel == "email":
+    if effective["delivery_channel"] == "email":
         try:
             result = send_email(
                 recipient=", ".join(recipients),
@@ -721,7 +944,7 @@ def _deliver_report(schedule, content):
                 body_text=(
                     f"UVT scheduled report generated\n"
                     f"Report: {schedule.name}\n"
-                    f"Type: {schedule.report_type}\n"
+                    f"Type: {effective['report_type']}\n"
                     f"Frequency: {schedule.frequency}\n"
                     f"Timezone: {schedule.timezone}\n"
                     f"CSV bytes: {len(content.encode('utf-8'))}\n\n"
@@ -744,7 +967,7 @@ def _deliver_report(schedule, content):
         response = client.send_message(
             text=(
                 f"UVT scheduled report: {schedule.name} ({schedule.frequency})\n"
-                f"Report type: {schedule.report_type}\n"
+                f"Report type: {effective['report_type']}\n"
                 f"Timezone: {schedule.timezone}\n"
                 f"CSV bytes: {len(content.encode('utf-8'))}"
             )
@@ -775,6 +998,8 @@ def _schedule_json(schedule):
         "filters": schedule.filters_json or {},
         "delivery_preferences": schedule.delivery_preferences_json or {},
         "created_by": schedule.created_by,
+        "report_template_id": schedule.report_template_id,
+        "report_template": _serialize_template(schedule.report_template) if schedule.report_template else None,
         "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
         "last_attempted_at": schedule.last_attempted_at.isoformat() if schedule.last_attempted_at else None,
         "last_run_status": status,
