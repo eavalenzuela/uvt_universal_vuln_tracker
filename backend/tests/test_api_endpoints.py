@@ -474,6 +474,57 @@ def test_vulnerability_endpoints(app, client):
 
 
 
+
+
+def test_vulnerability_history_requires_authentication(app, client):
+    admin = create_admin(app)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=auth_header(admin),
+        json={"title": "History auth vuln", "severity": "Medium", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    unauth_resp = client.get(f"/api/vulnerabilities/{vuln_id}/history")
+    assert unauth_resp.status_code == 401
+
+
+def test_vulnerability_history_payload_format(app, client):
+    admin = create_admin(app)
+    headers = auth_header(admin)
+
+    create_resp = client.post(
+        "/api/vulnerabilities",
+        headers=headers,
+        json={"title": "History payload vuln", "severity": "Low", "status": "Open"},
+    )
+    assert create_resp.status_code == 201
+    vuln_id = create_resp.get_json()["id"]
+
+    update_resp = client.put(
+        f"/api/vulnerabilities/{vuln_id}",
+        headers=headers,
+        json={"severity": "High", "status": "Resolved"},
+    )
+    assert update_resp.status_code == 200
+
+    history_resp = client.get(f"/api/vulnerabilities/{vuln_id}/history", headers=headers)
+    assert history_resp.status_code == 200
+    payload = history_resp.get_json()
+    assert len(payload) >= 2
+
+    update_event = next((item for item in payload if item["action"] == "UPDATE"), None)
+    assert update_event is not None
+    assert update_event["vulnerability_id"] == vuln_id
+    assert isinstance(update_event["timestamp"], str)
+    assert update_event["actor"]["id"] == admin.id
+    assert update_event["actor"]["username"] == admin.username
+    assert isinstance(update_event["field_diff"], dict)
+    assert "severity" in update_event["field_diff"]
+    assert update_event["field_diff"]["severity"] == {"before": "Low", "after": "High"}
+
 def test_vulnerability_batch_update_mutation(app, client):
     admin = create_admin(app)
     analyst = create_user_direct(app, "batch-analyst", "batch-analyst@example.com")

@@ -68,6 +68,10 @@ export async function listVulnerabilityActivity(id) {
   return apiFetch(`/api/vulnerabilities/${id}/activity`, { method: "GET" });
 }
 
+export async function listVulnerabilityHistory(id) {
+  return apiFetch(`/api/vulnerabilities/${id}/history`, { method: "GET" });
+}
+
 export async function deleteVulnerability(id) {
   return apiFetch(`/api/vulnerabilities/${id}`, { method: "DELETE" });
 }

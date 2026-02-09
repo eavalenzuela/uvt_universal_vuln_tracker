@@ -101,6 +101,33 @@ def _serialize_watcher(watcher):
         "added_by": watcher.added_by,
         "created_at": watcher.created_at.isoformat() if watcher.created_at else None,
     }
+
+
+def _audit_field_diff_payload(log):
+    if isinstance(log.new_values, dict) and isinstance(log.new_values.get("field_diff"), dict):
+        return log.new_values.get("field_diff")
+
+    candidate_fields = sorted(set((log.old_values or {}).keys()) | set((log.new_values or {}).keys()))
+    if not candidate_fields:
+        return {}
+    return build_field_diff(log.old_values or {}, log.new_values or {}, candidate_fields)
+
+
+def _serialize_vulnerability_history_item(log):
+    return {
+        "id": log.id,
+        "vulnerability_id": log.record_id,
+        "action": log.action,
+        "timestamp": log.created_at.isoformat() if log.created_at else None,
+        "actor": {
+            "id": log.user.id,
+            "username": log.user.username,
+            "email": log.user.email,
+        } if log.user else None,
+        "field_diff": _audit_field_diff_payload(log),
+    }
+
+
 def _attach_attack_vectors(vuln, items):
     for item in items:
         if isinstance(item, dict):
@@ -505,6 +532,25 @@ def get_vulnerability_activity(vuln_id: int):
         }
         for log in logs
     ])
+
+
+@bp.get("/vulnerabilities/<int:vuln_id>/history")
+@login_required
+def get_vulnerability_history(vuln_id: int):
+    Vulnerability.query.get_or_404(vuln_id)
+
+    logs = (
+        AuditLog.query
+        .filter(
+            AuditLog.table_name == "vulnerabilities",
+            AuditLog.record_id == vuln_id,
+        )
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(250)
+        .all()
+    )
+
+    return jsonify([_serialize_vulnerability_history_item(log) for log in logs])
 
 @bp.put("/vulnerabilities/<int:vuln_id>")
 @role_required("Admin", "Analyst")
