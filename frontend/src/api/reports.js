@@ -35,6 +35,14 @@ export function createReportSchedule(payload) {
   return apiFetch("/api/reports/schedules", { method: "POST", body: payload });
 }
 
+export function updateReportSchedule(id, payload) {
+  return apiFetch(`/api/reports/schedules/${id}`, { method: "PATCH", body: payload });
+}
+
+export function deleteReportSchedule(id) {
+  return apiFetch(`/api/reports/schedules/${id}`, { method: "DELETE" });
+}
+
 export function runReportSchedule(id) {
   return apiFetch(`/api/reports/schedules/${id}/run`, { method: "POST" });
 }

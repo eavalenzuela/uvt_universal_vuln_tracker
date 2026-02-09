@@ -46,11 +46,58 @@ EXPORT_FIELDS = [
 ALLOWED_FREQUENCIES = {"daily", "weekly"}
 ALLOWED_CHANNELS = {"email", "slack"}
 ALLOWED_REPORT_TYPES = {"vulnerabilities", "dashboard_summary"}
+RUN_STATUS_VALUES = {"never", "success", "failed", "retrying"}
 SEVERITY_WEIGHTS = {"Critical": 10, "High": 6, "Medium": 3, "Low": 1, "None": 0}
 OPEN_STATUSES = {"Open", "In Progress"}
 
 ALLOWED_EXPORT_FORMATS = {"csv", "json", "pdf"}
 REPORT_EXPORT_TOKEN_SALT = "reports-artifact-download"
+
+
+def _parse_recipients(payload):
+    recipients = payload.get("recipients")
+    if recipients is None:
+        return [required_string(payload, "recipient")]
+
+    if not isinstance(recipients, list):
+        raise ValidationError("recipients must be an array of strings", field="recipients")
+
+    cleaned = [str(item).strip() for item in recipients if str(item).strip()]
+    if not cleaned:
+        raise ValidationError("recipients must include at least one recipient", field="recipients")
+    return cleaned
+
+
+def _retry_window_minutes(retry_count):
+    if retry_count <= 0:
+        return 0
+    return min(5 * (2 ** max(retry_count - 1, 0)), 240)
+
+
+def _mark_schedule_delivery_state(schedule, *, ok, failure_reason=None):
+    now = datetime.utcnow()
+    schedule.last_run_at = now if ok else schedule.last_run_at
+    schedule.last_attempted_at = now
+    if ok:
+        schedule.last_failure_reason = None
+    elif isinstance(failure_reason, str):
+        schedule.last_failure_reason = failure_reason
+    elif failure_reason is None:
+        schedule.last_failure_reason = "Unknown delivery failure"
+    else:
+        schedule.last_failure_reason = json.dumps(failure_reason)
+    if ok:
+        schedule.last_run_status = "success"
+        schedule.retry_count = 0
+        schedule.next_retry_at = None
+        return
+
+    next_retry_count = (schedule.retry_count or 0) + 1
+    schedule.retry_count = next_retry_count
+    delay_minutes = _retry_window_minutes(next_retry_count)
+    schedule.next_retry_at = now + timedelta(minutes=delay_minutes)
+    schedule.last_run_status = "retrying" if next_retry_count < 5 else "failed"
+
 
 
 def _parse_csv_ints(value):
@@ -533,7 +580,12 @@ def create_report_schedule():
         report_type = enum_value(payload.get("report_type") or "vulnerabilities", field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
         frequency = enum_value((payload.get("frequency") or "daily").lower(), field="frequency", options=ALLOWED_FREQUENCIES, required=True)
         delivery_channel = enum_value((payload.get("delivery_channel") or "email").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
-        recipient = required_string(payload, "recipient")
+        recipients = _parse_recipients(payload)
+        timezone = str(payload.get("timezone") or "UTC").strip() or "UTC"
+        filter_preset = (str(payload.get("filter_preset")).strip() if payload.get("filter_preset") is not None else None)
+        delivery_preferences = payload.get("delivery_preferences") or {}
+        if not isinstance(delivery_preferences, dict):
+            raise ValidationError("delivery_preferences must be an object", field="delivery_preferences")
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
@@ -542,8 +594,12 @@ def create_report_schedule():
         report_type=report_type,
         frequency=frequency,
         delivery_channel=delivery_channel,
-        recipient=recipient,
+        recipient=recipients[0],
+        recipients_json=recipients,
+        timezone=timezone,
+        filter_preset=filter_preset,
         filters_json=payload.get("filters") or {},
+        delivery_preferences_json=delivery_preferences,
         created_by=request.user.id,
     )
     db.session.add(schedule)
@@ -559,6 +615,58 @@ def list_report_schedules():
         q = q.filter(ReportSchedule.created_by == request.user.id)
     rows = q.order_by(desc(ReportSchedule.created_at)).all()
     return jsonify([_schedule_json(r) for r in rows])
+
+
+@bp.patch("/reports/schedules/<int:schedule_id>")
+@role_required("Admin", "Analyst")
+def update_report_schedule(schedule_id):
+    schedule = ReportSchedule.query.get_or_404(schedule_id)
+    if request.user.role != "Admin" and schedule.created_by != request.user.id:
+        return error_response("Forbidden", status_code=403)
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        if "name" in payload:
+            schedule.name = required_string(payload, "name")
+        if "report_type" in payload:
+            schedule.report_type = enum_value(payload.get("report_type"), field="report_type", options=ALLOWED_REPORT_TYPES, required=True)
+        if "frequency" in payload:
+            schedule.frequency = enum_value(str(payload.get("frequency") or "").lower(), field="frequency", options=ALLOWED_FREQUENCIES, required=True)
+        if "delivery_channel" in payload:
+            schedule.delivery_channel = enum_value(str(payload.get("delivery_channel") or "").lower(), field="delivery_channel", options=ALLOWED_CHANNELS, required=True)
+        if "recipient" in payload or "recipients" in payload:
+            recipients = _parse_recipients(payload)
+            schedule.recipient = recipients[0]
+            schedule.recipients_json = recipients
+        if "timezone" in payload:
+            schedule.timezone = (str(payload.get("timezone") or "UTC").strip() or "UTC")
+        if "filter_preset" in payload:
+            raw = payload.get("filter_preset")
+            schedule.filter_preset = (str(raw).strip() if raw is not None else None)
+        if "filters" in payload:
+            schedule.filters_json = payload.get("filters") or {}
+        if "delivery_preferences" in payload:
+            prefs = payload.get("delivery_preferences") or {}
+            if not isinstance(prefs, dict):
+                raise ValidationError("delivery_preferences must be an object", field="delivery_preferences")
+            schedule.delivery_preferences_json = prefs
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+
+    db.session.add(schedule)
+    db.session.commit()
+    return jsonify(_schedule_json(schedule))
+
+
+@bp.delete("/reports/schedules/<int:schedule_id>")
+@role_required("Admin", "Analyst")
+def delete_report_schedule(schedule_id):
+    schedule = ReportSchedule.query.get_or_404(schedule_id)
+    if request.user.role != "Admin" and schedule.created_by != request.user.id:
+        return error_response("Forbidden", status_code=403)
+    db.session.delete(schedule)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @bp.post("/reports/schedules/<int:schedule_id>/run")
@@ -580,10 +688,12 @@ def run_report_schedule(schedule_id):
         return error_response(str(exc), status_code=400)
 
     delivery_result = _deliver_report(schedule, content)
-    schedule.last_run_at = datetime.utcnow()
+    ok = delivery_result.get("ok", False)
+    _mark_schedule_delivery_state(schedule, ok=ok, failure_reason=delivery_result.get("error"))
+
     db.session.add(schedule)
     db.session.commit()
-    return jsonify({"status": "sent", "delivery": delivery_result})
+    return jsonify({"status": "sent" if ok else "failed", "delivery": delivery_result, "schedule": _schedule_json(schedule)})
 
 
 def _csv_content(fieldnames, rows):
@@ -596,39 +706,62 @@ def _csv_content(fieldnames, rows):
 
 
 def _deliver_report(schedule, content):
+    recipients = (schedule.recipients_json or []) or ([schedule.recipient] if schedule.recipient else [])
+    prefs = schedule.delivery_preferences_json or {}
+    subject_suffix = prefs.get("subject_suffix")
+    subject = f"UVT scheduled report: {schedule.name} ({schedule.frequency})"
+    if subject_suffix:
+        subject = f"{subject} {subject_suffix}".strip()
+
     if schedule.delivery_channel == "email":
         try:
-            return send_email(
-                recipient=schedule.recipient,
-                subject=f"UVT scheduled report: {schedule.name} ({schedule.frequency})",
+            result = send_email(
+                recipient=", ".join(recipients),
+                subject=subject,
                 body_text=(
                     f"UVT scheduled report generated\n"
                     f"Report: {schedule.name}\n"
                     f"Type: {schedule.report_type}\n"
                     f"Frequency: {schedule.frequency}\n"
+                    f"Timezone: {schedule.timezone}\n"
                     f"CSV bytes: {len(content.encode('utf-8'))}\n\n"
                     f"{content}"
                 ),
                 plugin_id="email",
             )
+            result["ok"] = not result.get("error")
+            result["recipients"] = recipients
+            return result
         except EmailDeliveryError as exc:
-            return exc.as_dict()
+            payload = exc.as_dict()
+            payload["ok"] = False
+            payload["recipients"] = recipients
+            return payload
 
+    webhook = recipients[0] if recipients else schedule.recipient
     try:
-        client = SlackWebhookClient(schedule.recipient)
+        client = SlackWebhookClient(webhook)
         response = client.send_message(
             text=(
                 f"UVT scheduled report: {schedule.name} ({schedule.frequency})\n"
                 f"Report type: {schedule.report_type}\n"
+                f"Timezone: {schedule.timezone}\n"
                 f"CSV bytes: {len(content.encode('utf-8'))}"
             )
         )
-        return {"channel": "slack", "status": response.status, "body": response.body}
+        return {
+            "channel": "slack",
+            "status": response.status,
+            "body": response.body,
+            "ok": True,
+            "recipients": recipients,
+        }
     except SlackWebhookError as exc:
-        return {"channel": "slack", "error": str(exc)}
+        return {"channel": "slack", "error": str(exc), "ok": False, "recipients": recipients}
 
 
 def _schedule_json(schedule):
+    status = schedule.last_run_status if schedule.last_run_status in RUN_STATUS_VALUES else "never"
     return {
         "id": schedule.id,
         "name": schedule.name,
@@ -636,8 +769,17 @@ def _schedule_json(schedule):
         "frequency": schedule.frequency,
         "delivery_channel": schedule.delivery_channel,
         "recipient": schedule.recipient,
+        "recipients": (schedule.recipients_json or []) or ([schedule.recipient] if schedule.recipient else []),
+        "timezone": schedule.timezone or "UTC",
+        "filter_preset": schedule.filter_preset,
         "filters": schedule.filters_json or {},
+        "delivery_preferences": schedule.delivery_preferences_json or {},
         "created_by": schedule.created_by,
         "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+        "last_attempted_at": schedule.last_attempted_at.isoformat() if schedule.last_attempted_at else None,
+        "last_run_status": status,
+        "last_failure_reason": schedule.last_failure_reason,
+        "retry_count": schedule.retry_count or 0,
+        "next_retry_at": schedule.next_retry_at.isoformat() if schedule.next_retry_at else None,
         "created_at": schedule.created_at.isoformat() if schedule.created_at else None,
     }
