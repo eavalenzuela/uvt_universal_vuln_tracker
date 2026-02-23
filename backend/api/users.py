@@ -11,36 +11,18 @@ from ..models import ApiToken, User, AuditLog
 from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES, ROLE_SCOPES
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
+from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
 _ALLOWED_ROLES = ALL_ROLES
 
 def _user_json(u: User):
-    full_name = " ".join(filter(None, [u.first_name, u.last_name])).strip()
-    return {
-        "id": u.id,
-        "username": u.username,
-        "email": u.email,
-        "first_name": u.first_name,
-        "last_name": u.last_name,
-        "full_name": full_name or None,
-        "role": u.role,
-        "is_active": u.is_active,
-        "created_at": u.created_at.isoformat(),
-        "updated_at": u.updated_at.isoformat(),
-    }
+    return serialize_user(u)
 
 
 def _user_summary(u: User):
-    full_name = " ".join(filter(None, [u.first_name, u.last_name])).strip()
-    return {
-        "id": u.id,
-        "username": u.username,
-        "email": u.email,
-        "full_name": full_name or None,
-        "is_active": u.is_active,
-    }
+    return serialize_user_summary(u)
 
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
@@ -58,17 +40,7 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
 
 
 def _api_token_json(token: ApiToken):
-    return {
-        "id": token.id,
-        "name": token.name,
-        "owner_id": token.owner_id,
-        "scopes": token.scopes or [],
-        "expires_at": token.expires_at.isoformat() if token.expires_at else None,
-        "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
-        "revoked_at": token.revoked_at.isoformat() if token.revoked_at else None,
-        "created_at": token.created_at.isoformat(),
-        "updated_at": token.updated_at.isoformat(),
-    }
+    return serialize_api_token(token)
 
 
 def _parse_token_create_payload(data, owner: User):

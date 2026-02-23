@@ -19,6 +19,8 @@ from ..services.email_delivery import EmailDeliveryError, send_email
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, required_string
 from ..services.vulnerability_query import build_vulnerability_query
+from ..services.reporting_service import dashboard_aggregate, risk_trends
+from ..serializers.report_serializers import serialize_template
 
 bp = Blueprint("reports_api", __name__, url_prefix="/api")
 
@@ -58,25 +60,7 @@ VISIBILITY_OPTIONS = {"private", "team"}
 
 
 def _serialize_template(template):
-    owner = template.owner
-    return {
-        "id": template.id,
-        "name": template.name,
-        "report_type": template.report_type,
-        "fields": template.fields_json or [],
-        "filters": template.filters_json or {},
-        "format": template.export_format,
-        "delivery_channel": template.delivery_channel,
-        "recipients": template.recipients_json or [],
-        "delivery_preferences": template.delivery_preferences_json or {},
-        "visibility": template.visibility,
-        "owner": {
-            "id": owner.id if owner else None,
-            "username": owner.username if owner else None,
-        },
-        "created_at": template.created_at.isoformat() if template.created_at else None,
-        "updated_at": template.updated_at.isoformat() if template.updated_at else None,
-    }
+    return serialize_template(template)
 
 
 def _query_visible_templates(user):
@@ -218,159 +202,11 @@ def _range_start(range_value):
 
 
 def _dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 days"):
-    q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
-    total = q.count()
-
-    rows = q.with_entities(
-        Vulnerability.id,
-        Vulnerability.severity,
-        Vulnerability.status,
-        Vulnerability.assigned_to,
-        Vulnerability.updated_at,
-    ).all()
-
-    by_severity = {}
-    by_status = {}
-    group_totals = {}
-    group_attr = {
-        "Severity": "severity",
-        "Status": "status",
-        "Assignee": "assigned_to",
-    }.get(group_by, "severity")
-
-    start = _range_start(range_value)
-    end = datetime.utcnow()
-    days = max(1, (end.date() - start.date()).days + 1)
-    buckets = [
-        {"date": (start.date() + timedelta(days=i)).isoformat(), "count": 0}
-        for i in range(days)
-    ]
-
-    for _, severity, status, assigned_to, updated_at in rows:
-        severity_key = severity or "Unknown"
-        status_key = status or "Unknown"
-        by_severity[severity_key] = by_severity.get(severity_key, 0) + 1
-        by_status[status_key] = by_status.get(status_key, 0) + 1
-
-        group_value = {
-            "severity": severity_key,
-            "status": status_key,
-            "assigned_to": str(assigned_to) if assigned_to is not None else "Unassigned",
-        }[group_attr]
-        group_totals[group_value] = group_totals.get(group_value, 0) + 1
-
-        if updated_at:
-            updated_dt = updated_at if isinstance(updated_at, datetime) else datetime.fromisoformat(str(updated_at))
-            if start <= updated_dt <= end:
-                idx = (updated_dt.date() - start.date()).days
-                if 0 <= idx < len(buckets):
-                    buckets[idx]["count"] += 1
-
-    return {
-        "total": total,
-        "by_severity": by_severity,
-        "by_status": by_status,
-        "group_by": group_by,
-        "group_totals": group_totals,
-        "trend": {
-            "range": range_value,
-            "start_date": start.date().isoformat(),
-            "end_date": end.date().isoformat(),
-            "buckets": buckets,
-        },
-    }
+    return dashboard_aggregate(filters, group_by=group_by, range_value=range_value)
 
 
 def _risk_trends(filters):
-    bucket = (filters.get("bucket") or "week").lower()
-    if bucket not in {"day", "week", "month"}:
-        raise ValueError("bucket must be one of day, week, month")
-
-    start = _parse_iso_datetime(filters.get("start_date"), field="start_date") or _range_start(filters.get("range") or "Last 30 days")
-    end = _parse_iso_datetime(filters.get("end_date"), field="end_date") or datetime.utcnow()
-    if start > end:
-        raise ValueError("start_date must be <= end_date")
-
-    product_ids = _parse_csv_ints(filters.get("product_ids"))
-    product_version_ids = _parse_csv_ints(filters.get("product_version_ids"))
-
-    q = (
-        db.session.query(
-            Vulnerability.updated_at,
-            Vulnerability.severity,
-            Vulnerability.status,
-            Vulnerability.sla_due_at,
-            Product.id,
-            Product.name,
-            ProductVersion.id,
-            ProductVersion.version,
-        )
-        .select_from(Vulnerability)
-        .join(VulnerabilityVersion, VulnerabilityVersion.vulnerability_id == Vulnerability.id)
-        .join(ProductVersion, ProductVersion.id == VulnerabilityVersion.product_version_id)
-        .join(Product, Product.id == ProductVersion.product_id)
-        .filter(Vulnerability.updated_at >= start)
-        .filter(Vulnerability.updated_at <= end)
-    )
-
-    if product_ids:
-        q = q.filter(Product.id.in_(product_ids))
-    if product_version_ids:
-        q = q.filter(ProductVersion.id.in_(product_version_ids))
-
-    rows = q.all()
-    now = datetime.utcnow()
-    grouped = {}
-
-    for updated_at, severity, status, sla_due_at, product_id, product_name, product_version_id, product_version in rows:
-        if not updated_at:
-            continue
-        if bucket == "day":
-            bucket_value = updated_at.strftime("%Y-%m-%d")
-        elif bucket == "week":
-            iso_year, iso_week, _ = updated_at.isocalendar()
-            bucket_value = f"{iso_year}-W{iso_week:02d}"
-        else:
-            bucket_value = updated_at.strftime("%Y-%m")
-
-        key = (product_id, product_version_id, bucket_value)
-        entry = grouped.get(key)
-        if entry is None:
-            entry = {
-                "product_id": product_id,
-                "product_name": product_name,
-                "product_version_id": product_version_id,
-                "product_version": product_version,
-                "bucket": bucket_value,
-                "open_critical_count": 0,
-                "overdue_sla_count": 0,
-                "weighted_risk_score": 0,
-            }
-            grouped[key] = entry
-
-        is_open = status in OPEN_STATUSES
-        if is_open and severity == "Critical":
-            entry["open_critical_count"] += 1
-        if is_open and sla_due_at and sla_due_at < now:
-            entry["overdue_sla_count"] += 1
-        entry["weighted_risk_score"] += SEVERITY_WEIGHTS.get(severity, 0)
-
-    trend_rows = sorted(
-        grouped.values(),
-        key=lambda item: (item["product_name"] or "", item["product_version"] or "", item["bucket"]),
-    )
-    top_risk = sorted(
-        trend_rows,
-        key=lambda item: (item["weighted_risk_score"], item["open_critical_count"], item["overdue_sla_count"]),
-        reverse=True,
-    )[:5]
-    return {
-        "bucket": bucket,
-        "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
-        "items": trend_rows,
-        "top_risk_products": top_risk,
-    }
+    return risk_trends(filters)
 
 
 def _vuln_row(v):
