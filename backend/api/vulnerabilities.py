@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
@@ -33,13 +31,25 @@ from .validation import ValidationError, enum_value, error_response, normalize_c
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
 from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
+from ..services.vulnerability_service import (
+    ATTACK_COMPLEXITY_OPTIONS,
+    IMPACT_OPTIONS,
+    SEVERITY_OPTIONS,
+    STATUS_OPTIONS,
+    attach_attack_vectors,
+    create_vulnerability as create_vulnerability_workflow,
+    parse_sla_due_at,
+    update_vulnerability as update_vulnerability_workflow,
+)
+from ..serializers.vulnerability_serializers import (
+    audit_field_diff_payload,
+    serialize_comment,
+    serialize_vulnerability_history_item,
+    serialize_watcher,
+)
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
-ATTACK_COMPLEXITY_OPTIONS = {"Low", "High", "Not Defined"}
-IMPACT_OPTIONS = {"Not Defined", "None", "Low", "Medium", "High"}
-SEVERITY_OPTIONS = {"Critical", "High", "Medium", "Low", "None"}
-STATUS_OPTIONS = {"Open", "In Progress", "Resolved", "Closed"}
 MAX_PAGE_SIZE = 100
 
 
@@ -55,21 +65,7 @@ def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
 
 
 def _parse_sla_due_at(value, *, field="sla_due_at"):
-    if value in (None, ""):
-        return None
-    if not isinstance(value, str):
-        raise ValidationError(f"{field} must be an ISO datetime", field=field)
-    normalized = value.strip()
-    if not normalized:
-        return None
-    normalized = normalized.replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValidationError(f"{field} must be an ISO datetime", field=field) from exc
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone().replace(tzinfo=None)
-    return parsed
+    return parse_sla_due_at(value, field=field)
 
 
 
@@ -78,96 +74,27 @@ def _can_moderate_comment(user, comment):
 
 
 def _serialize_comment(comment):
-    return {
-        "id": comment.id,
-        "vulnerability_id": comment.vulnerability_id,
-        "author_id": comment.author_id,
-        "body": comment.body,
-        "created_at": comment.created_at.isoformat() if comment.created_at else None,
-        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
-        "updated_by": comment.updated_by,
-        "author": {
-            "id": comment.author.id,
-            "username": comment.author.username,
-        } if comment.author else None,
-    }
+    return serialize_comment(comment)
 
 
 def _serialize_watcher(watcher):
-    return {
-        "id": watcher.id,
-        "vulnerability_id": watcher.vulnerability_id,
-        "user_id": watcher.user_id,
-        "username": watcher.user.username if watcher.user else None,
-        "added_by": watcher.added_by,
-        "created_at": watcher.created_at.isoformat() if watcher.created_at else None,
-    }
+    return serialize_watcher(watcher)
 
 
 def _audit_field_diff_payload(log):
-    if isinstance(log.new_values, dict) and isinstance(log.new_values.get("field_diff"), dict):
-        return log.new_values.get("field_diff")
-
-    candidate_fields = sorted(set((log.old_values or {}).keys()) | set((log.new_values or {}).keys()))
-    if not candidate_fields:
-        return {}
-    return build_field_diff(log.old_values or {}, log.new_values or {}, candidate_fields)
+    return audit_field_diff_payload(log)
 
 
 def _serialize_vulnerability_history_item(log):
-    return {
-        "id": log.id,
-        "vulnerability_id": log.record_id,
-        "action": log.action,
-        "timestamp": log.created_at.isoformat() if log.created_at else None,
-        "actor": {
-            "id": log.user.id,
-            "username": log.user.username,
-            "email": log.user.email,
-        } if log.user else None,
-        "field_diff": _audit_field_diff_payload(log),
-    }
+    return serialize_vulnerability_history_item(log)
 
 
 def _attach_attack_vectors(vuln, items):
-    for item in items:
-        if isinstance(item, dict):
-            attack_vector_id = item.get("attack_vector_id") or item.get("id")
-            product_version_id = item.get("product_version_id")
-        else:
-            attack_vector_id = item
-            product_version_id = None
-
-        try:
-            parsed_attack_vector_id = parse_int(attack_vector_id, field="attack_vector_id", minimum=1, required=True)
-            pv_id = parse_int(product_version_id, field="product_version_id", minimum=1) if product_version_id is not None else None
-        except ValidationError as exc:
-            db.session.rollback()
-            return error_response(exc.error, field=exc.field, details=exc.details)
-
-        attack_vector = AttackVector.query.get(parsed_attack_vector_id)
-        if not attack_vector:
-            db.session.rollback()
-            return error_response(f"Invalid attack vector {parsed_attack_vector_id}", field="attack_vector_id")
-
-        if pv_id is not None:
-            pv = ProductVersion.query.get(pv_id)
-            if not pv:
-                db.session.rollback()
-                return error_response(f"Invalid product version {pv_id}", field="product_version_id")
-
-        existing = VulnerabilityAttackVector.query.filter_by(
-            vulnerability_id=vuln.id,
-            attack_vector_id=attack_vector.id,
-            product_version_id=pv_id,
-        ).first()
-        if existing:
-            continue
-        db.session.add(VulnerabilityAttackVector(
-            vulnerability_id=vuln.id,
-            attack_vector_id=attack_vector.id,
-            product_version_id=pv_id,
-        ))
+    try:
+        attach_attack_vectors(vuln, items)
+    except ValidationError as exc:
+        db.session.rollback()
+        return error_response(exc.error, field=exc.field, details=exc.details)
     return None
 
 @bp.get("/product_versions")
@@ -262,68 +189,10 @@ def create_vulnerability():
     data = request.get_json(silent=True) or {}
 
     try:
-        title = required_string(data, "title")
-        cve_id = normalize_cve_id(data.get("cve_id"), required=False)
-        severity = enum_value(data.get("severity"), field="severity", options=SEVERITY_OPTIONS, required=False) or "Medium"
-        attack_complexity = enum_value(data.get("attack_complexity"), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False) or "Not Defined"
-        confidentiality_impact = enum_value(data.get("confidentiality_impact"), field="confidentiality_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
-        integrity_impact = enum_value(data.get("integrity_impact"), field="integrity_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
-        availability_impact = enum_value(data.get("availability_impact"), field="availability_impact", options=IMPACT_OPTIONS, required=False) or "Not Defined"
-        status = enum_value(data.get("status"), field="status", options=STATUS_OPTIONS, required=False) or "Open"
-        published_date = parse_iso_date(data.get("published_date"), field="published_date")
-        last_modified_date = parse_iso_date(data.get("last_modified_date"), field="last_modified_date")
-        cvss_score = parse_float(
-            data.get("cvss_score"),
-            field="cvss_score",
-            minimum=0.0,
-            maximum=10.0,
-        )
-        assigned_to = parse_int(data.get("assigned_to"), field="assigned_to", minimum=1)
+        v = create_vulnerability_workflow(data=data, actor_id=request.user.id)
     except ValidationError as exc:
+        db.session.rollback()
         return error_response(exc.error, field=exc.field, details=exc.details)
-
-    if assigned_to is not None and not User.query.get(assigned_to):
-        return error_response("assigned_to user not found", field="assigned_to")
-
-    v = Vulnerability(
-        cve_id=cve_id,
-        title=title,
-        description=data.get("description"),
-        severity=severity,
-        cvss_score=round(cvss_score, 1) if cvss_score is not None else None,
-        attack_complexity=attack_complexity,
-        confidentiality_impact=confidentiality_impact,
-        integrity_impact=integrity_impact,
-        availability_impact=availability_impact,
-        published_date=published_date,
-        last_modified_date=last_modified_date,
-        status=status,
-        created_by=request.user.id,
-        assigned_to=assigned_to,
-    )
-    db.session.add(v)
-    db.session.flush()  # get v.id before commit
-
-    # optional: attach affected versions immediately
-    affected_versions = data.get("affected_versions") or []
-    for pv_id in affected_versions:
-        pv = ProductVersion.query.get(int(pv_id))
-        if not pv:
-            db.session.rollback()
-            return error_response(f"Invalid product version {pv_id}", field="affected_versions")
-        db.session.add(VulnerabilityVersion(
-            vulnerability_id=v.id,
-            product_version_id=pv.id,
-            affected=True
-        ))
-
-    attack_vectors = data.get("attack_vectors") or []
-    if attack_vectors:
-        err = _attach_attack_vectors(v, attack_vectors)
-        if err:
-            return err
-
-    recompute_vulnerability_sla(v)
 
     _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
@@ -575,58 +444,10 @@ def update_vulnerability(vuln_id: int):
     }
 
     try:
-        for field in ["cve_id", "title", "description", "severity", "cvss_score", "published_date",
-                      "last_modified_date", "status", "assigned_to", "attack_complexity",
-                      "confidentiality_impact", "integrity_impact", "availability_impact"]:
-            if field not in data:
-                continue
-
-            if field == "cve_id":
-                setattr(v, field, normalize_cve_id(data.get(field), required=False))
-            elif field == "title":
-                title_value = (data.get(field) or "").strip()
-                if not title_value:
-                    return error_response("title cannot be empty", field="title")
-                setattr(v, field, title_value)
-            elif field in {"published_date", "last_modified_date"}:
-                setattr(v, field, parse_iso_date(data.get(field), field=field))
-            elif field == "cvss_score":
-                parsed_cvss = parse_float(
-                    data.get(field),
-                    field="cvss_score",
-                    minimum=0.0,
-                    maximum=10.0,
-                )
-                setattr(v, field, round(parsed_cvss, 1) if parsed_cvss is not None else None)
-            elif field == "attack_complexity":
-                normalized = enum_value(data.get(field), field="attack_complexity", options=ATTACK_COMPLEXITY_OPTIONS, required=False)
-                setattr(v, field, normalized if normalized is not None else "Not Defined")
-            elif field == "severity":
-                normalized = enum_value(data.get(field), field="severity", options=SEVERITY_OPTIONS, required=False)
-                setattr(v, field, normalized if normalized is not None else "Medium")
-            elif field == "status":
-                normalized = enum_value(data.get(field), field="status", options=STATUS_OPTIONS, required=False)
-                setattr(v, field, normalized if normalized is not None else "Open")
-            elif field == "assigned_to":
-                parsed_assigned_to = parse_int(data.get(field), field="assigned_to", minimum=1)
-                if parsed_assigned_to is not None and not User.query.get(parsed_assigned_to):
-                    return error_response("assigned_to user not found", field="assigned_to")
-                setattr(v, field, parsed_assigned_to)
-            elif field in {"confidentiality_impact", "integrity_impact", "availability_impact"}:
-                normalized = enum_value(data.get(field), field=field, options=IMPACT_OPTIONS, required=False)
-                setattr(v, field, normalized if normalized is not None else "Not Defined")
-            else:
-                setattr(v, field, data[field])
+        update_vulnerability_workflow(v, data)
     except ValidationError as exc:
+        db.session.rollback()
         return error_response(exc.error, field=exc.field, details=exc.details)
-
-    if "attack_vectors" in data:
-        VulnerabilityAttackVector.query.filter_by(vulnerability_id=v.id).delete(synchronize_session=False)
-        err = _attach_attack_vectors(v, data.get("attack_vectors") or [])
-        if err:
-            return err
-
-    recompute_vulnerability_sla(v)
 
     new_values = {
         "cve_id": v.cve_id,
