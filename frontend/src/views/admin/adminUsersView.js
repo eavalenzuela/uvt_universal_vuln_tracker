@@ -2,6 +2,8 @@ import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 import { getState, setSession } from "../../state/store.js";
 import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
+import { createFilterRow } from "../../ui/primitives/filters.js";
+import { createEmptyState } from "../../ui/primitives/table.js";
 
 function pill(label, color, subtle = false) {
   const baseColor = color || "#1f2937";
@@ -85,16 +87,11 @@ export async function AdminUsersView() {
   const exportBtn = el("button", { class: "btn" }, "Export CSV");
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
 
-  const controls = el("div", { class: "row", style: "gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0;" },
-    searchInput,
-    statusSelect,
-    roleSelect,
-    pageSizeSelect,
-    applyBtn,
-    el("div", { class: "spacer" }),
-    inviteBtn,
-    exportBtn,
-  );
+  const controls = createFilterRow({
+    controls: [searchInput, statusSelect, roleSelect, pageSizeSelect, applyBtn],
+    actions: [inviteBtn, exportBtn],
+  });
+  controls.style.margin = "12px 0";
 
   const statsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
     statCard("Total users", totalEl, "Across current filters"),
@@ -177,7 +174,7 @@ export async function AdminUsersView() {
 
       userList.innerHTML = "";
       if (!items.length) {
-        userList.appendChild(el("div", { class: "muted", text: "No users found." }));
+        userList.appendChild(createEmptyState("No users found."));
       }
 
       applyStats(items, total);
