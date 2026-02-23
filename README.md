@@ -12,6 +12,7 @@ Universal Vulnerability Tracker (UVT) is a Flask + vanilla JavaScript applicatio
 - [Common workflows](#common-workflows)
 - [Testing](#testing)
 - [Repository hygiene](#repository-hygiene)
+- [Backend architecture](#backend-architecture)
 
 ## Project layout
 - `backend/` – Flask app factory, API blueprints, services, and models
@@ -91,7 +92,7 @@ Set a global before `src/main.js` loads:
 
 ### Useful entry points
 - `backend/uvt_app.py` – App factory and extension wiring
-- `backend/models.py` – Core SQLAlchemy models
+- `backend/models/` – Core SQLAlchemy models organized by bounded context
 - `frontend/src/main.js` – Frontend bootstrap and routing
 
 ### Flask shell for local inspection
@@ -120,3 +121,8 @@ node --test frontend/tests/**/*.test.js
   find . -type d -name '__pycache__' -prune -exec rm -rf {} +
   find . -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) -delete
   ```
+
+
+## Backend architecture
+
+See `docs/backend-architecture.md` for bounded context ownership and model placement rules.
