@@ -64,7 +64,7 @@ class Vulnerability(db.Model):
     published_date = db.Column(db.Date)
     last_modified_date = db.Column(db.Date)
 
-    status = db.Column(db.String(20), default="Open", nullable=False)  # Open/In Progress/Resolved/Closed
+    status = db.Column(db.String(20), default="Open", nullable=False, index=True)  # Open/In Progress/Resolved/Closed
     sla_due_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -73,8 +73,8 @@ class Vulnerability(db.Model):
     merged_into_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="SET NULL"), index=True)
     merge_metadata_json = db.Column(db.JSON, default=dict, nullable=False)
 
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
-    assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
 
     creator = db.relationship("User", foreign_keys=[created_by])
     assignee = db.relationship("User", foreign_keys=[assigned_to])

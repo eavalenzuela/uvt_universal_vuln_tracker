@@ -1,12 +1,13 @@
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 
 from ..database import db
 from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl, SoftwareComponent
 from ..auth import login_required, role_required
 from ..services.audit import log_audit_event, model_snapshot
+from .validation import ValidationError, error_response, paginate_query
 
 bp = Blueprint("products_api", __name__, url_prefix="/api")
 
@@ -107,8 +108,12 @@ def _parse_date(date_str):
 @bp.get("/products")
 @login_required
 def list_products():
-    products = Product.query.order_by(asc(Product.name)).all()
-    return jsonify([_product_json(p) for p in products])
+    query = Product.query.order_by(asc(Product.name))
+    try:
+        products, meta = paginate_query(query)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    return jsonify({"items": [_product_json(p) for p in products], **meta})
 
 @bp.post("/products")
 @role_required("Admin", "Analyst")
@@ -260,6 +265,7 @@ def create_version(product_id: int):
         _audit("CREATE", "product_versions", v.id, new_values=model_snapshot(v))
         db.session.commit()
     except Exception:
+        current_app.logger.exception("Failed to create product version")
         db.session.rollback()
         return jsonify({"error": "Duplicate version for product (or invalid data)"}), 400
 
@@ -293,6 +299,7 @@ def update_version(product_id: int, version_id: int):
         _audit("UPDATE", "product_versions", v.id, old_values=old_values, new_values=model_snapshot(v))
         db.session.commit()
     except Exception:
+        current_app.logger.exception("Failed to update product version %s", version_id)
         db.session.rollback()
         return jsonify({"error": "Unable to update version (duplicate?)"}), 400
 

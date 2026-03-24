@@ -235,7 +235,7 @@ def authenticate_request():
             )
             if issued_dt <= last_revoked_at:
                 return None, None, (jsonify({"error": "Token revoked"}), 401)
-        except Exception:
+        except (TypeError, ValueError, OSError):
             return None, None, (jsonify({"error": "Invalid token"}), 401)
 
     request.user = user

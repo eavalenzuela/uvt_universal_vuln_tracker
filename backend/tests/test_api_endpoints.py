@@ -251,7 +251,7 @@ def test_user_management_endpoints(app, client):
 
     list_resp = client.get("/api/users?search=analyst&role=Analyst&status=active", headers=headers)
     assert list_resp.status_code == 200
-    assert any(u["username"] == "analyst" for u in list_resp.get_json())
+    assert any(u["username"] == "analyst" for u in list_resp.get_json()["items"])
 
     invalid_filter = client.get("/api/users?role=Unknown", headers=headers)
     assert invalid_filter.status_code == 400
@@ -282,7 +282,7 @@ def test_user_management_endpoints(app, client):
 
     audit_resp = client.get("/api/audit-logs?action=RESET_PASSWORD&table=users", headers=headers)
     assert audit_resp.status_code == 200
-    reset_entry = audit_resp.get_json()[0]
+    reset_entry = audit_resp.get_json()["items"][0]
     assert reset_entry["old_values"] == {"password_reset": True}
     assert reset_entry["new_values"] is None
     assert "password_hash" not in json.dumps(reset_entry)
@@ -301,7 +301,7 @@ def test_user_management_endpoints(app, client):
 
     active_list = client.get("/api/users/active", headers=headers)
     assert active_list.status_code == 200
-    assert any(u["username"] == "analyst" for u in active_list.get_json())
+    assert any(u["username"] == "analyst" for u in active_list.get_json()["items"])
 
     export = client.get("/api/users/export", headers=headers)
     assert export.status_code == 200
@@ -323,7 +323,7 @@ def test_product_crud_with_versions(app, client):
 
     list_resp = client.get("/api/products", headers=headers)
     assert list_resp.status_code == 200
-    assert any(p["name"] == "Product A" for p in list_resp.get_json())
+    assert any(p["name"] == "Product A" for p in list_resp.get_json()["items"])
 
     detail_resp = client.get(f"/api/products/{product_id}", headers=headers)
     assert detail_resp.status_code == 200
@@ -1563,7 +1563,7 @@ def test_notification_rule_crud_and_test_send(app, client):
 
     list_resp = client.get("/api/notification-rules", headers=headers)
     assert list_resp.status_code == 200
-    assert any(r["id"] == rule_id for r in list_resp.get_json())
+    assert any(r["id"] == rule_id for r in list_resp.get_json()["items"])
 
     update_resp = client.put(
         f"/api/notification-rules/{rule_id}",
@@ -1726,7 +1726,7 @@ def test_saved_vulnerability_filters_crud_and_visibility(app, client):
 
     viewer_list = client.get("/api/vulnerabilities/filters", headers=viewer_headers)
     assert viewer_list.status_code == 200
-    viewer_ids = {item["id"] for item in viewer_list.get_json()}
+    viewer_ids = {item["id"] for item in viewer_list.get_json()["items"]}
     assert shared_id in viewer_ids
     assert private_id not in viewer_ids
 
@@ -1920,11 +1920,11 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
 
     analyst_list = client.get("/api/reports/schedules", headers=headers_analyst)
     assert analyst_list.status_code == 200
-    assert len(analyst_list.get_json()) == 1
+    assert len(analyst_list.get_json()["items"]) == 1
 
     admin_list = client.get("/api/reports/schedules", headers=headers_admin)
     assert admin_list.status_code == 200
-    assert any(item["id"] == schedule_id for item in admin_list.get_json())
+    assert any(item["id"] == schedule_id for item in admin_list.get_json()["items"])
 
 
     update_resp = client.patch(
@@ -2684,7 +2684,7 @@ def test_report_templates_crud_visibility_and_schedule_inheritance(app, client, 
 
     list_for_other = client.get("/api/reports/templates", headers=headers_other)
     assert list_for_other.status_code == 200
-    assert any(item["id"] == template_id for item in list_for_other.get_json())
+    assert any(item["id"] == template_id for item in list_for_other.get_json()["items"])
 
     update_forbidden = client.patch(
         f"/api/reports/templates/{template_id}",

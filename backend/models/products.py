@@ -149,6 +149,7 @@ class SoftwareComponent(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("product_version_id", "bom_ref", name="unique_component_bom_ref"),
+        db.Index("ix_software_components_version_name", "product_version_id", "name"),
     )
 
 class ComponentDependency(db.Model):

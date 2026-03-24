@@ -189,6 +189,7 @@ def oidc_callback():
     try:
         result = complete_oidc_login(current_app.config, code, state)
     except Exception:
+        current_app.logger.exception("OIDC callback failed")
         return error_response("OIDC authentication failed", status_code=401)
 
     frontend_redirect = current_app.config.get("FRONTEND_LOGIN_SUCCESS_URL", "http://127.0.0.1:5173/login")

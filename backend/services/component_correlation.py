@@ -12,14 +12,19 @@ def correlate_vulnerability_to_components(
     source: str,
     cve_id: str | None,
     raw_payload: Mapping[str, Any] | None = None,
+    product_version_id: int | None = None,
 ) -> int:
     if not cve_id:
         return 0
 
     linked = 0
-    components = SoftwareComponent.query.all()
     candidate_purls = _extract_candidate_purls(raw_payload)
     candidate_cpes = _extract_candidate_cpes(raw_payload)
+
+    query = SoftwareComponent.query
+    if product_version_id is not None:
+        query = query.filter(SoftwareComponent.product_version_id == product_version_id)
+    components = query.all()
 
     for component in components:
         match_type = None

@@ -80,8 +80,18 @@ def create_app():
     )
 
     # Config (SQLite by default so it boots instantly)
+    runtime_env = os.getenv("FLASK_ENV", os.getenv("ENV", "production")).strip().lower()
+
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret")
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "dev-jwt-secret")
+
+    if runtime_env not in ("development", "dev", "testing", "test"):
+        for key in ("SECRET_KEY", "JWT_SECRET"):
+            if app.config[key] in ("dev-secret", "dev-jwt-secret"):
+                raise RuntimeError(
+                    f"{key} is still set to its development default. "
+                    f"Set the {key} environment variable before running in production."
+                )
     app.config["REFRESH_TOKEN_LIFETIME_DAYS"] = int(os.getenv("REFRESH_TOKEN_LIFETIME_DAYS", "30"))
     app.config["ALLOW_PUBLIC_REGISTRATION"] = os.getenv("ALLOW_PUBLIC_REGISTRATION", "false").lower() in ("1", "true", "yes")
 
@@ -95,7 +105,6 @@ def create_app():
     app.config["OIDC_DEFAULT_ROLE"] = os.getenv("OIDC_DEFAULT_ROLE", "Viewer")
     app.config["OIDC_ROLE_MAPPING"] = os.getenv("OIDC_ROLE_MAPPING", "")
 
-    runtime_env = os.getenv("FLASK_ENV", os.getenv("ENV", "production")).strip().lower()
     auth_cookie_secure_default = runtime_env in ("prod", "production")
     app.config["AUTH_COOKIE_SECURE"] = _env_to_bool("AUTH_COOKIE_SECURE", auth_cookie_secure_default)
     app.config["AUTH_COOKIE_SAMESITE"] = _env_cookie_samesite(default="Lax")
@@ -153,7 +162,8 @@ def create_app():
         return jsonify({"error": "Not found"}), 404
 
     @app.errorhandler(500)
-    def server_error(_e):
+    def server_error(e):
+        app.logger.exception("Unhandled 500 error: %s", e)
         return jsonify({"error": "Server error"}), 500
 
     return app

@@ -277,8 +277,13 @@ def invite_user():
 @bp.get("/users/active")
 @role_required("Admin")
 def list_active_users():
-    users = User.query.filter(User.is_active.is_(True)).order_by(User.username.asc()).all()
-    return jsonify([_user_summary(u) for u in users])
+    query = User.query.filter(User.is_active.is_(True)).order_by(User.username.asc())
+    try:
+        from .validation import paginate_query
+        users, meta = paginate_query(query)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    return jsonify({"items": [_user_summary(u) for u in users], **meta})
 
 @bp.get("/users/<int:user_id>")
 @role_required("Admin")

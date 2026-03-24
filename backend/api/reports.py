@@ -17,7 +17,7 @@ from ..models import Product, ProductVersion, ReportArtifact, ReportSchedule, Re
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..services.email_delivery import EmailDeliveryError, send_email
 from ..rate_limiter import rate_limit
-from .validation import ValidationError, enum_value, error_response, required_string
+from .validation import ValidationError, enum_value, error_response, paginate_query, required_string
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.reporting_service import dashboard_aggregate, risk_trends
 from ..serializers.report_serializers import serialize_template
@@ -501,11 +501,15 @@ def report_risk_trends():
 @bp.get("/reports/templates")
 @login_required
 def list_report_templates():
-    templates = _query_visible_templates(request.user).order_by(
+    query = _query_visible_templates(request.user).order_by(
         asc(ReportTemplate.name),
         asc(ReportTemplate.id),
-    ).all()
-    return jsonify([_serialize_template(t) for t in templates])
+    )
+    try:
+        templates, meta = paginate_query(query)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    return jsonify({"items": [_serialize_template(t) for t in templates], **meta})
 
 
 @bp.post("/reports/templates")
@@ -665,8 +669,12 @@ def list_report_schedules():
     q = ReportSchedule.query
     if request.user.role != "Admin":
         q = q.filter(ReportSchedule.created_by == request.user.id)
-    rows = q.order_by(desc(ReportSchedule.created_at)).all()
-    return jsonify([_schedule_json(r) for r in rows])
+    q = q.order_by(desc(ReportSchedule.created_at))
+    try:
+        rows, meta = paginate_query(q)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    return jsonify({"items": [_schedule_json(r) for r in rows], **meta})
 
 
 @bp.patch("/reports/schedules/<int:schedule_id>")

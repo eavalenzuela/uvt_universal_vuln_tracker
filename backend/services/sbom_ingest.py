@@ -22,12 +22,13 @@ def ingest_sbom(*, product_version_id: int, sbom_payload: Mapping[str, Any], fmt
     dependencies_added = _upsert_dependencies(product_version_id, component_map, normalized["dependencies"])
 
     mapped_vulns = 0
-    for vuln in Vulnerability.query.filter(Vulnerability.cve_id.isnot(None)).all():
+    for vuln in Vulnerability.query.filter(Vulnerability.cve_id.isnot(None)).yield_per(100):
         mapped_vulns += correlate_vulnerability_to_components(
             vuln,
             source=f"sbom:{fmt}",
             cve_id=vuln.cve_id,
             raw_payload=None,
+            product_version_id=product_version_id,
         )
 
     db.session.commit()

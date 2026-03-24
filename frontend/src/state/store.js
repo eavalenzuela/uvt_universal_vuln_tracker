@@ -88,6 +88,7 @@ export function upsertNotification(notification) {
     state.notifications.items = next.slice(0, 50);
   }
   state.notifications.unreadCount = state.notifications.items.filter((item) => !item.is_read).length;
+  emit();
 }
 
 export function removeNotification(notificationId) {

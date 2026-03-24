@@ -8,7 +8,7 @@ from ..database import db
 from ..models import NotificationDeliveryLog, NotificationRule, Vulnerability
 from ..services.audit import log_audit_event
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
-from .validation import ValidationError, enum_value, error_response, parse_bool, parse_int, required_string
+from .validation import ValidationError, enum_value, error_response, paginate_query, parse_bool, parse_int, required_string
 
 bp = Blueprint("notification_rules_api", __name__, url_prefix="/api")
 
@@ -52,8 +52,12 @@ def _rule_json(rule: NotificationRule):
 @bp.get("/notification-rules")
 @role_required("Admin")
 def list_rules():
-    rows = NotificationRule.query.order_by(NotificationRule.id.desc()).all()
-    return jsonify([_rule_json(row) for row in rows])
+    query = NotificationRule.query.order_by(NotificationRule.id.desc())
+    try:
+        rows, meta = paginate_query(query)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
+    return jsonify({"items": [_rule_json(row) for row in rows], **meta})
 
 
 @bp.post("/notification-rules")
@@ -64,6 +68,8 @@ def create_rule():
         name = required_string(data, "name")
         adapter = enum_value(data.get("delivery_adapter", "slack"), field="delivery_adapter", options=VALID_ADAPTERS)
         severity_threshold = enum_value(data.get("severity_threshold", "Medium"), field="severity_threshold", options=VALID_SEVERITIES)
+        frequency_days = parse_int(data.get("frequency_days", 3), field="frequency_days", minimum=1, required=True)
+        escalation_after_days = parse_int(data.get("escalation_after_days", 7), field="escalation_after_days", minimum=0, required=True)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
@@ -76,8 +82,8 @@ def create_rule():
         notify_on_status_change=bool(data.get("notify_on_status_change", True)),
         notify_on_assignment_change=bool(data.get("notify_on_assignment_change", True)),
         product_scope=data.get("product_scope") or [],
-        frequency_days=max(int(data.get("frequency_days", 3)), 1),
-        escalation_after_days=max(int(data.get("escalation_after_days", 7)), 0),
+        frequency_days=frequency_days,
+        escalation_after_days=escalation_after_days,
         channels=data.get("channels") or [],
         recipients=data.get("recipients") or [],
         created_by=request.user.id,
@@ -122,15 +128,15 @@ def update_rule(rule_id: int):
 
     if "frequency_days" in data:
         try:
-            rule.frequency_days = max(int(data.get("frequency_days") or 1), 1)
-        except (TypeError, ValueError):
-            return error_response("frequency_days must be an integer", field="frequency_days")
+            rule.frequency_days = parse_int(data.get("frequency_days") or 1, field="frequency_days", minimum=1, required=True)
+        except ValidationError as exc:
+            return error_response(exc.error, field=exc.field, details=exc.details)
 
     if "escalation_after_days" in data:
         try:
-            rule.escalation_after_days = max(int(data.get("escalation_after_days") or 0), 0)
-        except (TypeError, ValueError):
-            return error_response("escalation_after_days must be an integer", field="escalation_after_days")
+            rule.escalation_after_days = parse_int(data.get("escalation_after_days") or 0, field="escalation_after_days", minimum=0, required=True)
+        except ValidationError as exc:
+            return error_response(exc.error, field=exc.field, details=exc.details)
 
     if "channels" in data:
         channels = data.get("channels")

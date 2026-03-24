@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 
 from ..database import db
@@ -216,6 +216,7 @@ def create_vulnerability():
     try:
         db.session.commit()
     except Exception:
+        current_app.logger.exception("Failed to create vulnerability")
         db.session.rollback()
         return error_response("Failed to create vulnerability (duplicate CVE? invalid data?)", status_code=400)
 
@@ -610,6 +611,7 @@ def _bulk_update_vulnerabilities():
                 db.session.flush()
                 updated.append(vuln.id)
         except Exception as exc:
+            current_app.logger.exception("Batch update failed for vulnerability %s", vuln.id)
             db.session.rollback()
             failed.append({"id": vuln.id, "error": str(exc)})
 

@@ -5,7 +5,7 @@ from datetime import date
 import re
 from typing import Any, Callable, Iterable
 
-from flask import jsonify
+from flask import jsonify, request
 
 
 _CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
@@ -167,3 +167,26 @@ def validate_schema(data: dict[str, Any], schema: dict[str, FieldSchema]) -> dic
             continue
         validated[field] = config.parser(raw_value)
     return validated
+
+
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
+
+
+def paginate_query(query, *, default_per_page: int = DEFAULT_PAGE_SIZE, max_per_page: int = MAX_PAGE_SIZE):
+    """Apply pagination to a SQLAlchemy query using ?page=&per_page= query params.
+
+    Returns (items, meta) where meta is a dict with pagination info.
+    """
+    page = parse_int(request.args.get("page", 1), field="page", minimum=1, required=True)
+    per_page = parse_int(request.args.get("per_page", default_per_page), field="per_page", minimum=1, maximum=max_per_page, required=True)
+
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return items, {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": (total + per_page - 1) // per_page if per_page else 0,
+    }
