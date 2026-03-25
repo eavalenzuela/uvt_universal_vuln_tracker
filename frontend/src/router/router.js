@@ -1,6 +1,7 @@
 import { ROUTES } from "./routes.js";
 import { renderShell } from "../ui/layout/shell.js";
 import { toast } from "../ui/components/toast.js";
+import { closeNotificationDropdown } from "../ui/layout/header.js";
 
 let _currentPath = "/";
 let _currentParams = {};
@@ -73,6 +74,7 @@ function matchRoute(pathname) {
 export async function route() {
   _currentPath = getHashPath();
   _currentParams = {};
+  closeNotificationDropdown();
 
   const matched = matchRoute(_currentPath);
   const main = document.getElementById("app-main");

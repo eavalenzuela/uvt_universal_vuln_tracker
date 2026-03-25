@@ -20,7 +20,7 @@ class ValidationError(Exception):
 
 
 def error_response(error: str, *, field: str | None = None, details: Any = None, status_code: int = 400):
-    payload = {"error": error, "field": field, "details": details, "status": status_code}
+    payload = {"error": error, "field": field, "details": details}
     return jsonify(payload), status_code
 
 

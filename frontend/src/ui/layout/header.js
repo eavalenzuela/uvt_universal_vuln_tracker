@@ -7,6 +7,10 @@ import { navigate } from "../../router/router.js";
 
 let dropdownOpen = false;
 
+export function closeNotificationDropdown() {
+  dropdownOpen = false;
+}
+
 function relativeTime(value) {
   if (!value) return "";
   const delta = Date.now() - new Date(value).getTime();
@@ -47,6 +51,9 @@ export function renderHeader() {
       {
         class: "btn",
         title: "Notifications",
+        "aria-label": `Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`,
+        "aria-expanded": String(dropdownOpen),
+        "aria-haspopup": "true",
         onclick: async () => {
           dropdownOpen = !dropdownOpen;
           if (dropdownOpen) await refreshNotificationPreview();
@@ -62,7 +69,28 @@ export function renderHeader() {
       const items = (state?.notifications?.items || []).slice(0, 5);
       const dropdown = el("div", {
         class: "card",
+        role: "menu",
+        "aria-label": "Notifications",
+        tabindex: "-1",
         style: "position:absolute; right:12px; top:56px; width:360px; z-index:40; max-height:420px; overflow:auto;",
+      });
+      dropdown.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          dropdownOpen = false;
+          renderHeader();
+          return;
+        }
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const focusable = [...dropdown.querySelectorAll("button")];
+          const idx = focusable.indexOf(document.activeElement);
+          const next = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+          if (focusable[next]) focusable[next].focus();
+        }
+      });
+      requestAnimationFrame(() => {
+        const first = dropdown.querySelector("button");
+        if (first) first.focus();
       });
       dropdown.appendChild(el("div", { class: "row", style: "padding:10px;" },
         el("strong", {}, "Notification Center"),
@@ -84,6 +112,7 @@ export function renderHeader() {
           dropdown.appendChild(
             el("button", {
               class: "btn",
+              role: "menuitem",
               style: `display:block; text-align:left; width:100%; border-radius:0; border-left:3px solid ${item.is_read ? "transparent" : "#2563eb"};`,
               onclick: async () => {
                 if (!item.is_read && item.id) {

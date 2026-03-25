@@ -48,9 +48,9 @@ export async function ControlsView() {
   const list = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 12px;" });
   const summary = el("div", { class: "muted", text: "Loading controls..." });
   const createToggle = el("button", { class: "btn primary", type: "button" }, "New control");
-  const createName = el("input", { class: "input", placeholder: "Control name", required: "true" });
-  const createFramework = el("input", { class: "input", placeholder: "Framework (optional)" });
-  const createDescription = el("textarea", { class: "input", placeholder: "Description (optional)" });
+  const createName = el("input", { class: "input", placeholder: "Control name", required: "true", "aria-label": "Control name" });
+  const createFramework = el("input", { class: "input", placeholder: "Framework (optional)", "aria-label": "Framework" });
+  const createDescription = el("textarea", { class: "input", placeholder: "Description (optional)", "aria-label": "Description" });
   const createSubmit = el("button", { class: "btn", type: "submit" }, "Create control");
 
   const createForm = el(

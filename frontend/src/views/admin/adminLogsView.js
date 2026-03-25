@@ -26,9 +26,9 @@ function logCard(log) {
 }
 
 export async function AdminLogsView() {
-  const pageSizeInput = el("input", { class: "input", type: "number", min: 1, max: 500, value: 100 });
-  const actionInput = el("input", { class: "input", placeholder: "Action (optional)" });
-  const tableInput = el("input", { class: "input", placeholder: "Table (optional)" });
+  const pageSizeInput = el("input", { class: "input", type: "number", min: 1, max: 500, value: 100, "aria-label": "Page size" });
+  const actionInput = el("input", { class: "input", placeholder: "Action (optional)", "aria-label": "Filter by action" });
+  const tableInput = el("input", { class: "input", placeholder: "Table (optional)", "aria-label": "Filter by table" });
   const refreshBtn = el("button", { class: "btn" }, "Refresh logs");
   const list = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
   const pageInfo = el("div", { class: "muted", text: "Page 1" });

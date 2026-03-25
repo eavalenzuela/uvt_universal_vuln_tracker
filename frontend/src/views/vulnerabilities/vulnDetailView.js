@@ -1,5 +1,7 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { promptModal } from "../../ui/components/modal.js";
+import { withLoading } from "../../ui/components/loading.js";
 import { navigate } from "../../router/router.js";
 import { getState } from "../../state/store.js";
 import {
@@ -101,20 +103,20 @@ function renderCommentItem(item, currentUser, onRefresh) {
       el("button", {
         class: "btn",
         text: "Edit",
-        onClick: async () => {
-          const nextBody = window.prompt("Update comment", item.body || "");
+        onClick: withLoading(async () => {
+          const nextBody = await promptModal({ title: "Update comment", defaultValue: item.body || "", inputLabel: "Comment body" });
           if (nextBody === null) return;
           await updateVulnerabilityComment(item.vulnerability_id, item.id, nextBody);
           await onRefresh();
-        },
+        }, { loadingText: "Saving\u2026" }),
       }),
       el("button", {
         class: "btn danger",
         text: "Delete",
-        onClick: async () => {
+        onClick: withLoading(async () => {
           await deleteVulnerabilityComment(item.vulnerability_id, item.id);
           await onRefresh();
-        },
+        }, { loadingText: "Deleting\u2026" }),
       }),
     );
   }
@@ -157,13 +159,13 @@ export async function VulnDetailView(params = {}) {
       const commentSubmit = el("button", {
         class: "btn",
         text: "Add comment",
-        onClick: async () => {
+        onClick: withLoading(async () => {
           const value = (commentInput.value || "").trim();
           if (!value) return;
           await createVulnerabilityComment(vulnId, value);
           commentInput.value = "";
           await render();
-        },
+        }, { loadingText: "Posting\u2026" }),
       });
 
       container.innerHTML = "";
@@ -208,11 +210,11 @@ export async function VulnDetailView(params = {}) {
             ? el("button", {
                 class: "btn",
                 text: isWatching ? "Unwatch" : "Watch",
-                onClick: async () => {
+                onClick: withLoading(async () => {
                   if (isWatching) await unwatchVulnerability(vulnId, currentUser.id);
                   else await watchVulnerability(vulnId);
                   await render();
-                },
+                }),
               })
             : null,
         ),
@@ -232,7 +234,7 @@ export async function VulnDetailView(params = {}) {
                           `Merge vulnerability #${choice.id} into #${vuln.id}? This will move versions, components, comments, and watchers.`,
                         );
                         if (!confirm) return;
-                        const reason = window.prompt("Optional merge reason", "") || undefined;
+                        const reason = (await promptModal({ title: "Merge reason", message: "Optionally provide a reason for this merge.", inputLabel: "Reason", placeholder: "Reason (optional)" })) || undefined;
                         await mergeVulnerability(vuln.id, choice.id, reason);
                         toast({ title: "Vulnerabilities merged", message: `Merged #${choice.id} into #${vuln.id}` });
                         await render();

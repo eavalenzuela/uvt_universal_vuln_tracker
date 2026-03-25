@@ -1,5 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
+import { promptModal } from "../../../ui/components/modal.js";
 import {
   listVulnerabilities,
   createVulnerability,
@@ -1143,9 +1144,9 @@ export async function VulnListView(params = {}) {
   };
 
   saveCurrentBtn.addEventListener("click", async () => {
-    const name = window.prompt("Name for this saved filter:");
-    if (!name || !name.trim()) return;
-    const visibility = (window.prompt("Visibility: private or shared", "private") || "private").toLowerCase();
+    const name = await promptModal({ title: "Save filter", inputLabel: "Filter name", placeholder: "Name for this saved filter", required: true });
+    if (name === null) return;
+    const visibility = (await promptModal({ title: "Filter visibility", inputLabel: "Visibility", defaultValue: "private", message: "Enter 'private' or 'shared'." }) || "private").toLowerCase();
     try {
       await createSavedVulnerabilityFilter({
         name: name.trim(),

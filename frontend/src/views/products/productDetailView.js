@@ -123,6 +123,7 @@ export async function ProductDetailView(params = {}) {
             return;
           }
           saveBtn.disabled = true;
+          saveBtn.textContent = "Saving\u2026";
           try {
             await updateProduct(productId, { name: nextName, description: descInput.value.trim() || undefined });
             toast({ title: "Product updated", message: `${nextName} saved.` });
@@ -131,6 +132,7 @@ export async function ProductDetailView(params = {}) {
             toast({ title: "Update failed", message: err?.message || "Unable to save product" });
           } finally {
             saveBtn.disabled = false;
+            saveBtn.textContent = "Save";
           }
         });
 
@@ -163,6 +165,7 @@ export async function ProductDetailView(params = {}) {
             return;
           }
           addBtn.disabled = true;
+          addBtn.textContent = "Creating\u2026";
           try {
             await createProductVersion(productId, {
               version,
@@ -175,6 +178,7 @@ export async function ProductDetailView(params = {}) {
             toast({ title: "Failed", message: err?.message || "Unable to create version" });
           } finally {
             addBtn.disabled = false;
+            addBtn.textContent = "Create version";
           }
         });
 

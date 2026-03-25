@@ -22,6 +22,7 @@ export async function LoginView() {
 
   btn.addEventListener("click", async () => {
     btn.disabled = true;
+    btn.textContent = "Logging in\u2026";
     try {
       const username = usernameInput.value.trim();
       const password = passwordInput.value;
@@ -47,6 +48,7 @@ export async function LoginView() {
       toast({ title: "Login failed", message: e?.message || "Unknown error" });
     } finally {
       btn.disabled = false;
+      btn.textContent = "Log in";
     }
   });
 

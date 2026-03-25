@@ -54,7 +54,8 @@ function startLiveNotificationStream() {
   });
 
   liveStream.onerror = () => {
-    if (liveStream?.readyState === EventSource.CLOSED) {
+    if (liveStream) {
+      liveStream.close();
       liveStream = null;
     }
   };

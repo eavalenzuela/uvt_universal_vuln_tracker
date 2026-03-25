@@ -1,5 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { promptModal } from "../../ui/components/modal.js";
 import { getState, setSession } from "../../state/store.js";
 import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
 import { createFilterRow } from "../../ui/primitives/filters.js";
@@ -64,7 +65,7 @@ export async function AdminUsersView() {
   const pendingEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
   const disabledEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
 
-  const searchInput = el("input", { class: "input", type: "search", placeholder: "Search by name, email, or username" });
+  const searchInput = el("input", { class: "input", type: "search", placeholder: "Search by name, email, or username", "aria-label": "Search users" });
   const statusSelect = el("select", { class: "input" },
     el("option", { value: "", text: "Filter by status" }),
     el("option", { value: "active", text: "Active" }),
@@ -100,15 +101,15 @@ export async function AdminUsersView() {
     statCard("Disabled (page)", disabledEl, "Shown on this page"),
   );
 
-  const inviteUsername = el("input", { class: "input", placeholder: "Username", required: "true" });
-  const inviteEmail = el("input", { class: "input", placeholder: "Email", required: "true" });
+  const inviteUsername = el("input", { class: "input", placeholder: "Username", required: "true", "aria-label": "Username" });
+  const inviteEmail = el("input", { class: "input", placeholder: "Email", required: "true", "aria-label": "Email" });
   const inviteRole = el("select", { class: "input" },
     el("option", { value: "Admin", text: "Admin" }),
     el("option", { value: "Analyst", text: "Analyst", selected: "true" }),
     el("option", { value: "Viewer", text: "Viewer" }),
   );
-  const inviteFirstName = el("input", { class: "input", placeholder: "First name (optional)" });
-  const inviteLastName = el("input", { class: "input", placeholder: "Last name (optional)" });
+  const inviteFirstName = el("input", { class: "input", placeholder: "First name (optional)", "aria-label": "First name" });
+  const inviteLastName = el("input", { class: "input", placeholder: "Last name (optional)", "aria-label": "Last name" });
   const inviteSubmit = el("button", { class: "btn primary", type: "submit" }, "Send invite");
   const inviteCancel = el("button", { class: "btn", type: "button" }, "Cancel");
 
@@ -181,7 +182,7 @@ export async function AdminUsersView() {
       items.forEach((u) => userList.appendChild(userCard(u, {
         onImpersonate: async (user) => {
           try {
-            const reason = window.prompt(`Why are you impersonating ${user.username}?`);
+            const reason = await promptModal({ title: "Impersonation reason", message: `Why are you impersonating ${user.username}?`, inputLabel: "Reason", required: true });
             if (!reason) {
               toast({ title: "Impersonation cancelled", message: "A reason is required" });
               return;
