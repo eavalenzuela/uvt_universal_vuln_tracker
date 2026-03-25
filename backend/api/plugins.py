@@ -16,22 +16,10 @@ from ..plugins.config import prepare_plugin_config, validate_config_schema
 from ..plugins.registry import PluginRegistry
 from ..plugins.runner import enqueue_plugin_run, get_latest_plugin_run, get_plugin_run_by_id
 from ..plugins.state import get_plugin_config, upsert_plugin_config
-from ..services.audit import log_audit_event
+from ..services.audit import record_audit as _audit
 from ..serializers.plugin_serializers import artifact_json, plugin_run_json, redact_storage_path
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
-
-
-def _audit(action, resource, record_id, *, old_values=None, new_values=None):
-    actor = getattr(request, "user", None)
-    db.session.add(log_audit_event(
-        actor_id=actor.id if actor else None,
-        action=action,
-        resource=resource,
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
 
 
 def _plugin_run_json(run):

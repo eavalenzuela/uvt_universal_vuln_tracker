@@ -20,6 +20,7 @@ from backend.uvt_app import create_app
 def app(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("ALLOW_PUBLIC_REGISTRATION", "true")
+    monkeypatch.setenv("FLASK_ENV", "testing")
     app = create_app()
     app.config.update(TESTING=True)
 

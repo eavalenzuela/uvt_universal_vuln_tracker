@@ -5,32 +5,10 @@ from ..database import db
 from ..models import Control
 from ..auth import login_required, role_required
 from .validation import ValidationError, error_response, required_string
-from ..services.audit import log_audit_event, model_snapshot
+from ..services.audit import model_snapshot, record_audit as _audit
+from ..serializers.control_serializers import control_json as _control_json
 
 bp = Blueprint("controls_api", __name__, url_prefix="/api")
-
-
-def _audit(action, resource, record_id, *, old_values=None, new_values=None):
-    actor = getattr(request, "user", None)
-    db.session.add(log_audit_event(
-        actor_id=actor.id if actor else None,
-        action=action,
-        resource=resource,
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
-
-
-def _control_json(control: Control):
-    return {
-        "id": control.id,
-        "name": control.name,
-        "framework": control.framework,
-        "description": control.description,
-        "created_at": control.created_at.isoformat(),
-        "updated_at": control.updated_at.isoformat(),
-    }
 
 
 @bp.get("/controls")

@@ -3,11 +3,11 @@ from sqlalchemy import asc
 
 from ..database import db
 from ..models import (
+    AuditLog,
     Vulnerability,
     VulnerabilityVersion,
     VulnerabilityAttackVector,
     VulnerabilityTerminalImpact,
-    AuditLog,
     AttackVector,
     ProductVersion,
     Product,

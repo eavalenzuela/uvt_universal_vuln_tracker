@@ -103,3 +103,19 @@ def log_audit_event(
         new_values=scrub_snapshot(new_values) if new_values is not None else None,
     )
     return db_row
+
+
+def record_audit(action: str, resource: str, record_id: int | None, *, old_values=None, new_values=None):
+    """Convenience wrapper: resolves the current request user and adds the log to the session."""
+    from flask import request
+    from ..database import db
+
+    actor = getattr(request, "user", None)
+    db.session.add(log_audit_event(
+        actor_id=actor.id if actor else None,
+        action=action,
+        resource=resource,
+        record_id=record_id,
+        old_values=old_values,
+        new_values=new_values,
+    ))

@@ -6,47 +6,15 @@ from sqlalchemy import desc
 from ..auth import role_required
 from ..database import db
 from ..models import NotificationDeliveryLog, NotificationRule, Vulnerability
-from ..services.audit import log_audit_event
+from ..services.audit import record_audit as _audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from ..serializers.notification_rule_serializers import rule_json as _rule_json
 from .validation import ValidationError, enum_value, error_response, paginate_query, parse_bool, parse_int, required_string
 
 bp = Blueprint("notification_rules_api", __name__, url_prefix="/api")
 
 VALID_ADAPTERS = {"slack", "jira", "webhook", "email"}
 VALID_SEVERITIES = {"None", "Low", "Medium", "High", "Critical"}
-
-
-def _audit(action, table, record_id, *, old_values=None, new_values=None):
-    actor = getattr(request, "user", None)
-    db.session.add(log_audit_event(
-        actor_id=actor.id if actor else None,
-        action=action,
-        resource=table,
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
-
-
-def _rule_json(rule: NotificationRule):
-    return {
-        "id": rule.id,
-        "name": rule.name,
-        "is_enabled": rule.is_enabled,
-        "delivery_adapter": rule.delivery_adapter,
-        "delivery_config": rule.delivery_config or {},
-        "severity_threshold": rule.severity_threshold,
-        "notify_on_status_change": rule.notify_on_status_change,
-        "notify_on_assignment_change": rule.notify_on_assignment_change,
-        "product_scope": rule.product_scope or [],
-        "frequency_days": rule.frequency_days,
-        "escalation_after_days": rule.escalation_after_days,
-        "channels": rule.channels or [],
-        "recipients": rule.recipients or [],
-        "created_by": rule.created_by,
-        "created_at": rule.created_at.isoformat() if rule.created_at else None,
-        "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
-    }
 
 
 @bp.get("/notification-rules")

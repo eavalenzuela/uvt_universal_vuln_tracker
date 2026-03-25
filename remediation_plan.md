@@ -120,10 +120,12 @@ Three global caches (`cachedProductVersions`, `cachedAttackVectors`, `cachedTerm
 
 ---
 
-### 11. No Docker Support
+### ~~11. No Docker Support~~ — DONE
 No Dockerfile or docker-compose configuration exists.
 
 **Fix:** Add a `Dockerfile` and `docker-compose.yml` for local development and deployment.
+
+**Resolution:** Added multi-stage `Dockerfile` (Python 3.12-slim backend + nginx:alpine frontend), `docker-compose.yml` with 4 services (backend, frontend, postgres 16, redis 7) with health checks, `docker/nginx.conf` for frontend serving and API proxying, and `.dockerignore`.
 
 ---
 
@@ -145,11 +147,13 @@ Many async operations (comment edit/delete, product version updates, vulnerabili
 
 ## Low Priority
 
-### 14. Code Duplication
+### ~~14. Code Duplication~~ — DONE
 - Audit logging pattern is copy-pasted across 5+ API files (`products.py`, `users.py`, `vulnerabilities.py`, `notification_rules.py`, `plugins.py`)
 - Serialization helpers (`_product_json`, `_rule_json`, `_user_json`) are inline instead of centralized in `backend/serializers/`
 
 **Fix:** Extract shared audit logging into a utility. Move serialization helpers into the serializers package.
+
+**Resolution:** Added `record_audit()` convenience wrapper in `backend/services/audit.py` that resolves the current request user automatically — adopted by 5 API modules. Created `backend/serializers/product_serializers.py`, `control_serializers.py`, and `notification_rule_serializers.py`, moving inline serializers from their respective API files into the serializers package.
 
 ---
 
@@ -207,5 +211,6 @@ Dashboard layout state writes to localStorage without checking available space.
 | **2 — CI** | Add test jobs to CI (#2) | DONE |
 | **3 — Data** | Add indexes (#5) | DONE |
 | **4 — Performance** | Paginate list endpoints (#4), fix N+1s (#6) | DONE |
-| **5 — Hardening** | Rate limit remaining endpoints (#7), Docker (#11) | Pending |
+| **5 — Hardening** | Rate limit remaining endpoints (#7), ~~Docker (#11)~~ | Partial |
 | **6 — Frontend** | ~~Fix state bug (#10), cache invalidation (#9)~~, accessibility (#12) | Partial |
+| **7 — Cleanup** | ~~Code duplication (#14)~~ | DONE |

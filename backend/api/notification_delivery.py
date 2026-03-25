@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request
 from ..auth import role_required
 from ..database import db
 from ..models import NotificationDeliveryLog
-from ..services.audit import log_audit_event
+from ..services.audit import record_audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from .validation import ValidationError, error_response, parse_int
 
@@ -63,15 +63,7 @@ def _attempt_json(row: NotificationDeliveryLog):
 
 
 def _audit(action: str, record_id: int, *, old_values=None, new_values=None):
-    actor = getattr(request, "user", None)
-    db.session.add(log_audit_event(
-        actor_id=actor.id if actor else None,
-        action=action,
-        resource="notification_delivery_logs",
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
+    record_audit(action, "notification_delivery_logs", record_id, old_values=old_values, new_values=new_values)
 
 
 @bp.get("/notification-delivery-attempts")

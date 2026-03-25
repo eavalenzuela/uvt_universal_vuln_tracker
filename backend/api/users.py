@@ -7,11 +7,12 @@ from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
 
 from ..database import db
-from ..models import ApiToken, User, AuditLog
+from ..models import ApiToken, User
 from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES, ROLE_SCOPES
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
+from ..services.audit import log_audit_event
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
@@ -26,17 +27,14 @@ def _user_summary(u: User):
 
 
 def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
-    db.session.add(
-        AuditLog(
-            user_id=user_id,
-            action=action,
-            table_name=table,
-            record_id=record_id,
-            old_values=old_values,
-            new_values=new_values,
-            created_at=datetime.utcnow(),
-        )
-    )
+    db.session.add(log_audit_event(
+        actor_id=user_id,
+        action=action,
+        resource=table,
+        record_id=record_id,
+        old_values=old_values,
+        new_values=new_values,
+    ))
 
 
 def _api_token_json(token: ApiToken):
