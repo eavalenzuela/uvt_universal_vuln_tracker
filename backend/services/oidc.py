@@ -42,7 +42,7 @@ def build_login_redirect(config, next_path="/"):
     state_payload = {
         "next": safe_next_path,
         "nonce": secrets.token_urlsafe(16),
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10),
     }
     state = jwt.encode(state_payload, config["JWT_SECRET"], algorithm="HS256")
 

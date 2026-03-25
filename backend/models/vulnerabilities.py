@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from ..database import db
+from ..database import db, TZDateTime
 
 class SavedVulnerabilityFilter(db.Model):
     __tablename__ = "saved_vulnerability_filters"
@@ -14,8 +14,8 @@ class SavedVulnerabilityFilter(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 class DashboardLayoutPreset(db.Model):
     __tablename__ = "dashboard_layout_presets"
@@ -33,8 +33,8 @@ class DashboardLayoutPreset(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 class Vulnerability(db.Model):
     __tablename__ = "vulnerabilities"
@@ -65,10 +65,10 @@ class Vulnerability(db.Model):
     last_modified_date = db.Column(db.Date)
 
     status = db.Column(db.String(20), default="Open", nullable=False, index=True)  # Open/In Progress/Resolved/Closed
-    sla_due_at = db.Column(db.DateTime)
+    sla_due_at = db.Column(TZDateTime)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     is_merged = db.Column(db.Boolean, default=False, nullable=False, index=True)
     merged_into_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="SET NULL"), index=True)
     merge_metadata_json = db.Column(db.JSON, default=dict, nullable=False)
@@ -96,8 +96,8 @@ class VulnerabilityComment(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     body = db.Column(db.Text, nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
 
     vulnerability = db.relationship("Vulnerability", back_populates="comments")
@@ -112,8 +112,8 @@ class VulnerabilityWatcher(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     added_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="watchers")
     user = db.relationship("User", foreign_keys=[user_id])
@@ -134,8 +134,8 @@ class VulnerabilityComponent(db.Model):
     dependency_path = db.Column(db.Text)
     transitive_depth = db.Column(db.Integer, default=0, nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="affected_components")
     component = db.relationship("SoftwareComponent", back_populates="vulnerability_links")
@@ -157,8 +157,8 @@ class VulnerabilityVersion(db.Model):
     mitigation_status = db.Column(db.String(30), default="Not Started", nullable=False)
     notes = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="versions")
     product_version = db.relationship("ProductVersion")
@@ -174,8 +174,8 @@ class AttackVector(db.Model):
     name = db.Column(db.String(255), nullable=False, unique=True, index=True)
     description = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability_links = db.relationship("VulnerabilityAttackVector", back_populates="attack_vector", cascade="all, delete-orphan")
 
@@ -186,8 +186,8 @@ class TerminalImpact(db.Model):
     name = db.Column(db.String(255), nullable=False, unique=True, index=True)
     description = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability_links = db.relationship("VulnerabilityTerminalImpact", back_populates="terminal_impact", cascade="all, delete-orphan")
 
@@ -199,8 +199,8 @@ class VulnerabilityAttackVector(db.Model):
     attack_vector_id = db.Column(db.Integer, db.ForeignKey("attack_vectors.id", ondelete="CASCADE"), nullable=False, index=True)
     product_version_id = db.Column(db.Integer, db.ForeignKey("product_versions.id", ondelete="SET NULL"), index=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="attack_vectors")
     attack_vector = db.relationship("AttackVector", back_populates="vulnerability_links")
@@ -217,8 +217,8 @@ class VulnerabilityTerminalImpact(db.Model):
     vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True)
     terminal_impact_id = db.Column(db.Integer, db.ForeignKey("terminal_impacts.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="terminal_impacts")
     terminal_impact = db.relationship("TerminalImpact", back_populates="vulnerability_links")
@@ -236,7 +236,7 @@ class VulnerabilitySource(db.Model):
     source_id = db.Column(db.String(200), index=True)
     raw_json = db.Column(db.JSON)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     vulnerability = db.relationship("Vulnerability", back_populates="sources")
 
@@ -250,7 +250,7 @@ class SlaPolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     policy_json = db.Column(db.JSON, nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     updater = db.relationship("User", foreign_keys=[updated_by])

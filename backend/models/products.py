@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from ..database import db
+from ..database import db, TZDateTime
 
 class Product(db.Model):
     __tablename__ = "products"
@@ -9,8 +9,8 @@ class Product(db.Model):
     name = db.Column(db.String(255), nullable=False, index=True)
     description = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     creator = db.relationship("User", foreign_keys=[created_by])
@@ -27,7 +27,7 @@ class ProductOwner(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     product = db.relationship("Product", back_populates="owners")
     user = db.relationship("User")
@@ -45,8 +45,8 @@ class ProductVersion(db.Model):
     release_date = db.Column(db.Date)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     product = db.relationship("Product", back_populates="versions")
     components = db.relationship("SoftwareComponent", back_populates="product_version", cascade="all, delete-orphan")
@@ -63,8 +63,8 @@ class Control(db.Model):
     framework = db.Column(db.String(255), index=True)
     description = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     product_links = db.relationship("ProductControl", back_populates="control", cascade="all, delete-orphan")
     products = db.relationship("Product", secondary="product_controls", viewonly=True)
@@ -81,8 +81,8 @@ class ControlSource(db.Model):
     source_url = db.Column(db.Text)
     raw_json = db.Column(db.JSON)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     control = db.relationship("Control", back_populates="sources")
 
@@ -105,8 +105,8 @@ class ProductControl(db.Model):
     implementation_status = db.Column(db.String(50), default="Not Started", nullable=False)
     notes = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     product = db.relationship("Product", back_populates="control_links")
     control = db.relationship("Control", back_populates="product_links")
@@ -129,8 +129,8 @@ class SoftwareComponent(db.Model):
     component_type = db.Column(db.String(80), default="library", nullable=False)
     metadata_json = db.Column(db.JSON)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     product_version = db.relationship("ProductVersion", back_populates="components")
     parent_edges = db.relationship(
@@ -163,7 +163,7 @@ class ComponentDependency(db.Model):
     depth = db.Column(db.Integer, default=1, nullable=False)
     is_direct = db.Column(db.Boolean, default=True, nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     parent_component = db.relationship("SoftwareComponent", foreign_keys=[parent_component_id], back_populates="parent_edges")
     child_component = db.relationship("SoftwareComponent", foreign_keys=[child_component_id], back_populates="child_edges")

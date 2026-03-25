@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from ..database import db
+from ..database import db, TZDateTime
 
 class ReportSchedule(db.Model):
     __tablename__ = "report_schedules"
@@ -19,15 +19,15 @@ class ReportSchedule(db.Model):
     report_template_id = db.Column(db.Integer, db.ForeignKey("report_templates.id", ondelete="SET NULL"), index=True)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    last_run_at = db.Column(db.DateTime)
+    last_run_at = db.Column(TZDateTime)
     last_run_status = db.Column(db.String(30), nullable=False, default="never")
     last_failure_reason = db.Column(db.Text)
-    last_attempted_at = db.Column(db.DateTime)
+    last_attempted_at = db.Column(TZDateTime)
     retry_count = db.Column(db.Integer, nullable=False, default=0)
-    next_retry_at = db.Column(db.DateTime)
+    next_retry_at = db.Column(TZDateTime)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     creator = db.relationship("User", foreign_keys=[created_by])
     report_template = db.relationship("ReportTemplate", foreign_keys=[report_template_id])
@@ -53,8 +53,8 @@ class ReportTemplate(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 class ReportArtifact(db.Model):
     __tablename__ = "report_artifacts"
@@ -68,6 +68,6 @@ class ReportArtifact(db.Model):
     content_type = db.Column(db.String(255))
     filters_json = db.Column(db.JSON)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     creator = db.relationship("User", foreign_keys=[created_by])

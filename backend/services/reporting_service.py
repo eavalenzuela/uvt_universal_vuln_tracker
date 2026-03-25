@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import desc
 
@@ -38,7 +38,7 @@ def parse_iso_datetime(value, *, field):
 
 
 def range_start(range_value):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if range_value == "Month to date":
         return datetime(now.year, now.month, 1)
     if range_value == "Quarter to date":
@@ -75,7 +75,7 @@ def dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 da
     }.get(group_by, "severity")
 
     start = range_start(range_value)
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     days = max(1, (end.date() - start.date()).days + 1)
     buckets = [{"date": (start.date() + timedelta(days=i)).isoformat(), "count": 0} for i in range(days)]
 
@@ -120,7 +120,7 @@ def risk_trends(filters):
         raise ValueError("bucket must be one of day, week, month")
 
     start = parse_iso_datetime(filters.get("start_date"), field="start_date") or range_start(filters.get("range") or "Last 30 days")
-    end = parse_iso_datetime(filters.get("end_date"), field="end_date") or datetime.utcnow()
+    end = parse_iso_datetime(filters.get("end_date"), field="end_date") or datetime.now(timezone.utc)
     if start > end:
         raise ValueError("start_date must be <= end_date")
 
@@ -152,7 +152,7 @@ def risk_trends(filters):
         q = q.filter(ProductVersion.id.in_(product_version_ids))
 
     rows = q.all()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     grouped = {}
 
     for updated_at, severity, status, sla_due_at, product_id, product_name, product_version_id, product_version in rows:

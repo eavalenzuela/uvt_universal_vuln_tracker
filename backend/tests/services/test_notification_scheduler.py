@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.auth import create_user
 from backend.database import db
@@ -52,7 +52,7 @@ def test_scheduled_scan_only_overdue_or_high_risk_items_trigger(app):
         admin = _seed_admin()
         _rule(admin.id, severity_threshold="Low")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         overdue_medium = _vuln(title="Overdue medium", severity="Medium", sla_due_at=now - timedelta(days=1))
         high_not_overdue = _vuln(title="High not overdue", severity="High", sla_due_at=now + timedelta(days=2))
         low_not_overdue = _vuln(title="Low not overdue", severity="Low", sla_due_at=now + timedelta(days=2))
@@ -70,9 +70,9 @@ def test_scheduled_scan_suppresses_duplicate_reminders_within_frequency(app):
     with app.app_context():
         admin = _seed_admin()
         rule = _rule(admin.id, frequency_days=4)
-        vuln = _vuln(sla_due_at=datetime.utcnow() - timedelta(days=3))
+        vuln = _vuln(sla_due_at=datetime.now(timezone.utc) - timedelta(days=3))
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         first_logs = run_scheduled_notification_scan(now=now, dry_run=True)
         db.session.commit()
         assert len(first_logs) == 1
@@ -98,9 +98,9 @@ def test_scheduled_scan_escalation_updates_targets(app):
                 }
             },
         )
-        _vuln(sla_due_at=datetime.utcnow() - timedelta(days=5), severity="Critical")
+        _vuln(sla_due_at=datetime.now(timezone.utc) - timedelta(days=5), severity="Critical")
 
-        logs = run_scheduled_notification_scan(now=datetime.utcnow(), dry_run=True)
+        logs = run_scheduled_notification_scan(now=datetime.now(timezone.utc), dry_run=True)
         db.session.commit()
 
         assert len(logs) == 1

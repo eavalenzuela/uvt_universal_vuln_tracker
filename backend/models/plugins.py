@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from ..database import db
+from ..database import db, TZDateTime
 
 class PluginConfig(db.Model):
     __tablename__ = "plugin_configs"
@@ -17,8 +17,8 @@ class PluginRun(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     plugin_id = db.Column(db.String(255), nullable=False, index=True)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    finished_at = db.Column(db.DateTime)
+    started_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    finished_at = db.Column(TZDateTime)
     status = db.Column(db.String(30), nullable=False)
     error = db.Column(db.Text)
     stats_json = db.Column(db.JSON)
@@ -35,7 +35,7 @@ class PluginRunArtifact(db.Model):
     checksum = db.Column(db.String(256))
     size = db.Column(db.BigInteger)
     content_type = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     plugin_run = db.relationship("PluginRun", back_populates="artifacts")
     links = db.relationship("PluginRunArtifactLink", back_populates="artifact", cascade="all, delete-orphan")
@@ -47,7 +47,7 @@ class PluginRunArtifactLink(db.Model):
     artifact_id = db.Column(db.Integer, db.ForeignKey("plugin_run_artifacts.id", ondelete="CASCADE"), nullable=False, index=True)
     vulnerability_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), index=True)
     product_version_id = db.Column(db.Integer, db.ForeignKey("product_versions.id", ondelete="CASCADE"), index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     artifact = db.relationship("PluginRunArtifact", back_populates="links")
     vulnerability = db.relationship("Vulnerability")
@@ -73,7 +73,7 @@ class ExternalSourceState(db.Model):
     plugin_id = db.Column(db.String(255), nullable=False, index=True)
     source_key = db.Column(db.String(255), nullable=False, index=True)
     last_cursor = db.Column(db.Text)
-    last_sync_at = db.Column(db.DateTime)
+    last_sync_at = db.Column(TZDateTime)
 
     __table_args__ = (
         db.UniqueConstraint("plugin_id", "source_key", name="unique_external_source_state"),

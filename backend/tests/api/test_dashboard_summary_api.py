@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.auth import create_user, generate_token
 from backend.database import db
@@ -19,7 +19,7 @@ def _create_admin(app):
 
 
 def _seed_vulnerabilities(app, user_id):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with app.app_context():
         db.session.add_all([
             Vulnerability(
@@ -104,7 +104,7 @@ def test_list_vulnerabilities_supports_severity_in_alias(app, client):
 
 def test_list_vulnerabilities_multi_severity_pagination_has_consistent_items_and_total(app, client):
     admin = _create_admin(app)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     with app.app_context():
         db.session.add_all(
@@ -170,7 +170,7 @@ def test_list_vulnerabilities_multi_severity_pagination_has_consistent_items_and
 
 def test_risk_trends_groups_by_product_version_and_bucket(app, client):
     admin = _create_admin(app)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     product_id = None
     with app.app_context():

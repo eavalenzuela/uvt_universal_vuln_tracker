@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import AttackVector, Vulnerability, VulnerabilityAttackVector, ProductVersion
 from ..auth import login_required, role_required
+from ..services.audit import record_audit
 from .validation import ValidationError, error_response, parse_int, required_string
 
 bp = Blueprint("attack_vectors_api", __name__, url_prefix="/api")
@@ -90,6 +91,8 @@ def update_attack_vector(vector_id: int):
 @role_required("Admin")
 def delete_attack_vector(vector_id: int):
     vector = AttackVector.query.get_or_404(vector_id)
+    record_audit("DELETE", "attack_vectors", vector.id,
+                 old_values={"name": vector.name, "description": vector.description})
     db.session.delete(vector)
     db.session.commit()
     return jsonify({"ok": True})

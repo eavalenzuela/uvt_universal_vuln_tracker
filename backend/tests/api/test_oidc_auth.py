@@ -129,7 +129,7 @@ def test_complete_oidc_login_rejects_expired_state(app):
             {
                 "next": "/",
                 "nonce": "nonce-1",
-                "exp": datetime.datetime.utcnow() - datetime.timedelta(minutes=1),
+                "exp": datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1),
             },
             app.config["JWT_SECRET"],
             algorithm="HS256",
@@ -147,7 +147,7 @@ def test_complete_oidc_login_rejects_nonce_mismatch(app, monkeypatch):
             {
                 "next": "/",
                 "nonce": "expected-nonce",
-                "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=10),
+                "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10),
             },
             app.config["JWT_SECRET"],
             algorithm="HS256",

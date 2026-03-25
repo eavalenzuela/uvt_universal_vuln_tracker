@@ -1,6 +1,8 @@
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
 from ..database import db
 from ..models import (
     AuditLog,
@@ -17,7 +19,7 @@ from ..models import (
     User,
 )
 from ..auth import login_required, role_required
-from ..services.audit import build_field_diff, log_audit_event, model_snapshot
+from ..services.audit import build_field_diff, model_snapshot, record_audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..services.cve_enrichment import (
@@ -51,17 +53,6 @@ from ..serializers.vulnerability_serializers import (
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 MAX_PAGE_SIZE = 100
-
-
-def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
-    db.session.add(log_audit_event(
-        actor_id=user_id,
-        action=action,
-        resource=table,
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
 
 
 def _parse_sla_due_at(value, *, field="sla_due_at"):
@@ -194,7 +185,7 @@ def create_vulnerability():
         db.session.rollback()
         return error_response(exc.error, field=exc.field, details=exc.details)
 
-    _audit(request.user.id, "CREATE", "vulnerabilities", v.id, old_values=None, new_values={
+    record_audit("CREATE", "vulnerabilities", v.id, old_values=None, new_values={
         "cve_id": v.cve_id, "title": v.title, "severity": v.severity, "status": v.status,
         "cvss_score": float(v.cvss_score) if v.cvss_score is not None else None,
         "assigned_to": v.assigned_to,
@@ -215,7 +206,7 @@ def create_vulnerability():
 
     try:
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         current_app.logger.exception("Failed to create vulnerability")
         db.session.rollback()
         return error_response("Failed to create vulnerability (duplicate CVE? invalid data?)", status_code=400)
@@ -358,14 +349,9 @@ def merge_vulnerability_into_target(target_vuln_id: int):
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
 
-    _audit(
-        request.user.id,
-        "MERGE",
-        "vulnerabilities",
-        target.id,
-        old_values={"target_id": target.id, "source_id": source.id},
-        new_values={"target_id": target.id, "source_id": source.id, "reason": reason},
-    )
+    record_audit("MERGE", "vulnerabilities", target.id,
+                 old_values={"target_id": target.id, "source_id": source.id},
+                 new_values={"target_id": target.id, "source_id": source.id, "reason": reason})
 
     db.session.commit()
     return jsonify({"ok": True, **result})
@@ -469,7 +455,7 @@ def update_vulnerability(vuln_id: int):
         ["severity", "status", "cvss_score", "assigned_to", "sla_due_at"],
     )
 
-    _audit(request.user.id, "UPDATE", "vulnerabilities", v.id, old_values=old, new_values=new_values)
+    record_audit("UPDATE", "vulnerabilities", v.id, old_values=old, new_values=new_values)
 
     event_type = "updated"
     status_changed = old.get("status") != v.status
@@ -602,17 +588,11 @@ def _bulk_update_vulnerabilities():
                     continue
 
                 new_values["field_diff"] = field_diff
-                _audit(
-                    request.user.id,
-                    "BATCH_UPDATE",
-                    "vulnerabilities",
-                    vuln.id,
-                    old_values=old,
-                    new_values=new_values,
-                )
+                record_audit("BATCH_UPDATE", "vulnerabilities", vuln.id,
+                             old_values=old, new_values=new_values)
                 db.session.flush()
                 updated.append(vuln.id)
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             current_app.logger.exception("Batch update failed for vulnerability %s", vuln.id)
             db.session.rollback()
             failed.append({"id": vuln.id, "error": str(exc)})
@@ -638,7 +618,7 @@ def delete_vulnerability(vuln_id: int):
     v = Vulnerability.query.get_or_404(vuln_id)
     old = model_snapshot(v)
 
-    _audit(request.user.id, "DELETE", "vulnerabilities", v.id, old_values=old, new_values=None)
+    record_audit("DELETE", "vulnerabilities", v.id, old_values=old, new_values=None)
 
     trigger_notifications_for_event(NotificationEvent(
         event_type="deleted",
@@ -746,7 +726,7 @@ def enrich_vulnerability(vuln_id: int):
         "applied_fields": applied_fields,
     }
 
-    _audit(request.user.id, "ENRICH", "vulnerabilities", v.id, old_values=old, new_values=new_values)
+    record_audit("ENRICH", "vulnerabilities", v.id, old_values=old, new_values=new_values)
     trigger_notifications_for_event(NotificationEvent(
         event_type="updated",
         vulnerability_id=v.id,
@@ -798,7 +778,7 @@ def attach_versions(vuln_id: int):
         db.session.add(VulnerabilityVersion(vulnerability_id=v.id, product_version_id=pv_id, affected=True))
         added += 1
 
-    _audit(request.user.id, "ATTACH", "vulnerability_versions", v.id, old_values=None, new_values={
+    record_audit("ATTACH", "vulnerability_versions", v.id, old_values=None, new_values={
         "added": added, "product_version_ids": pv_ids
     })
 
@@ -838,7 +818,7 @@ def update_vulnerability_version(vuln_id: int, mapping_id: int):
         if field in data:
             setattr(mapping, field, data.get(field))
 
-    _audit(request.user.id, "UPDATE", "vulnerability_versions", mapping.id, old_values=old_values, new_values={
+    record_audit("UPDATE", "vulnerability_versions", mapping.id, old_values=old_values, new_values={
         "affected": mapping.affected,
         "fixed_in_version": mapping.fixed_in_version,
         "mitigation_status": mapping.mitigation_status,
@@ -872,7 +852,7 @@ def delete_vulnerability_version(vuln_id: int, mapping_id: int):
     Vulnerability.query.get_or_404(vuln_id)
     mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
 
-    _audit(request.user.id, "DELETE", "vulnerability_versions", mapping.id, old_values={
+    record_audit("DELETE", "vulnerability_versions", mapping.id, old_values={
         "product_version_id": mapping.product_version_id,
         "affected": mapping.affected,
         "fixed_in_version": mapping.fixed_in_version,
@@ -930,7 +910,7 @@ def create_vulnerability_comment(vuln_id: int):
         comment_text=body,
     )
 
-    _audit(request.user.id, "CREATE", "vulnerability_comments", comment.id, old_values=None, new_values={"body": comment.body})
+    record_audit("CREATE", "vulnerability_comments", comment.id, old_values=None, new_values={"body": comment.body})
     db.session.commit()
     return jsonify(_serialize_comment(comment)), 201
 
@@ -960,7 +940,7 @@ def update_vulnerability_comment(vuln_id: int, comment_id: int):
         comment_text=body,
     )
 
-    _audit(request.user.id, "UPDATE", "vulnerability_comments", comment.id, old_values=old_values, new_values={"body": comment.body})
+    record_audit("UPDATE", "vulnerability_comments", comment.id, old_values=old_values, new_values={"body": comment.body})
     db.session.commit()
     return jsonify(_serialize_comment(comment))
 
@@ -974,7 +954,7 @@ def delete_vulnerability_comment(vuln_id: int, comment_id: int):
         return error_response("Not permitted to delete this comment", status_code=403)
 
     old_values = {"body": comment.body, "author_id": comment.author_id}
-    _audit(request.user.id, "DELETE", "vulnerability_comments", comment.id, old_values=old_values, new_values=None)
+    record_audit("DELETE", "vulnerability_comments", comment.id, old_values=old_values, new_values=None)
     db.session.delete(comment)
     db.session.commit()
     return jsonify({"ok": True})

@@ -15,7 +15,7 @@ from .permissions import role_has_scope, scope_for_request
 
 def revoke_tokens(user: User):
     user.token_version = int(user.token_version or 0) + 1
-    user.last_revoked_at = datetime.datetime.utcnow()
+    user.last_revoked_at = datetime.datetime.now(datetime.timezone.utc)
     db.session.add(user)
 
 
@@ -28,7 +28,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def generate_token(user_id: int, username: str, role: str, token_version: int = 1, last_revoked_at=None) -> str:
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": str(user_id),
         "username": username,
@@ -79,14 +79,14 @@ def authenticate_api_token(raw_token: str):
     if not token_record or token_record.revoked_at is not None:
         return None, (jsonify({"error": "Invalid token"}), 401)
 
-    if token_record.expires_at and token_record.expires_at <= datetime.datetime.utcnow():
+    if token_record.expires_at and token_record.expires_at <= datetime.datetime.now(datetime.timezone.utc):
         return None, (jsonify({"error": "Token expired"}), 401)
 
     user = User.query.get(token_record.owner_id)
     if not user or not user.is_active:
         return None, (jsonify({"error": "User inactive or not found"}), 401)
 
-    token_record.last_used_at = datetime.datetime.utcnow()
+    token_record.last_used_at = datetime.datetime.now(datetime.timezone.utc)
     db.session.add(token_record)
     request.user = user
     request.jwt_claims = None
@@ -96,7 +96,7 @@ def authenticate_api_token(raw_token: str):
 
 def create_refresh_token(user: User):
     raw_token = secrets.token_urlsafe(48)
-    expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=_refresh_token_lifetime_days())
+    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=_refresh_token_lifetime_days())
     token_record = RefreshToken(
         token_hash=_refresh_token_hash(raw_token),
         user_id=user.id,
@@ -118,13 +118,13 @@ def revoke_refresh_token(raw_token: str):
     if not token_record or token_record.revoked:
         return False
     token_record.revoked = True
-    token_record.revoked_at = datetime.datetime.utcnow()
+    token_record.revoked_at = datetime.datetime.now(datetime.timezone.utc)
     db.session.add(token_record)
     return True
 
 
 def revoke_all_refresh_tokens(user: User):
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     RefreshToken.query.filter(
         RefreshToken.user_id == user.id,
         RefreshToken.revoked.is_(False),
@@ -143,7 +143,7 @@ def rotate_refresh_token(raw_token: str):
         return None, "invalid"
     if token_record.revoked:
         return None, "revoked"
-    if token_record.expires_at <= datetime.datetime.utcnow():
+    if token_record.expires_at <= datetime.datetime.now(datetime.timezone.utc):
         return None, "expired"
 
     user = User.query.get(token_record.user_id)
@@ -151,7 +151,7 @@ def rotate_refresh_token(raw_token: str):
         return None, "inactive"
 
     token_record.revoked = True
-    token_record.revoked_at = datetime.datetime.utcnow()
+    token_record.revoked_at = datetime.datetime.now(datetime.timezone.utc)
     db.session.add(token_record)
 
     raw_new_refresh, _ = create_refresh_token(user)
@@ -229,7 +229,7 @@ def authenticate_request():
     if issued_at and last_revoked_at:
         try:
             issued_dt = (
-                datetime.datetime.utcfromtimestamp(issued_at)
+                datetime.datetime.fromtimestamp(issued_at, tz=datetime.timezone.utc)
                 if isinstance(issued_at, (int, float))
                 else issued_at
             )

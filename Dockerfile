@@ -8,11 +8,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ backend/
 
 ENV FLASK_APP=backend.uvt_app:create_app
-ENV FLASK_ENV=production
 
 EXPOSE 5000
 
-CMD ["flask", "run", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--access-logfile", "-", "backend.uvt_app:create_app()"]
 
 
 FROM nginx:alpine AS frontend
