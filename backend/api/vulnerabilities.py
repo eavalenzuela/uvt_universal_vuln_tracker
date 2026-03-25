@@ -500,12 +500,14 @@ def update_vulnerability(vuln_id: int):
 
 @bp.patch("/vulnerabilities/batch")
 @role_required("Admin", "Analyst")
+@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_batch_update")
 def batch_update_vulnerabilities():
     return _bulk_update_vulnerabilities()
 
 
 @bp.patch("/vulnerabilities/bulk")
 @role_required("Admin", "Analyst")
+@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_bulk_update")
 def bulk_update_vulnerabilities():
     return _bulk_update_vulnerabilities()
 

@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import asc
 
 from ..auth import login_required, role_required
+from ..rate_limiter import rate_limit
 from ..models import ComponentDependency, ProductVersion, SoftwareComponent, Vulnerability, VulnerabilityComponent
 from ..services.component_diff import compare_product_version_components
 from ..services.sbom_ingest import SbomFormatError, ingest_sbom
@@ -52,6 +53,7 @@ def list_components(product_version_id: int):
 
 @bp.post("/product_versions/<int:product_version_id>/sbom")
 @role_required("Admin", "Analyst")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="sbom_import")
 def import_sbom(product_version_id: int):
     payload = request.get_json(silent=True) or {}
     fmt = (payload.get("format") or "").strip().lower()

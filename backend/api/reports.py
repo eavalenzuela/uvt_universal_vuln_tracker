@@ -735,6 +735,7 @@ def delete_report_schedule(schedule_id):
 
 @bp.post("/reports/schedules/<int:schedule_id>/run")
 @role_required("Admin", "Analyst")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="report_run")
 def run_report_schedule(schedule_id):
     schedule = ReportSchedule.query.get_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:

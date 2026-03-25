@@ -8,6 +8,7 @@ from flask import Blueprint, current_app, jsonify, request, send_file
 from sqlalchemy import asc
 
 from ..auth import login_required, role_required
+from ..rate_limiter import rate_limit
 from ..database import db
 from ..models import PluginConfig, PluginRunArtifact
 from ..plugins.config import is_masked_value, mask_config
@@ -191,6 +192,7 @@ def get_plugin(plugin_id: str):
 
 @bp.post("/plugins/<plugin_id>/run")
 @role_required("Admin", "Analyst")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="plugin_run")
 def run_plugin_now(plugin_id: str):
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)

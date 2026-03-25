@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import desc
 
 from ..auth import role_required
+from ..rate_limiter import rate_limit
 from ..database import db
 from ..models import NotificationDeliveryLog, NotificationRule, Vulnerability
 from ..services.audit import record_audit as _audit
@@ -154,6 +155,7 @@ def delete_rule(rule_id: int):
 
 @bp.post("/notification-rules/<int:rule_id>/test-send")
 @role_required("Admin")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="notification_test_send")
 def test_send(rule_id: int):
     rule = NotificationRule.query.get_or_404(rule_id)
     vuln = Vulnerability.query.order_by(desc(Vulnerability.updated_at)).first()

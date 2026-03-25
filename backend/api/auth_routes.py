@@ -201,6 +201,7 @@ def oidc_callback():
 
 
 @bp.post("/register")
+@rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_register")
 def register():
 
     if not current_app.config.get("ALLOW_PUBLIC_REGISTRATION", False):

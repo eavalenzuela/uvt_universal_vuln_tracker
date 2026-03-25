@@ -10,6 +10,7 @@ from ..database import db
 from ..models import ApiToken, User
 from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES, ROLE_SCOPES
+from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
 from ..services.audit import log_audit_event
@@ -198,6 +199,7 @@ def revoke_user_api_token(user_id: int, token_id: int):
 
 @bp.post("/users")
 @role_required("Admin")
+@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="create_user")
 def create_user_admin():
     """
     Create a user (Admin-only).
@@ -237,6 +239,7 @@ def create_user_admin():
 
 @bp.post("/users/invite")
 @role_required("Admin")
+@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="invite_user")
 def invite_user():
     data = request.get_json(silent=True) or {}
 
@@ -354,6 +357,7 @@ def update_user(user_id: int):
 
 @bp.post("/users/<int:user_id>/reset-password")
 @role_required("Admin")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="password_reset")
 def reset_password(user_id: int):
     """
     Body:
@@ -381,6 +385,7 @@ def reset_password(user_id: int):
 
 @bp.post("/users/<int:user_id>/impersonate")
 @role_required("Admin")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="impersonate")
 def impersonate(user_id: int):
     target = User.query.get_or_404(user_id)
     if not target.is_active:

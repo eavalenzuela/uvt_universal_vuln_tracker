@@ -119,6 +119,10 @@ def create_app():
     app.config["RATE_LIMIT_VULN_LIST_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", "60"))
     app.config["RATE_LIMIT_VULN_EXPORT_LIMIT"] = int(os.getenv("RATE_LIMIT_VULN_EXPORT_LIMIT", "20"))
     app.config["RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", "60"))
+    app.config["RATE_LIMIT_WRITE_LIMIT"] = int(os.getenv("RATE_LIMIT_WRITE_LIMIT", "30"))
+    app.config["RATE_LIMIT_WRITE_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_WRITE_WINDOW_SECONDS", "60"))
+    app.config["RATE_LIMIT_SENSITIVE_LIMIT"] = int(os.getenv("RATE_LIMIT_SENSITIVE_LIMIT", "10"))
+    app.config["RATE_LIMIT_SENSITIVE_WINDOW_SECONDS"] = int(os.getenv("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", "60"))
     db_url = os.getenv("DATABASE_URL", "sqlite:///uvt.db")
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
