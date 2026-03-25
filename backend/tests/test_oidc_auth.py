@@ -87,6 +87,7 @@ def test_oidc_callback_redirect_sets_secure_cookie_without_token_in_url(app, cli
     with app.app_context():
         app.config["OIDC_ENABLED"] = True
         app.config["JWT_SECRET"] = "secret"
+        app.config["AUTH_COOKIE_SECURE"] = True
         app.config["FRONTEND_LOGIN_SUCCESS_URL"] = "http://127.0.0.1:5173/login"
 
     monkeypatch.setattr(

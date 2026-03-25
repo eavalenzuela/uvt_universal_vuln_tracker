@@ -118,9 +118,14 @@ def test_report_email_delivery_success_and_error(monkeypatch):
     schedule = SimpleNamespace(
         delivery_channel="email",
         recipient="report@example.com",
+        recipients_json=None,
         name="Nightly",
         frequency="daily",
         report_type="vulnerabilities",
+        report_template=None,
+        filters_json=None,
+        delivery_preferences_json=None,
+        timezone="UTC",
     )
 
     def fake_send_email(**kwargs):

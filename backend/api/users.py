@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
 
 from ..database import db
-from ..models import ApiToken, User
+from ..models import ApiToken, AuditLog, User
 from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES, ROLE_SCOPES
 from ..rate_limiter import rate_limit
