@@ -1,57 +1,58 @@
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-import os
 
 from sqlalchemy import inspect, text
 
 db = SQLAlchemy()
-migrate = Migrate()
+
+# Column additions for SQLite databases that were created before these columns
+# existed.  The keys are validated against a strict allowlist so the f-string
+# interpolation in the ALTER TABLE below is safe.
+_SQLITE_VULN_COLUMN_BACKFILL = {
+    "attack_complexity": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
+    "confidentiality_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
+    "integrity_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
+    "availability_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
+}
+
+_ALLOWED_BACKFILL_COLUMNS = frozenset(_SQLITE_VULN_COLUMN_BACKFILL.keys())
+
 
 def init_database(app):
     db.init_app(app)
-    migrate.init_app(app, db)
-    ensure_sqlite_schema(app)
+    _ensure_sqlite_schema(app)
 
-def ensure_sqlite_schema(app):
+
+def _ensure_sqlite_schema(app):
+    """Auto-create tables and backfill columns for SQLite dev databases.
+
+    For PostgreSQL the schema should be managed externally (e.g. via a
+    migration tool or ``db.create_all()`` in a one-off script).
+    """
     with app.app_context():
         if not db.engine.url.drivername.startswith("sqlite"):
             return
-        if os.path.isdir(os.path.join(app.root_path, "migrations")):
-            return
 
-        inspector = inspect(db.engine)
-        if not inspector.get_table_names():
+        insp = inspect(db.engine)
+        existing_tables = set(insp.get_table_names())
+
+        if not existing_tables:
             db.create_all()
-            inspector = inspect(db.engine)
+            return  # fresh database — nothing to backfill
 
-        if "vulnerabilities" not in inspector.get_table_names():
-            db.create_all()
-            inspector = inspect(db.engine)
+        # Create any tables defined in models but missing from the DB.
+        db.create_all()
+        insp = inspect(db.engine)
 
-        if "vulnerability_sources" not in inspector.get_table_names():
-            db.create_all()
-            inspector = inspect(db.engine)
-
-
-        required_tables = {"notification_rules", "notification_delivery_logs", "saved_vulnerability_filters", "software_components", "component_dependencies", "vulnerability_components", "refresh_tokens"}
-        if any(table not in inspector.get_table_names() for table in required_tables):
-            db.create_all()
-            inspector = inspect(db.engine)
-
-        if "vulnerabilities" in inspector.get_table_names():
-            existing_columns = {col["name"] for col in inspector.get_columns("vulnerabilities")}
-            column_definitions = {
-                "attack_complexity": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-                "confidentiality_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-                "integrity_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-                "availability_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-            }
-
-            for column, ddl in column_definitions.items():
-                if column not in existing_columns:
+        # Backfill columns that were added after initial schema.
+        if "vulnerabilities" in insp.get_table_names():
+            existing_cols = {c["name"] for c in insp.get_columns("vulnerabilities")}
+            added = False
+            for column, ddl in _SQLITE_VULN_COLUMN_BACKFILL.items():
+                assert column in _ALLOWED_BACKFILL_COLUMNS, f"unexpected column: {column}"
+                if column not in existing_cols:
                     db.session.execute(text(
                         f"ALTER TABLE vulnerabilities ADD COLUMN {column} {ddl}"
                     ))
-
-            if any(column not in existing_columns for column in column_definitions):
+                    added = True
+            if added:
                 db.session.commit()
