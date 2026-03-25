@@ -6,6 +6,7 @@ from sqlalchemy import asc
 from ..auth import login_required, role_required
 from ..rate_limiter import rate_limit
 from ..models import ComponentDependency, ProductVersion, SoftwareComponent, Vulnerability, VulnerabilityComponent
+from .validation import error_response
 from ..services.component_diff import compare_product_version_components
 from ..services.sbom_ingest import SbomFormatError, ingest_sbom
 
@@ -60,14 +61,14 @@ def import_sbom(product_version_id: int):
     sbom = payload.get("sbom")
 
     if fmt not in {"cyclonedx", "spdx"}:
-        return jsonify({"error": "format must be one of cyclonedx, spdx"}), 400
+        return error_response("format must be one of cyclonedx, spdx", field="format")
     if not isinstance(sbom, dict):
-        return jsonify({"error": "sbom must be an object"}), 400
+        return error_response("sbom must be an object", field="sbom")
 
     try:
         stats = ingest_sbom(product_version_id=product_version_id, sbom_payload=sbom, fmt=fmt)
     except SbomFormatError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc))
 
     return jsonify({"ok": True, "stats": stats})
 
@@ -79,7 +80,7 @@ def compare_components_between_versions():
     to_product_version_id = request.args.get("to_product_version_id", type=int)
 
     if not from_product_version_id or not to_product_version_id:
-        return jsonify({"error": "from_product_version_id and to_product_version_id are required"}), 400
+        return error_response("from_product_version_id and to_product_version_id are required")
 
     result = compare_product_version_components(
         from_product_version_id=from_product_version_id,

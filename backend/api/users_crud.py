@@ -7,8 +7,8 @@ from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
 
 from ..database import db
-from ..models import ApiToken, AuditLog, User
-from ..auth import create_api_token, role_required, hash_password, generate_token, revoke_tokens
+from ..models import ApiToken, User
+from ..auth import role_required, hash_password, generate_token, revoke_tokens
 from ..permissions import ALL_ROLES, ROLE_SCOPES
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
@@ -18,6 +18,7 @@ from ..services.audit import record_audit
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
 _ALLOWED_ROLES = ALL_ROLES
+
 
 def _user_json(u: User):
     return serialize_user(u)
@@ -116,76 +117,6 @@ def list_users():
     })
 
 
-@bp.get("/users/me/api-tokens")
-@role_required("Admin", "Analyst", "Viewer")
-def list_my_api_tokens():
-    tokens = (
-        ApiToken.query.filter_by(owner_id=request.user.id)
-        .order_by(ApiToken.created_at.desc())
-        .all()
-    )
-    return jsonify([_api_token_json(token) for token in tokens])
-
-
-@bp.post("/users/me/api-tokens")
-@role_required("Admin", "Analyst", "Viewer")
-def create_my_api_token():
-    payload = request.get_json(silent=True) or {}
-    parsed, err = _parse_token_create_payload(payload, request.user)
-    if err:
-        return err
-
-    plaintext, token = create_api_token(request.user, parsed["name"], parsed["scopes"], parsed["expires_at"])
-    db.session.commit()
-    return jsonify({"token": plaintext, "api_token": _api_token_json(token)}), 201
-
-
-@bp.post("/users/me/api-tokens/<int:token_id>/revoke")
-@role_required("Admin", "Analyst", "Viewer")
-def revoke_my_api_token(token_id: int):
-    token = ApiToken.query.get_or_404(token_id)
-    if token.owner_id != request.user.id:
-        return error_response("Forbidden", status_code=403)
-    if token.revoked_at is None:
-        token.revoked_at = datetime.now(timezone.utc)
-        db.session.add(token)
-        db.session.commit()
-    return jsonify(_api_token_json(token))
-
-
-@bp.get("/users/<int:user_id>/api-tokens")
-@role_required("Admin")
-def list_user_api_tokens(user_id: int):
-    User.query.get_or_404(user_id)
-    tokens = ApiToken.query.filter_by(owner_id=user_id).order_by(ApiToken.created_at.desc()).all()
-    return jsonify([_api_token_json(token) for token in tokens])
-
-
-@bp.post("/users/<int:user_id>/api-tokens")
-@role_required("Admin")
-def create_user_api_token(user_id: int):
-    owner = User.query.get_or_404(user_id)
-    payload = request.get_json(silent=True) or {}
-    parsed, err = _parse_token_create_payload(payload, owner)
-    if err:
-        return err
-    plaintext, token = create_api_token(owner, parsed["name"], parsed["scopes"], parsed["expires_at"])
-    db.session.commit()
-    return jsonify({"token": plaintext, "api_token": _api_token_json(token)}), 201
-
-
-@bp.post("/users/<int:user_id>/api-tokens/<int:token_id>/revoke")
-@role_required("Admin")
-def revoke_user_api_token(user_id: int, token_id: int):
-    token = ApiToken.query.get_or_404(token_id)
-    if token.owner_id != user_id:
-        return error_response("Token does not belong to user", status_code=404)
-    if token.revoked_at is None:
-        token.revoked_at = datetime.now(timezone.utc)
-        db.session.add(token)
-        db.session.commit()
-    return jsonify(_api_token_json(token))
-
 @bp.post("/users")
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="create_user")
@@ -205,12 +136,12 @@ def create_user_admin():
     if not username or not email or not password:
         return error_response("Required field missing", field="username", details="username, email, password are required")
     if role not in _ALLOWED_ROLES:
-        return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
+        return error_response(f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}", field="role")
 
     if User.query.filter_by(username=username).first():
-        return jsonify({"error": "Username already exists"}), 400
+        return error_response("Username already exists", field="username")
     if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Email already exists"}), 400
+        return error_response("Email already exists", field="email")
 
     u = User(
         username=username,
@@ -240,12 +171,12 @@ def invite_user():
     if not username or not email:
         return error_response("Required field missing", field="username", details="username and email are required")
     if role not in _ALLOWED_ROLES:
-        return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
+        return error_response(f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}", field="role")
 
     if User.query.filter_by(username=username).first():
-        return jsonify({"error": "Username already exists"}), 400
+        return error_response("Username already exists", field="username")
     if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Email already exists"}), 400
+        return error_response("Email already exists", field="email")
 
     u = User(
         username=username,
@@ -300,7 +231,7 @@ def update_user(user_id: int):
             return error_response("email cannot be empty", field="email")
         existing = User.query.filter(User.email == email, User.id != u.id).first()
         if existing:
-            return jsonify({"error": "Email already exists"}), 400
+            return error_response("Email already exists", field="email")
         old_values["email"] = u.email
         u.email = email
         changed = True
@@ -322,7 +253,7 @@ def update_user(user_id: int):
     if "role" in data:
         role = (data.get("role") or "").strip()
         if role not in _ALLOWED_ROLES:
-            return jsonify({"error": f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}"}), 400
+            return error_response(f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}", field="role")
         old_values["role"] = u.role
         u.role = role
         role_changed = True
@@ -371,7 +302,7 @@ def reset_password(user_id: int):
 def impersonate(user_id: int):
     target = User.query.get_or_404(user_id)
     if not target.is_active:
-        return jsonify({"error": "Cannot impersonate inactive user"}), 400
+        return error_response("Cannot impersonate inactive user")
 
     payload = request.get_json(silent=True) or {}
     reason = (payload.get("reason") or "").strip()
@@ -397,52 +328,6 @@ def toggle_active(user_id: int):
                  new_values={"is_active": u.is_active})
     db.session.commit()
     return jsonify(_user_json(u))
-
-
-@bp.get("/audit-logs")
-@role_required("Admin")
-def list_audit_logs():
-    try:
-        page = parse_int(request.args.get("page"), field="page", minimum=1) or 1
-        page_size = parse_int(request.args.get("page_size"), field="page_size", minimum=1, maximum=500) or 100
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    action = (request.args.get("action") or "").strip()
-    table = (request.args.get("table") or "").strip()
-
-    query = AuditLog.query
-    if action:
-        query = query.filter(AuditLog.action == action)
-    if table:
-        query = query.filter(AuditLog.table_name == table)
-
-    total = query.count()
-    logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
-
-    def _user_payload(log: AuditLog):
-        if not log.user:
-            return None
-        return {"id": log.user.id, "username": log.user.username, "email": log.user.email}
-
-    return jsonify({
-        "items": [
-            {
-                "id": log.id,
-                "action": log.action,
-                "table_name": log.table_name,
-                "record_id": log.record_id,
-                "old_values": log.old_values,
-                "new_values": log.new_values,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
-                "user": _user_payload(log),
-            }
-            for log in logs
-        ],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
 
 
 @bp.get("/users/export")

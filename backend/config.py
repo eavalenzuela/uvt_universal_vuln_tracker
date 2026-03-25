@@ -1,0 +1,261 @@
+"""Centralized configuration with validation.
+
+All environment variables are read here and exposed as typed fields on
+``AppConfig``.  Call ``load_config()`` at boot to get a validated instance,
+then push values into ``app.config`` via ``apply_config(app, cfg)``.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _int(name: str, default: int) -> int:
+    return int(os.getenv(name, str(default)))
+
+
+def _str(name: str, default: str = "") -> str:
+    return os.getenv(name, default)
+
+
+def _cookie_samesite(default: str = "Lax") -> str:
+    raw = os.getenv("AUTH_COOKIE_SAMESITE", default).strip().lower()
+    allowed = {"lax": "Lax", "strict": "Strict", "none": "None"}
+    return allowed.get(raw, default)
+
+
+def _parse_cors_origins() -> list[str]:
+    default_origins = [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5000",
+        "http://localhost:5000",
+    ]
+    raw = os.getenv("CORS_ALLOWED_ORIGINS")
+    if raw is None:
+        return default_origins
+
+    parsed_origins: list[str] = []
+    invalid_origins: list[str] = []
+
+    for item in raw.split(","):
+        origin = item.strip()
+        if not origin:
+            continue
+        p = urlparse(origin)
+        if (
+            p.scheme not in ("http", "https")
+            or not p.netloc
+            or p.path not in ("", "/")
+            or p.params
+            or p.query
+            or p.fragment
+        ):
+            invalid_origins.append(origin)
+            continue
+        parsed_origins.append(f"{p.scheme}://{p.netloc}")
+
+    if invalid_origins:
+        raise ValueError(
+            "Invalid CORS_ALLOWED_ORIGINS value(s): "
+            f"{', '.join(invalid_origins)}. "
+            "Expected a comma-separated list of origin URLs like http://localhost:5173"
+        )
+
+    if not parsed_origins:
+        import logging
+        logging.warning(
+            "CORS_ALLOWED_ORIGINS is set but empty; falling back to local development defaults."
+        )
+        return default_origins
+
+    return parsed_origins
+
+
+def _parse_plugin_paths() -> list[str]:
+    return [
+        p.strip()
+        for p in os.getenv("PLUGIN_IMPORT_PATHS", "").split(",")
+        if p.strip()
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Config dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AppConfig:
+    """Typed, validated application configuration."""
+
+    # Runtime environment
+    runtime_env: str = ""
+
+    # Secrets
+    secret_key: str = "dev-secret"
+    jwt_secret: str = "dev-jwt-secret"
+
+    # Auth
+    refresh_token_lifetime_days: int = 30
+    allow_public_registration: bool = False
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "Lax"
+    auth_cookie_domain: str | None = None
+
+    # OIDC / SSO
+    oidc_enabled: bool = False
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_redirect_url: str = ""
+    oidc_scopes: str = "openid profile email"
+    oidc_groups_claim: str = "groups"
+    oidc_default_role: str = "Viewer"
+    oidc_role_mapping: str = ""
+
+    # CORS
+    cors_origins: list[str] = field(default_factory=list)
+
+    # Database
+    database_url: str = "sqlite:///uvt.db"
+
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_backend: str = "memory"
+    redis_url: str = "redis://localhost:6379/0"
+    rate_limit_auth_login_limit: int = 5
+    rate_limit_auth_login_window_seconds: int = 60
+    rate_limit_vuln_list_limit: int = 60
+    rate_limit_vuln_list_window_seconds: int = 60
+    rate_limit_vuln_export_limit: int = 20
+    rate_limit_vuln_export_window_seconds: int = 60
+    rate_limit_write_limit: int = 30
+    rate_limit_write_window_seconds: int = 60
+    rate_limit_sensitive_limit: int = 10
+    rate_limit_sensitive_window_seconds: int = 60
+
+    # Plugins
+    plugin_import_paths: list[str] = field(default_factory=list)
+
+    @property
+    def is_production(self) -> bool:
+        return self.runtime_env in ("prod", "production")
+
+    @property
+    def is_dev(self) -> bool:
+        return self.runtime_env in ("development", "dev", "testing", "test")
+
+
+# ---------------------------------------------------------------------------
+# Loader
+# ---------------------------------------------------------------------------
+
+def load_config() -> AppConfig:
+    """Read all env vars, validate, and return a frozen config object."""
+    runtime_env = os.getenv("FLASK_ENV", os.getenv("ENV", "production")).strip().lower()
+    auth_cookie_secure_default = runtime_env in ("prod", "production")
+
+    cfg = AppConfig(
+        runtime_env=runtime_env,
+        secret_key=_str("SECRET_KEY", "dev-secret"),
+        jwt_secret=_str("JWT_SECRET", "dev-jwt-secret"),
+        refresh_token_lifetime_days=_int("REFRESH_TOKEN_LIFETIME_DAYS", 30),
+        allow_public_registration=_bool("ALLOW_PUBLIC_REGISTRATION", False),
+        auth_cookie_secure=_bool("AUTH_COOKIE_SECURE", auth_cookie_secure_default),
+        auth_cookie_samesite=_cookie_samesite(),
+        auth_cookie_domain=os.getenv("AUTH_COOKIE_DOMAIN") or None,
+        oidc_enabled=_bool("OIDC_ENABLED", False),
+        oidc_issuer=_str("OIDC_ISSUER"),
+        oidc_client_id=_str("OIDC_CLIENT_ID"),
+        oidc_client_secret=_str("OIDC_CLIENT_SECRET"),
+        oidc_redirect_url=_str("OIDC_REDIRECT_URL"),
+        oidc_scopes=_str("OIDC_SCOPES", "openid profile email"),
+        oidc_groups_claim=_str("OIDC_GROUPS_CLAIM", "groups"),
+        oidc_default_role=_str("OIDC_DEFAULT_ROLE", "Viewer"),
+        oidc_role_mapping=_str("OIDC_ROLE_MAPPING"),
+        cors_origins=_parse_cors_origins(),
+        database_url=_str("DATABASE_URL", "sqlite:///uvt.db"),
+        rate_limit_enabled=_bool("RATE_LIMIT_ENABLED", True),
+        rate_limit_backend=_str("RATE_LIMIT_BACKEND", "memory"),
+        redis_url=_str("REDIS_URL", "redis://localhost:6379/0"),
+        rate_limit_auth_login_limit=_int("RATE_LIMIT_AUTH_LOGIN_LIMIT", 5),
+        rate_limit_auth_login_window_seconds=_int("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", 60),
+        rate_limit_vuln_list_limit=_int("RATE_LIMIT_VULN_LIST_LIMIT", 60),
+        rate_limit_vuln_list_window_seconds=_int("RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", 60),
+        rate_limit_vuln_export_limit=_int("RATE_LIMIT_VULN_EXPORT_LIMIT", 20),
+        rate_limit_vuln_export_window_seconds=_int("RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", 60),
+        rate_limit_write_limit=_int("RATE_LIMIT_WRITE_LIMIT", 30),
+        rate_limit_write_window_seconds=_int("RATE_LIMIT_WRITE_WINDOW_SECONDS", 60),
+        rate_limit_sensitive_limit=_int("RATE_LIMIT_SENSITIVE_LIMIT", 10),
+        rate_limit_sensitive_window_seconds=_int("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", 60),
+        plugin_import_paths=_parse_plugin_paths(),
+    )
+
+    # Fail fast: production must not use dev defaults for secrets
+    if not cfg.is_dev:
+        for attr, dev_default in [("secret_key", "dev-secret"), ("jwt_secret", "dev-jwt-secret")]:
+            if getattr(cfg, attr) == dev_default:
+                env_key = attr.upper()
+                raise RuntimeError(
+                    f"{env_key} is still set to its development default. "
+                    f"Set the {env_key} environment variable before running in production."
+                )
+
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# Flask integration
+# ---------------------------------------------------------------------------
+
+def apply_config(app, cfg: AppConfig) -> None:
+    """Push config values into Flask's ``app.config`` dict."""
+    app.config["SECRET_KEY"] = cfg.secret_key
+    app.config["JWT_SECRET"] = cfg.jwt_secret
+    app.config["REFRESH_TOKEN_LIFETIME_DAYS"] = cfg.refresh_token_lifetime_days
+    app.config["ALLOW_PUBLIC_REGISTRATION"] = cfg.allow_public_registration
+
+    app.config["OIDC_ENABLED"] = cfg.oidc_enabled
+    app.config["OIDC_ISSUER"] = cfg.oidc_issuer
+    app.config["OIDC_CLIENT_ID"] = cfg.oidc_client_id
+    app.config["OIDC_CLIENT_SECRET"] = cfg.oidc_client_secret
+    app.config["OIDC_REDIRECT_URL"] = cfg.oidc_redirect_url
+    app.config["OIDC_SCOPES"] = cfg.oidc_scopes
+    app.config["OIDC_GROUPS_CLAIM"] = cfg.oidc_groups_claim
+    app.config["OIDC_DEFAULT_ROLE"] = cfg.oidc_default_role
+    app.config["OIDC_ROLE_MAPPING"] = cfg.oidc_role_mapping
+
+    app.config["AUTH_COOKIE_SECURE"] = cfg.auth_cookie_secure
+    app.config["AUTH_COOKIE_SAMESITE"] = cfg.auth_cookie_samesite
+    app.config["AUTH_COOKIE_DOMAIN"] = cfg.auth_cookie_domain
+
+    app.config["RATE_LIMIT_ENABLED"] = cfg.rate_limit_enabled
+    app.config["RATE_LIMIT_BACKEND"] = cfg.rate_limit_backend
+    app.config["REDIS_URL"] = cfg.redis_url
+    app.config["RATE_LIMIT_AUTH_LOGIN_LIMIT"] = cfg.rate_limit_auth_login_limit
+    app.config["RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS"] = cfg.rate_limit_auth_login_window_seconds
+    app.config["RATE_LIMIT_VULN_LIST_LIMIT"] = cfg.rate_limit_vuln_list_limit
+    app.config["RATE_LIMIT_VULN_LIST_WINDOW_SECONDS"] = cfg.rate_limit_vuln_list_window_seconds
+    app.config["RATE_LIMIT_VULN_EXPORT_LIMIT"] = cfg.rate_limit_vuln_export_limit
+    app.config["RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS"] = cfg.rate_limit_vuln_export_window_seconds
+    app.config["RATE_LIMIT_WRITE_LIMIT"] = cfg.rate_limit_write_limit
+    app.config["RATE_LIMIT_WRITE_WINDOW_SECONDS"] = cfg.rate_limit_write_window_seconds
+    app.config["RATE_LIMIT_SENSITIVE_LIMIT"] = cfg.rate_limit_sensitive_limit
+    app.config["RATE_LIMIT_SENSITIVE_WINDOW_SECONDS"] = cfg.rate_limit_sensitive_window_seconds
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = cfg.database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["PLUGIN_IMPORT_PATHS"] = cfg.plugin_import_paths

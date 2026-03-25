@@ -106,9 +106,9 @@ def update_layout_preset(preset_id):
     user = request.user
     item = DashboardLayoutPreset.query.get(preset_id)
     if not item:
-        return jsonify({"error": "Dashboard layout preset not found"}), 404
+        return error_response("Dashboard layout preset not found", status_code=404)
     if not _can_manage(user, item):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", status_code=403)
 
     data = request.get_json(silent=True) or {}
 
@@ -150,9 +150,9 @@ def delete_layout_preset(preset_id):
     user = request.user
     item = DashboardLayoutPreset.query.get(preset_id)
     if not item:
-        return jsonify({"error": "Dashboard layout preset not found"}), 404
+        return error_response("Dashboard layout preset not found", status_code=404)
     if not _can_manage(user, item):
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", status_code=403)
 
     db.session.delete(item)
     db.session.commit()

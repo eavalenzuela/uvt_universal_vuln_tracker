@@ -1879,7 +1879,7 @@ def test_report_schedule_permissions_and_run(app, client, monkeypatch):
     headers_viewer = auth_header(viewer)
 
     monkeypatch.setattr(
-        "backend.api.reports.send_email",
+        "backend.api.report_exports.send_email",
         lambda **_kwargs: {"channel": "email", "status": "sent", "ok": True},
     )
 
@@ -2352,7 +2352,7 @@ def test_vulnerability_enrich_success(app, client, monkeypatch):
         published_date = date(2024, 1, 1)
         last_modified_date = date(2024, 1, 20)
 
-    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
+    monkeypatch.setattr("backend.api.vuln_crud.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
 
     resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich?force=true", headers=headers)
     assert resp.status_code == 200
@@ -2406,7 +2406,7 @@ def test_vulnerability_enrich_upstream_not_found_and_timeout(app, client, monkey
     def raise_not_found(_cve_id):
         raise CveNotFoundError("not found")
 
-    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", raise_not_found)
+    monkeypatch.setattr("backend.api.vuln_crud.fetch_cve_enrichment", raise_not_found)
     not_found_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
     assert not_found_resp.status_code == 404
     assert not_found_resp.get_json()["enrichment"]["status"] == "not_found"
@@ -2414,7 +2414,7 @@ def test_vulnerability_enrich_upstream_not_found_and_timeout(app, client, monkey
     def raise_timeout(_cve_id):
         raise CveUpstreamTimeoutError("timed out")
 
-    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", raise_timeout)
+    monkeypatch.setattr("backend.api.vuln_crud.fetch_cve_enrichment", raise_timeout)
     timeout_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
     assert timeout_resp.status_code == 504
     assert timeout_resp.get_json()["enrichment"]["status"] == "timeout"
@@ -2444,7 +2444,7 @@ def test_vulnerability_enrich_merge_vs_force(app, client, monkeypatch):
         published_date = date(2023, 3, 1)
         last_modified_date = date(2023, 3, 2)
 
-    monkeypatch.setattr("backend.api.vulnerabilities.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
+    monkeypatch.setattr("backend.api.vuln_crud.fetch_cve_enrichment", lambda _cve_id: DummyEnrichment())
 
     merge_resp = client.post(f"/api/vulnerabilities/{vuln_id}/enrich", headers=headers)
     assert merge_resp.status_code == 200
@@ -2637,7 +2637,7 @@ def test_report_schedule_retry_backoff_metadata_on_failure(app, client, monkeypa
 
         raise SlackWebhookError("forced slack failure")
 
-    monkeypatch.setattr("backend.api.reports.SlackWebhookClient.send_message", _raise)
+    monkeypatch.setattr("backend.api.report_exports.SlackWebhookClient.send_message", _raise)
 
     run_resp = client.post(f"/api/reports/schedules/{schedule_id}/run", headers=headers)
     assert run_resp.status_code == 200
@@ -2659,7 +2659,7 @@ def test_report_templates_crud_visibility_and_schedule_inheritance(app, client, 
     headers_other = auth_header(other)
 
     monkeypatch.setattr(
-        "backend.api.reports.send_email",
+        "backend.api.report_exports.send_email",
         lambda **_kwargs: {"channel": "email", "status": "sent", "ok": True},
     )
 

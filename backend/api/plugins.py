@@ -11,6 +11,7 @@ from ..auth import login_required, role_required
 from ..rate_limiter import rate_limit
 from ..database import db
 from ..models import PluginConfig, PluginRunArtifact
+from .validation import error_response
 from ..plugins.config import is_masked_value, mask_config
 from ..plugins.base import BasePlugin, ControlsImportPlugin, VulnerabilityFeedPlugin
 from ..plugins.config import prepare_plugin_config, validate_config_schema
@@ -172,7 +173,7 @@ def get_plugin(plugin_id: str):
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
-        return jsonify({"error": "Plugin not found"}), 404
+        return error_response("Plugin not found", status_code=404)
     config_row = get_plugin_config(plugin_id)
     last_run = get_latest_plugin_run(plugin_id)
     payload = {
@@ -197,12 +198,12 @@ def run_plugin_now(plugin_id: str):
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
-        return jsonify({"error": "Plugin not found"}), 404
+        return error_response("Plugin not found", status_code=404)
 
     payload = request.get_json(silent=True) or {}
     config_override = payload.get("config")
     if config_override is not None and not isinstance(config_override, dict):
-        return jsonify({"error": "config must be an object"}), 400
+        return error_response("config must be an object", field="config")
 
     config_row = get_plugin_config(plugin_id)
     config_payload = dict(config_row.config_json or {}) if config_row else {}
@@ -219,7 +220,7 @@ def run_plugin_now(plugin_id: str):
 def get_plugin_run_status(run_id: int):
     run = get_plugin_run_by_id(run_id)
     if not run:
-        return jsonify({"error": "Plugin run not found"}), 404
+        return error_response("Plugin run not found", status_code=404)
     return jsonify(_plugin_run_json(run)), 200
 
 
@@ -229,22 +230,22 @@ def update_plugin_config(plugin_id: str):
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
-        return jsonify({"error": "Plugin not found"}), 404
+        return error_response("Plugin not found", status_code=404)
 
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
-        return jsonify({"error": "payload must be an object"}), 400
+        return error_response("payload must be an object")
 
     if "config" in payload and not isinstance(payload.get("config"), dict):
-        return jsonify({"error": "config must be an object"}), 400
+        return error_response("config must be an object", field="config")
     if "enabled" in payload and not isinstance(payload.get("enabled"), bool):
-        return jsonify({"error": "enabled must be a boolean"}), 400
+        return error_response("enabled must be a boolean", field="enabled")
     if "schedule_cron" in payload and payload.get("schedule_cron") is not None:
         if not isinstance(payload.get("schedule_cron"), str):
-            return jsonify({"error": "schedule_cron must be a string"}), 400
+            return error_response("schedule_cron must be a string", field="schedule_cron")
     if "interval_minutes" in payload and payload.get("interval_minutes") is not None:
         if not isinstance(payload.get("interval_minutes"), int):
-            return jsonify({"error": "interval_minutes must be an integer"}), 400
+            return error_response("interval_minutes must be an integer", field="interval_minutes")
 
     config_row = get_plugin_config(plugin_id)
     existing_config = dict(config_row.config_json or {}) if config_row else {}
@@ -290,7 +291,7 @@ def update_plugin_config(plugin_id: str):
 def list_plugin_run_artifacts(run_id: int):
     run = get_plugin_run_by_id(run_id)
     if not run:
-        return jsonify({"error": "Plugin run not found"}), 404
+        return error_response("Plugin run not found", status_code=404)
     artifacts = PluginRunArtifact.query.filter_by(plugin_run_id=run_id).order_by(PluginRunArtifact.created_at.asc()).all()
     return jsonify([_artifact_json(item) for item in artifacts]), 200
 
@@ -300,11 +301,11 @@ def list_plugin_run_artifacts(run_id: int):
 def download_plugin_run_artifact(artifact_id: int):
     artifact = PluginRunArtifact.query.filter_by(id=artifact_id).first()
     if not artifact:
-        return jsonify({"error": "Artifact not found"}), 404
+        return error_response("Artifact not found", status_code=404)
 
     actor = getattr(request, "user", None)
     if not actor or actor.role not in {"Admin", "Analyst"}:
-        return jsonify({"error": "Forbidden"}), 403
+        return error_response("Forbidden", status_code=403)
 
     return send_file(
         artifact.storage_path,
@@ -325,16 +326,16 @@ def list_plugin_import_sources():
 def validate_plugin_import():
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
-        return jsonify({"error": "payload must be an object"}), 400
+        return error_response("payload must be an object")
     module_path = str(payload.get("module_path") or "").strip()
     class_name = str(payload.get("class_name") or "").strip()
     if not module_path or not class_name:
-        return jsonify({"error": "module_path and class_name are required"}), 400
+        return error_response("module_path and class_name are required")
 
     try:
         plugin_cls = _load_plugin_class(module_path, class_name)
     except (ImportError, ValueError, AttributeError) as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc))
 
     registry = _get_registry()
     already_registered = _get_plugin_class(registry, plugin_cls.plugin_id) is not None
@@ -346,24 +347,24 @@ def validate_plugin_import():
 def register_plugin_import():
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
-        return jsonify({"error": "payload must be an object"}), 400
+        return error_response("payload must be an object")
 
     module_path = str(payload.get("module_path") or "").strip()
     class_name = str(payload.get("class_name") or "").strip()
     config_payload = payload.get("config") or {}
     enabled = payload.get("enabled", True)
     if not module_path or not class_name:
-        return jsonify({"error": "module_path and class_name are required"}), 400
+        return error_response("module_path and class_name are required")
     if not isinstance(config_payload, dict):
-        return jsonify({"error": "config must be an object"}), 400
+        return error_response("config must be an object", field="config")
     if not isinstance(enabled, bool):
-        return jsonify({"error": "enabled must be a boolean"}), 400
+        return error_response("enabled must be a boolean", field="enabled")
 
     try:
         plugin_cls = _load_plugin_class(module_path, class_name)
         prepared = prepare_plugin_config(config_payload, plugin_cls.config_schema)
     except (ImportError, ValueError, AttributeError) as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(str(exc))
 
     registry = _get_registry()
     already_registered = _get_plugin_class(registry, plugin_cls.plugin_id) is not None
@@ -371,7 +372,7 @@ def register_plugin_import():
         try:
             registry.register(plugin_cls)
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc))
 
     updated = upsert_plugin_config(plugin_cls.plugin_id, prepared, enabled=enabled)
     _audit(

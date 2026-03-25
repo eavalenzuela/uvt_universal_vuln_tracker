@@ -4,7 +4,7 @@ import pytest
 
 from backend.services import notification_rules
 from backend.services.email_delivery import EmailDeliveryError, resolve_email_config, send_email
-from backend.api import reports
+from backend.api import report_exports as reports
 
 
 class _DummySMTP:

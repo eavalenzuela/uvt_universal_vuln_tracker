@@ -115,10 +115,10 @@ def attach_vulnerability_terminal_impacts(vuln_id: int):
 
     for impact_id in impact_ids:
         if not impact_id:
-            return jsonify({"error": "terminal_impact_ids must include valid ids"}), 400
+            return error_response("terminal_impact_ids must include valid ids", field="terminal_impact_ids")
         impact = TerminalImpact.query.get(int(impact_id))
         if not impact:
-            return jsonify({"error": f"Invalid terminal impact {impact_id}"}), 400
+            return error_response(f"Invalid terminal impact {impact_id}", field="terminal_impact_ids")
 
         existing = VulnerabilityTerminalImpact.query.filter_by(
             vulnerability_id=vuln_id,
@@ -147,7 +147,7 @@ def update_vulnerability_terminal_impact(vuln_id: int, mapping_id: int):
         impact_id = data.get("terminal_impact_id")
         impact = TerminalImpact.query.get(int(impact_id)) if impact_id else None
         if not impact:
-            return jsonify({"error": f"Invalid terminal impact {impact_id}"}), 400
+            return error_response(f"Invalid terminal impact {impact_id}", field="terminal_impact_id")
         mapping.terminal_impact_id = impact.id
 
     db.session.commit()

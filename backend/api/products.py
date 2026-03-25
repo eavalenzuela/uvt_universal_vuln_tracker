@@ -1,234 +1,110 @@
-from datetime import datetime
+from flask import Blueprint, jsonify, request
 
-from flask import Blueprint, current_app, jsonify, request
-from sqlalchemy import asc
-from sqlalchemy.exc import IntegrityError
-
-from ..database import db
-from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
 from ..auth import login_required, role_required
-from ..services.audit import model_snapshot, record_audit as _audit
-from ..serializers.product_serializers import product_json as _product_json, version_json as _version_json
+from ..services.product_service import (
+    create_product as svc_create_product,
+    create_version as svc_create_version,
+    delete_product as svc_delete_product,
+    delete_version as svc_delete_version,
+    get_product as svc_get_product,
+    list_products as svc_list_products,
+    list_versions as svc_list_versions,
+    update_product as svc_update_product,
+    update_version as svc_update_version,
+)
 from .validation import ValidationError, error_response, paginate_query
+from ..serializers.product_serializers import product_json as _product_json, version_json as _version_json
 
 bp = Blueprint("products_api", __name__, url_prefix="/api")
-
-
-def _parse_date(date_str):
-    if not date_str:
-        return None
-    try:
-        return datetime.fromisoformat(date_str).date()
-    except ValueError:
-        return None
 
 
 @bp.get("/products")
 @login_required
 def list_products():
-    query = Product.query.order_by(asc(Product.name))
+    query = svc_list_products()
     try:
         products, meta = paginate_query(query)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
     return jsonify({"items": [_product_json(p) for p in products], **meta})
 
+
 @bp.post("/products")
 @role_required("Admin", "Analyst")
 def create_product():
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
-
-    p = Product(
-        name=name,
-        description=data.get("description"),
-        created_by=getattr(request, "user", None).id if getattr(request, "user", None) else None,
-    )
-    db.session.add(p)
-    db.session.flush()
-    _audit("CREATE", "products", p.id, new_values=model_snapshot(p))
-    db.session.commit()
+    try:
+        p = svc_create_product(
+            name=data.get("name"),
+            description=data.get("description"),
+            created_by=getattr(request, "user", None).id if getattr(request, "user", None) else None,
+        )
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     return jsonify({"id": p.id, "name": p.name, "description": p.description}), 201
+
 
 @bp.get("/products/<int:product_id>")
 @login_required
 def get_product(product_id: int):
-    p = Product.query.get_or_404(product_id)
+    p = svc_get_product(product_id)
     return jsonify(_product_json(p, include_details=True))
 
 
 @bp.patch("/products/<int:product_id>")
 @role_required("Admin", "Analyst")
 def update_product(product_id: int):
-    p = Product.query.get_or_404(product_id)
     data = request.get_json(silent=True) or {}
-
-    old_values = model_snapshot(p)
-
-    if "name" in data:
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "name cannot be empty"}), 400
-        p.name = name
-
-    if "description" in data:
-        p.description = data.get("description")
-
-    if "owner_ids" in data:
-        owner_ids = data.get("owner_ids") or []
-        if not isinstance(owner_ids, list):
-            return jsonify({"error": "owner_ids must be a list"}), 400
-        owner_ids = [int(oid) for oid in owner_ids]
-        if owner_ids:
-            owners = User.query.filter(User.id.in_(owner_ids), User.is_active.is_(True)).all()
-            found_ids = {o.id for o in owners}
-            missing = set(owner_ids) - found_ids
-            if missing:
-                return jsonify({"error": f"Invalid owners: {', '.join(map(str, sorted(missing)))}"}), 400
-        else:
-            owners = []
-
-        existing = {o.user_id: o for o in p.owners}
-        new_links = []
-        for owner in owners:
-            link = existing.get(owner.id)
-            if not link:
-                link = ProductOwner(product=p, user=owner)
-            new_links.append(link)
-        p.owners = new_links
-
-    if "controls" in data:
-        controls_data = data.get("controls") or []
-        if not isinstance(controls_data, list):
-            return jsonify({"error": "controls must be a list"}), 400
-        control_ids = []
-        for entry in controls_data:
-            if not isinstance(entry, dict):
-                return jsonify({"error": "controls entries must be objects"}), 400
-            control_id = entry.get("control_id")
-            if not control_id:
-                return jsonify({"error": "control_id is required for each control"}), 400
-            control_ids.append(int(control_id))
-        if len(control_ids) != len(set(control_ids)):
-            return jsonify({"error": "Duplicate control_id values are not allowed"}), 400
-
-        controls = []
-        if control_ids:
-            controls = Control.query.filter(Control.id.in_(control_ids)).all()
-            found_ids = {c.id for c in controls}
-            missing = set(control_ids) - found_ids
-            if missing:
-                return jsonify({"error": f"Invalid controls: {', '.join(map(str, sorted(missing)))}"}), 400
-
-        control_map = {c.id: c for c in controls}
-        existing_links = {link.control_id: link for link in p.control_links}
-        new_links = []
-        for entry in controls_data:
-            control_id = int(entry["control_id"])
-            control = control_map.get(control_id)
-            if not control:
-                continue
-            link = existing_links.get(control_id)
-            if not link:
-                link = ProductControl(product=p, control=control)
-            link.implementation_status = entry.get("implementation_status") or link.implementation_status or "Not Started"
-            link.notes = entry.get("notes")
-            new_links.append(link)
-        p.control_links = new_links
-
-    _audit("UPDATE", "products", p.id, old_values=old_values, new_values=model_snapshot(p))
-    db.session.commit()
+    try:
+        p = svc_update_product(product_id, data)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     return jsonify(_product_json(p, include_details=True))
 
 
 @bp.delete("/products/<int:product_id>")
 @role_required("Admin")
 def delete_product(product_id: int):
-    p = Product.query.get_or_404(product_id)
-    _audit("DELETE", "products", p.id, old_values=model_snapshot(p))
-    db.session.delete(p)
-    db.session.commit()
+    svc_delete_product(product_id)
     return jsonify({"ok": True})
 
 
 @bp.get("/products/<int:product_id>/versions")
 @login_required
 def list_versions(product_id: int):
-    versions = ProductVersion.query.filter_by(product_id=product_id).order_by(asc(ProductVersion.version)).all()
+    versions = svc_list_versions(product_id)
     return jsonify([_version_json(v) for v in versions])
+
 
 @bp.post("/products/<int:product_id>/versions")
 @role_required("Admin", "Analyst")
 def create_version(product_id: int):
     data = request.get_json(silent=True) or {}
-    version = (data.get("version") or "").strip()
-    if not version:
-        return jsonify({"error": "version is required"}), 400
-
-    release_date = _parse_date(data.get("release_date"))
-    if data.get("release_date") and not release_date:
-        return jsonify({"error": "Invalid release_date format; expected ISO date"}), 400
-
-    v = ProductVersion(
-        product_id=product_id,
-        version=version,
-        release_date=release_date,
-        is_active=bool(data.get("is_active", True)),
-    )
-    db.session.add(v)
     try:
-        db.session.flush()
-        _audit("CREATE", "product_versions", v.id, new_values=model_snapshot(v))
-        db.session.commit()
-    except IntegrityError:
-        current_app.logger.exception("Failed to create product version")
-        db.session.rollback()
-        return jsonify({"error": "Duplicate version for product (or invalid data)"}), 400
-
+        v = svc_create_version(
+            product_id=product_id,
+            version=data.get("version"),
+            release_date=data.get("release_date"),
+            is_active=data.get("is_active", True),
+        )
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     return jsonify(_version_json(v)), 201
 
 
 @bp.patch("/products/<int:product_id>/versions/<int:version_id>")
 @role_required("Admin", "Analyst")
 def update_version(product_id: int, version_id: int):
-    v = ProductVersion.query.filter_by(product_id=product_id, id=version_id).first_or_404()
     data = request.get_json(silent=True) or {}
-
-    old_values = model_snapshot(v)
-
-    if "version" in data:
-        version_value = (data.get("version") or "").strip()
-        if not version_value:
-            return jsonify({"error": "version cannot be empty"}), 400
-        v.version = version_value
-
-    if "release_date" in data:
-        release_date = _parse_date(data.get("release_date"))
-        if data.get("release_date") and not release_date:
-            return jsonify({"error": "Invalid release_date format; expected ISO date"}), 400
-        v.release_date = release_date
-
-    if "is_active" in data:
-        v.is_active = bool(data.get("is_active"))
-
     try:
-        _audit("UPDATE", "product_versions", v.id, old_values=old_values, new_values=model_snapshot(v))
-        db.session.commit()
-    except IntegrityError:
-        current_app.logger.exception("Failed to update product version %s", version_id)
-        db.session.rollback()
-        return jsonify({"error": "Unable to update version (duplicate?)"}), 400
-
+        v = svc_update_version(product_id, version_id, data)
+    except ValidationError as exc:
+        return error_response(exc.error, field=exc.field, details=exc.details)
     return jsonify(_version_json(v))
 
 
 @bp.delete("/products/<int:product_id>/versions/<int:version_id>")
 @role_required("Admin", "Analyst")
 def delete_version(product_id: int, version_id: int):
-    v = ProductVersion.query.filter_by(product_id=product_id, id=version_id).first_or_404()
-    _audit("DELETE", "product_versions", v.id, old_values=model_snapshot(v))
-    db.session.delete(v)
-    db.session.commit()
+    svc_delete_version(product_id, version_id)
     return jsonify({"ok": True})

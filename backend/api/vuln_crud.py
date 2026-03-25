@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 
 from ..database import db
 from ..models import (
@@ -14,13 +14,10 @@ from ..models import (
     ProductVersion,
     Product,
     VulnerabilityComponent,
-    VulnerabilityComment,
-    VulnerabilityWatcher,
-    User,
 )
 from ..auth import login_required, role_required
 from ..services.audit import build_field_diff, model_snapshot, record_audit
-from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event, trigger_mention_notifications
+from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from ..services.sla import compute_sla_state, get_sla_policy, recompute_vulnerability_sla
 from ..services.cve_enrichment import (
     CveNotFoundError,
@@ -29,7 +26,7 @@ from ..services.cve_enrichment import (
     fetch_cve_enrichment,
 )
 from ..rate_limiter import rate_limit
-from .validation import ValidationError, enum_value, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
+from .validation import ValidationError, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
 from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
@@ -45,9 +42,7 @@ from ..services.vulnerability_service import (
 )
 from ..serializers.vulnerability_serializers import (
     audit_field_diff_payload,
-    serialize_comment,
     serialize_vulnerability_history_item,
-    serialize_watcher,
 )
 
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
@@ -59,25 +54,14 @@ def _parse_sla_due_at(value, *, field="sla_due_at"):
     return parse_sla_due_at(value, field=field)
 
 
-
-def _can_moderate_comment(user, comment):
-    return bool(user and (user.role == "Admin" or comment.author_id == user.id))
-
-
-def _serialize_comment(comment):
-    return serialize_comment(comment)
-
-
-def _serialize_watcher(watcher):
-    return serialize_watcher(watcher)
-
-
-def _audit_field_diff_payload(log):
-    return audit_field_diff_payload(log)
-
-
-def _serialize_vulnerability_history_item(log):
-    return serialize_vulnerability_history_item(log)
+def _is_empty_value(value):
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list):
+        return len(value) == 0
+    return False
 
 
 def _attach_attack_vectors(vuln, items):
@@ -87,6 +71,15 @@ def _attach_attack_vectors(vuln, items):
         db.session.rollback()
         return error_response(exc.error, field=exc.field, details=exc.details)
     return None
+
+
+def _audit_field_diff_payload(log):
+    return audit_field_diff_payload(log)
+
+
+def _serialize_vulnerability_history_item(log):
+    return serialize_vulnerability_history_item(log)
+
 
 @bp.get("/product_versions")
 @login_required
@@ -396,7 +389,6 @@ def get_vulnerability_activity(vuln_id: int):
 @login_required
 def get_vulnerability_history(vuln_id: int):
     Vulnerability.query.get_or_404(vuln_id)
-
     logs = (
         AuditLog.query
         .filter(
@@ -484,134 +476,6 @@ def update_vulnerability(vuln_id: int):
     )
     return jsonify({"ok": True})
 
-@bp.patch("/vulnerabilities/batch")
-@role_required("Admin", "Analyst")
-@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_batch_update")
-def batch_update_vulnerabilities():
-    return _bulk_update_vulnerabilities()
-
-
-@bp.patch("/vulnerabilities/bulk")
-@role_required("Admin", "Analyst")
-@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_bulk_update")
-def bulk_update_vulnerabilities():
-    return _bulk_update_vulnerabilities()
-
-
-def _bulk_update_vulnerabilities():
-    data = request.get_json(silent=True) or {}
-
-    raw_ids = data.get("vulnerability_ids")
-    if not isinstance(raw_ids, list) or not raw_ids:
-        return error_response("vulnerability_ids must be a non-empty list", field="vulnerability_ids")
-
-    normalized_ids = []
-    for idx, raw_id in enumerate(raw_ids):
-        try:
-            parsed_id = parse_int(raw_id, field=f"vulnerability_ids[{idx}]", minimum=1, required=True)
-        except ValidationError as exc:
-            return error_response(exc.error, field=exc.field, details=exc.details)
-        normalized_ids.append(parsed_id)
-
-    vulnerability_ids = list(dict.fromkeys(normalized_ids))
-
-    allowed_fields = {"status", "severity", "assigned_to", "sla_due_at"}
-    updates = {}
-    for field in allowed_fields:
-        if field in data:
-            updates[field] = data[field]
-
-    if not updates:
-        return error_response("At least one mutable field is required", field="updates")
-
-    unknown_fields = [key for key in data.keys() if key not in {"vulnerability_ids", *allowed_fields}]
-    if unknown_fields:
-        return error_response(
-            "Unknown fields in request",
-            field="payload",
-            details={"unknown_fields": sorted(unknown_fields), "allowed_fields": sorted(allowed_fields)},
-        )
-
-    try:
-        parsed_updates = {}
-        if "status" in updates:
-            parsed_updates["status"] = enum_value(updates.get("status"), field="status", options=STATUS_OPTIONS, required=False) or "Open"
-        if "severity" in updates:
-            parsed_updates["severity"] = enum_value(updates.get("severity"), field="severity", options=SEVERITY_OPTIONS, required=False) or "Medium"
-        if "assigned_to" in updates:
-            parsed_updates["assigned_to"] = parse_int(updates.get("assigned_to"), field="assigned_to", minimum=1)
-        if "sla_due_at" in updates:
-            parsed_updates["sla_due_at"] = _parse_sla_due_at(updates.get("sla_due_at"), field="sla_due_at")
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    if "assigned_to" in parsed_updates and parsed_updates["assigned_to"] is not None and not User.query.get(parsed_updates["assigned_to"]):
-        return error_response("assigned_to user not found", field="assigned_to")
-
-    vulnerabilities = Vulnerability.query.filter(Vulnerability.id.in_(vulnerability_ids)).all()
-    found_ids = {item.id for item in vulnerabilities}
-    missing_ids = [vid for vid in vulnerability_ids if vid not in found_ids]
-
-    updated = []
-    skipped = []
-    failed = []
-
-    for vuln in vulnerabilities:
-        if vuln.is_merged:
-            failed.append({"id": vuln.id, "error": "merged vulnerabilities cannot be updated"})
-            continue
-
-        old = {
-            "severity": vuln.severity,
-            "status": vuln.status,
-            "assigned_to": vuln.assigned_to,
-            "sla_due_at": vuln.sla_due_at.isoformat() if vuln.sla_due_at else None,
-        }
-
-        try:
-            with db.session.begin_nested():
-                for field, value in parsed_updates.items():
-                    setattr(vuln, field, value)
-
-                if "sla_due_at" not in parsed_updates:
-                    recompute_vulnerability_sla(vuln)
-
-                new_values = {
-                    "severity": vuln.severity,
-                    "status": vuln.status,
-                    "assigned_to": vuln.assigned_to,
-                    "sla_due_at": vuln.sla_due_at.isoformat() if vuln.sla_due_at else None,
-                }
-                field_diff = build_field_diff(old, new_values, ["severity", "status", "assigned_to", "sla_due_at"])
-                if not field_diff:
-                    skipped.append(vuln.id)
-                    continue
-
-                new_values["field_diff"] = field_diff
-                record_audit("BATCH_UPDATE", "vulnerabilities", vuln.id,
-                             old_values=old, new_values=new_values)
-                db.session.flush()
-                updated.append(vuln.id)
-        except SQLAlchemyError as exc:
-            current_app.logger.exception("Batch update failed for vulnerability %s", vuln.id)
-            db.session.rollback()
-            failed.append({"id": vuln.id, "error": str(exc)})
-
-    db.session.commit()
-
-    return jsonify({
-        "ok": True,
-        "updated_ids": updated,
-        "updated_count": len(updated),
-        "skipped_ids": skipped,
-        "skipped_count": len(skipped),
-        "missing_ids": missing_ids,
-        "missing_count": len(missing_ids),
-        "failed": failed,
-        "failed_count": len(failed),
-    })
-
-
 @bp.delete("/vulnerabilities/<int:vuln_id>")
 @role_required("Admin", "Analyst")
 def delete_vulnerability(vuln_id: int):
@@ -631,16 +495,6 @@ def delete_vulnerability(vuln_id: int):
     db.session.delete(v)
     db.session.commit()
     return jsonify({"ok": True})
-
-
-def _is_empty_value(value):
-    if value is None:
-        return True
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, list):
-        return len(value) == 0
-    return False
 
 
 @bp.post("/vulnerabilities/<int:vuln_id>/enrich")
@@ -755,263 +609,3 @@ def enrich_vulnerability(vuln_id: int):
             "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         },
     })
-
-@bp.post("/vulnerabilities/<int:vuln_id>/versions")
-@role_required("Admin", "Analyst")
-def attach_versions(vuln_id: int):
-    """
-    Body:
-      {
-        "product_version_ids": [1,2,3]
-      }
-    """
-    v = Vulnerability.query.get_or_404(vuln_id)
-    data = request.get_json(silent=True) or {}
-    pv_ids = data.get("product_version_ids") or []
-    added = 0
-
-    for pv_id in pv_ids:
-        pv_id = int(pv_id)
-        existing = VulnerabilityVersion.query.filter_by(vulnerability_id=v.id, product_version_id=pv_id).first()
-        if existing:
-            continue
-        db.session.add(VulnerabilityVersion(vulnerability_id=v.id, product_version_id=pv_id, affected=True))
-        added += 1
-
-    record_audit("ATTACH", "vulnerability_versions", v.id, old_values=None, new_values={
-        "added": added, "product_version_ids": pv_ids
-    })
-
-    if added > 0:
-        trigger_notifications_for_event(NotificationEvent(
-            event_type="product_scope_change",
-            vulnerability_id=v.id,
-            actor_id=request.user.id,
-            new_values={"added_product_version_ids": pv_ids},
-        ))
-
-    db.session.commit()
-    return jsonify({"ok": True, "added": added})
-
-
-@bp.patch("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
-@role_required("Admin", "Analyst")
-def update_vulnerability_version(vuln_id: int, mapping_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
-    data = request.get_json(silent=True) or {}
-
-    old_values = {
-        "affected": mapping.affected,
-        "fixed_in_version": mapping.fixed_in_version,
-        "mitigation_status": mapping.mitigation_status,
-        "notes": mapping.notes,
-    }
-
-    if "affected" in data:
-        val = data.get("affected")
-        if isinstance(val, str):
-            mapping.affected = val.lower() in {"true", "1", "yes", "on"}
-        else:
-            mapping.affected = bool(val)
-    for field in ["fixed_in_version", "mitigation_status", "notes"]:
-        if field in data:
-            setattr(mapping, field, data.get(field))
-
-    record_audit("UPDATE", "vulnerability_versions", mapping.id, old_values=old_values, new_values={
-        "affected": mapping.affected,
-        "fixed_in_version": mapping.fixed_in_version,
-        "mitigation_status": mapping.mitigation_status,
-        "notes": mapping.notes,
-    })
-
-    trigger_notifications_for_event(NotificationEvent(
-        event_type="product_scope_change",
-        vulnerability_id=vuln_id,
-        actor_id=request.user.id,
-        old_values=old_values,
-        new_values={"affected": mapping.affected, "mitigation_status": mapping.mitigation_status},
-    ))
-
-    db.session.commit()
-
-    return jsonify({
-        "id": mapping.id,
-        "vulnerability_id": mapping.vulnerability_id,
-        "product_version_id": mapping.product_version_id,
-        "affected": mapping.affected,
-        "fixed_in_version": mapping.fixed_in_version,
-        "mitigation_status": mapping.mitigation_status,
-        "notes": mapping.notes,
-    })
-
-
-@bp.delete("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
-@role_required("Admin", "Analyst")
-def delete_vulnerability_version(vuln_id: int, mapping_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
-
-    record_audit("DELETE", "vulnerability_versions", mapping.id, old_values={
-        "product_version_id": mapping.product_version_id,
-        "affected": mapping.affected,
-        "fixed_in_version": mapping.fixed_in_version,
-    }, new_values=None)
-
-    trigger_notifications_for_event(NotificationEvent(
-        event_type="product_scope_change",
-        vulnerability_id=vuln_id,
-        actor_id=request.user.id,
-        old_values={"product_version_id": mapping.product_version_id},
-        new_values=None,
-    ))
-
-    db.session.delete(mapping)
-    db.session.commit()
-    return jsonify({"ok": True})
-
-
-@bp.get("/vulnerabilities/<int:vuln_id>/comments")
-@login_required
-def list_vulnerability_comments(vuln_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    comments = (
-        VulnerabilityComment.query
-        .filter_by(vulnerability_id=vuln_id)
-        .order_by(asc(VulnerabilityComment.created_at), asc(VulnerabilityComment.id))
-        .all()
-    )
-    return jsonify([_serialize_comment(comment) for comment in comments])
-
-
-@bp.post("/vulnerabilities/<int:vuln_id>/comments")
-@role_required("Admin", "Analyst")
-def create_vulnerability_comment(vuln_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    data = request.get_json(silent=True) or {}
-    try:
-        body = required_string(data, "body")
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    comment = VulnerabilityComment(
-        vulnerability_id=vuln_id,
-        author_id=request.user.id,
-        body=body,
-        updated_by=request.user.id,
-    )
-    db.session.add(comment)
-    db.session.flush()
-
-    trigger_mention_notifications(
-        vulnerability_id=vuln_id,
-        actor_id=request.user.id,
-        comment_id=comment.id,
-        comment_text=body,
-    )
-
-    record_audit("CREATE", "vulnerability_comments", comment.id, old_values=None, new_values={"body": comment.body})
-    db.session.commit()
-    return jsonify(_serialize_comment(comment)), 201
-
-
-@bp.put("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
-@role_required("Admin", "Analyst")
-def update_vulnerability_comment(vuln_id: int, comment_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
-    if not _can_moderate_comment(request.user, comment):
-        return error_response("Not permitted to edit this comment", status_code=403)
-
-    data = request.get_json(silent=True) or {}
-    try:
-        body = required_string(data, "body")
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    old_values = {"body": comment.body}
-    comment.body = body
-    comment.updated_by = request.user.id
-
-    trigger_mention_notifications(
-        vulnerability_id=vuln_id,
-        actor_id=request.user.id,
-        comment_id=comment.id,
-        comment_text=body,
-    )
-
-    record_audit("UPDATE", "vulnerability_comments", comment.id, old_values=old_values, new_values={"body": comment.body})
-    db.session.commit()
-    return jsonify(_serialize_comment(comment))
-
-
-@bp.delete("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
-@role_required("Admin", "Analyst")
-def delete_vulnerability_comment(vuln_id: int, comment_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
-    if not _can_moderate_comment(request.user, comment):
-        return error_response("Not permitted to delete this comment", status_code=403)
-
-    old_values = {"body": comment.body, "author_id": comment.author_id}
-    record_audit("DELETE", "vulnerability_comments", comment.id, old_values=old_values, new_values=None)
-    db.session.delete(comment)
-    db.session.commit()
-    return jsonify({"ok": True})
-
-
-@bp.get("/vulnerabilities/<int:vuln_id>/watchers")
-@login_required
-def list_vulnerability_watchers(vuln_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    watchers = (
-        VulnerabilityWatcher.query
-        .filter_by(vulnerability_id=vuln_id)
-        .order_by(asc(VulnerabilityWatcher.created_at), asc(VulnerabilityWatcher.id))
-        .all()
-    )
-    return jsonify([_serialize_watcher(watcher) for watcher in watchers])
-
-
-@bp.post("/vulnerabilities/<int:vuln_id>/watch")
-@role_required("Admin", "Analyst")
-def watch_vulnerability(vuln_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    data = request.get_json(silent=True) or {}
-    requested_user_id = data.get("user_id", request.user.id)
-    try:
-        user_id = parse_int(requested_user_id, field="user_id", minimum=1, required=True)
-    except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
-
-    if request.user.role != "Admin" and user_id != request.user.id:
-        return error_response("Only admins can add watchers for other users", status_code=403)
-
-    user = User.query.get(user_id)
-    if not user:
-        return error_response("User not found", field="user_id", status_code=404)
-
-    existing = VulnerabilityWatcher.query.filter_by(vulnerability_id=vuln_id, user_id=user_id).first()
-    if existing:
-        return jsonify(_serialize_watcher(existing))
-
-    watcher = VulnerabilityWatcher(vulnerability_id=vuln_id, user_id=user_id, added_by=request.user.id)
-    db.session.add(watcher)
-    db.session.commit()
-    return jsonify(_serialize_watcher(watcher)), 201
-
-
-@bp.delete("/vulnerabilities/<int:vuln_id>/watch/<int:user_id>")
-@role_required("Admin", "Analyst")
-def unwatch_vulnerability(vuln_id: int, user_id: int):
-    Vulnerability.query.get_or_404(vuln_id)
-    if request.user.role != "Admin" and user_id != request.user.id:
-        return error_response("Only admins can remove watchers for other users", status_code=403)
-
-    watcher = VulnerabilityWatcher.query.filter_by(vulnerability_id=vuln_id, user_id=user_id).first()
-    if not watcher:
-        return jsonify({"ok": True})
-
-    db.session.delete(watcher)
-    db.session.commit()
-    return jsonify({"ok": True})
