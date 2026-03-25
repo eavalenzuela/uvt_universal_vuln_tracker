@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
 from ..database import db
@@ -86,7 +86,7 @@ def create_plugin_run(
     run = PluginRun(
         plugin_id=plugin_id,
         status=status,
-        started_at=started_at or datetime.utcnow(),
+        started_at=started_at or datetime.now(timezone.utc),
         finished_at=finished_at,
         error=error,
         stats_json=dict(stats or {}) if stats is not None else None,

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
+from sqlalchemy.exc import IntegrityError
 
 from ..database import db
 from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
@@ -181,7 +182,7 @@ def create_version(product_id: int):
         db.session.flush()
         _audit("CREATE", "product_versions", v.id, new_values=model_snapshot(v))
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         current_app.logger.exception("Failed to create product version")
         db.session.rollback()
         return jsonify({"error": "Duplicate version for product (or invalid data)"}), 400
@@ -215,7 +216,7 @@ def update_version(product_id: int, version_id: int):
     try:
         _audit("UPDATE", "product_versions", v.id, old_values=old_values, new_values=model_snapshot(v))
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         current_app.logger.exception("Failed to update product version %s", version_id)
         db.session.rollback()
         return jsonify({"error": "Unable to update version (duplicate?)"}), 400

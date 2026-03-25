@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import re
 from typing import Any
@@ -237,7 +237,7 @@ def _escalation_step(rule: NotificationRule, vulnerability: Vulnerability) -> in
     escalation_after_days = max(int(rule.escalation_after_days or 0), 0)
     if escalation_after_days <= 0:
         return 1
-    overdue_days = (datetime.utcnow() - vulnerability.sla_due_at).days
+    overdue_days = (datetime.now(timezone.utc) - vulnerability.sla_due_at).days
     if overdue_days < escalation_after_days:
         return 0
     return (overdue_days // escalation_after_days) + 1
@@ -321,7 +321,7 @@ def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id
 
 
 def run_scheduled_notification_scan(now: datetime | None = None, *, dry_run: bool = False) -> list[NotificationDeliveryLog]:
-    now = now or datetime.utcnow()
+    now = now or datetime.now(timezone.utc)
     rules = NotificationRule.query.filter_by(is_enabled=True).all()
     vulnerabilities = Vulnerability.query.filter(
         Vulnerability.status.in_(["Open", "In Progress"]),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sized
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Any
@@ -37,7 +37,7 @@ def is_plugin_due(plugin_id: str, interval_minutes: int | None) -> bool:
     if not last_run or not last_run.started_at:
         return True
     next_run_at = last_run.started_at + timedelta(minutes=interval_minutes)
-    return datetime.utcnow() >= next_run_at
+    return datetime.now(timezone.utc) >= next_run_at
 
 
 def run_plugin(
@@ -62,13 +62,13 @@ def run_plugin(
             artifacts = result.get("artifacts")
         elif getattr(plugin, "artifact_descriptors", None):
             artifacts = [vars(item) for item in plugin.artifact_descriptors]
-        save_plugin_run_result(run, status="success", finished_at=datetime.utcnow(), stats=stats, artifact_descriptors=artifacts)
+        save_plugin_run_result(run, status="success", finished_at=datetime.now(timezone.utc), stats=stats, artifact_descriptors=artifacts)
     except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
         logger.exception("Plugin run failed for %s", plugin_id)
         save_plugin_run_result(
             run,
             status="failed",
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(timezone.utc),
             error=str(exc),
         )
     return run
@@ -103,13 +103,13 @@ def _execute_plugin_run(
                 artifacts = result.get("artifacts")
             elif getattr(plugin, "artifact_descriptors", None):
                 artifacts = [vars(item) for item in plugin.artifact_descriptors]
-            save_plugin_run_result(run, status="success", finished_at=datetime.utcnow(), stats=stats, artifact_descriptors=artifacts)
+            save_plugin_run_result(run, status="success", finished_at=datetime.now(timezone.utc), stats=stats, artifact_descriptors=artifacts)
         except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
             logger.exception("Plugin run failed for %s", plugin_id)
             save_plugin_run_result(
                 run,
                 status="failed",
-                finished_at=datetime.utcnow(),
+                finished_at=datetime.now(timezone.utc),
                 error=str(exc),
             )
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.auth import generate_token, revoke_tokens
 from backend.database import db
@@ -29,7 +29,7 @@ def test_token_issued_before_last_revocation_timestamp_is_rejected(client, admin
         user = User.query.get(admin_user.id)
         old_token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
 
-        user.last_revoked_at = datetime.utcnow() + timedelta(minutes=1)
+        user.last_revoked_at = datetime.now(timezone.utc) + timedelta(minutes=1)
         db.session.add(user)
         db.session.commit()
 
@@ -41,7 +41,7 @@ def test_token_issued_before_last_revocation_timestamp_is_rejected(client, admin
 def test_malformed_token_is_rejected(client, admin_user):
     with client.application.app_context():
         user = User.query.get(admin_user.id)
-        user.last_revoked_at = datetime.utcnow()
+        user.last_revoked_at = datetime.now(timezone.utc)
         db.session.add(user)
         db.session.commit()
         db.session.refresh(user)

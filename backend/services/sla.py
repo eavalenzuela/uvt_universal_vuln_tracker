@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..models import SlaPolicy, VulnerabilityVersion
 
@@ -96,7 +96,7 @@ def resolve_sla_days(vulnerability, policy: dict | None = None) -> int:
 
 
 def recompute_vulnerability_sla(vulnerability, policy: dict | None = None):
-    created_at = vulnerability.created_at or datetime.utcnow()
+    created_at = vulnerability.created_at or datetime.now(timezone.utc)
     days = resolve_sla_days(vulnerability, policy=policy)
     vulnerability.sla_due_at = created_at + timedelta(days=days)
 
@@ -105,7 +105,7 @@ def compute_sla_state(vulnerability, policy: dict | None = None) -> str:
     if not vulnerability.sla_due_at:
         return "on_track"
     policy = normalize_sla_policy(policy) if policy is not None else get_sla_policy()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if vulnerability.sla_due_at < now:
         return "breached"
     due_soon_days = int(policy.get("due_soon_days", DEFAULT_SLA_POLICY["due_soon_days"]))

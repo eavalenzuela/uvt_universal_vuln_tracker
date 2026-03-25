@@ -1,20 +1,36 @@
+from datetime import timezone
+
 from flask_sqlalchemy import SQLAlchemy
 
 from sqlalchemy import inspect, text
+import sqlalchemy.types as sa_types
+
+
+class TZDateTime(sa_types.TypeDecorator):
+    """A DateTime type that ensures UTC timezone-aware datetimes.
+
+    On write, naive datetimes are assumed UTC and stored as-is.
+    On read, naive datetimes (e.g. from SQLite) are tagged as UTC.
+    """
+
+    impl = sa_types.DateTime
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 db = SQLAlchemy()
 
-# Column additions for SQLite databases that were created before these columns
-# existed.  The keys are validated against a strict allowlist so the f-string
-# interpolation in the ALTER TABLE below is safe.
-_SQLITE_VULN_COLUMN_BACKFILL = {
-    "attack_complexity": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-    "confidentiality_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-    "integrity_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-    "availability_impact": "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'",
-}
-
-_ALLOWED_BACKFILL_COLUMNS = frozenset(_SQLITE_VULN_COLUMN_BACKFILL.keys())
+# Columns to backfill on SQLite databases created before these existed.
+# Each tuple: (column_name, sql_type, default_value)
+_SQLITE_VULN_COLUMN_BACKFILL = [
+    ("attack_complexity", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
+    ("confidentiality_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
+    ("integrity_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
+    ("availability_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
+]
 
 
 def init_database(app):
@@ -47,12 +63,11 @@ def _ensure_sqlite_schema(app):
         if "vulnerabilities" in insp.get_table_names():
             existing_cols = {c["name"] for c in insp.get_columns("vulnerabilities")}
             added = False
-            for column, ddl in _SQLITE_VULN_COLUMN_BACKFILL.items():
-                assert column in _ALLOWED_BACKFILL_COLUMNS, f"unexpected column: {column}"
-                if column not in existing_cols:
-                    db.session.execute(text(
-                        f"ALTER TABLE vulnerabilities ADD COLUMN {column} {ddl}"
-                    ))
+            for col_name, col_def in _SQLITE_VULN_COLUMN_BACKFILL:
+                if col_name not in existing_cols:
+                    db.session.execute(
+                        text(f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_def}")
+                    )
                     added = True
             if added:
                 db.session.commit()

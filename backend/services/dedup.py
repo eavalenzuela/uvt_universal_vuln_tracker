@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import or_
@@ -219,7 +219,7 @@ def merge_vulnerabilities(*, target: Vulnerability, source: Vulnerability, actor
     _merge_watchers(target.id, source.id)
     _relink_records_by_vulnerability(target.id, source.id)
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     target_meta = dict(target.merge_metadata_json or {})
     merged_sources = list(target_meta.get("merged_source_ids") or [])

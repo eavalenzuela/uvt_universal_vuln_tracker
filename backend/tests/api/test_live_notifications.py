@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.database import db
 from backend.live_notifications import hub
@@ -89,7 +89,7 @@ def test_scheduled_scan_escalation_publishes_event(app, admin_user):
             status="Open",
             created_by=admin_user.id,
             assigned_to=admin_user.id,
-            sla_due_at=datetime.utcnow() - timedelta(days=10),
+            sla_due_at=datetime.now(timezone.utc) - timedelta(days=10),
         )
         db.session.add(vuln)
         db.session.flush()
@@ -107,7 +107,7 @@ def test_scheduled_scan_escalation_publishes_event(app, admin_user):
         db.session.commit()
 
         queue = hub.subscribe(admin_user.id)
-        run_scheduled_notification_scan(now=datetime.utcnow(), dry_run=True)
+        run_scheduled_notification_scan(now=datetime.now(timezone.utc), dry_run=True)
         event = queue.get(timeout=1)
         assert event["type"] == "scheduled_scan_escalation_logged"
         assert event["payload"]["vulnerability_id"] == vuln.id

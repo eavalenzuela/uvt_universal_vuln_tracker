@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from queue import Empty, Queue
 from threading import Lock
 from typing import Any
@@ -31,7 +31,7 @@ class LiveNotificationHub:
 
     def publish(self, user_id: int, event: dict[str, Any]) -> None:
         payload = dict(event)
-        payload.setdefault("sent_at", datetime.utcnow().isoformat() + "Z")
+        payload.setdefault("sent_at", datetime.now(timezone.utc).isoformat() + "Z")
         with self._lock:
             queues = list(self._subscribers.get(user_id, ()))
         for queue in queues:

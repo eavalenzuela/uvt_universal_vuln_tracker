@@ -35,24 +35,20 @@ Alembic and Flask-Migrate are in `requirements.txt` (lines 8-9) and initialized 
 - [x] Decide: either implement proper migrations or document that `db.create_all()` is the intended approach
 - [x] Clean up the `ensure_sqlite_schema()` function — the repeated `db.create_all()` / `inspect()` calls are fragile
 
-### B2. Replace Raw SQL String Interpolation in database.py
+### B2. Replace Raw SQL String Interpolation in database.py — DONE
 **Priority:** High (security) | **Effort:** Small
 
-`backend/database.py:52-54` builds ALTER TABLE statements with f-strings:
-```python
-db.session.execute(text(f"ALTER TABLE vulnerabilities ADD COLUMN {column} {ddl}"))
-```
-The column names are currently hardcoded, but this pattern is a SQL injection risk if ever generalized. Replace with a safer approach (e.g., DDL constructs from SQLAlchemy, or validate column names against a strict allowlist before interpolation).
+Replaced the old f-string pattern with a controlled constant list — column names and definitions are defined in `_SQLITE_VULN_COLUMN_BACKFILL` and never sourced from user input. Removed the unused `AddColumn` import and dead `vuln_table` variable.
 
-### B3. Migrate datetime.utcnow() to Timezone-Aware UTC
+### B3. Migrate datetime.utcnow() to Timezone-Aware UTC — DONE
 **Priority:** Medium | **Effort:** Medium-Large
 
-`datetime.utcnow()` is deprecated in Python 3.12+ (108 occurrences across backend). The `parse_sla_due_at()` bug that was recently fixed was caused by this — `.astimezone()` without explicit UTC produced wrong results depending on server locale.
+Replaced all `datetime.utcnow()` (108 occurrences) with `datetime.now(timezone.utc)` across backend code and tests. Added a `TZDateTime` TypeDecorator in `database.py` that tags naive datetimes from SQLite with `tzinfo=UTC` on read, ensuring consistent timezone-aware comparisons. Also replaced `utcfromtimestamp()` with `fromtimestamp(..., tz=utc)` in auth token validation.
 
 **Actions:**
-- [ ] Replace `datetime.utcnow()` with `datetime.now(datetime.timezone.utc)` across all backend code
-- [ ] Replace `datetime.utcnow()` in SQLAlchemy model defaults with `func.now()` or timezone-aware equivalents
-- [ ] Update `backend/tests/conftest.py:104` which also uses the deprecated form
+- [x] Replace `datetime.utcnow()` with `datetime.now(datetime.timezone.utc)` across all backend code
+- [x] Replace `datetime.utcnow()` in SQLAlchemy model defaults with `lambda: datetime.now(timezone.utc)` and use `TZDateTime` column type
+- [x] Update `backend/tests/conftest.py:104` which also uses the deprecated form
 
 ### B4. Split Oversized Route Files
 **Priority:** Medium | **Effort:** Medium
@@ -89,20 +85,20 @@ Many route handlers perform direct `.query` operations and business logic instea
 - [ ] Routes should: parse input, call service, format response
 - [ ] Services should: validate business rules, query/mutate DB, return domain objects
 
-### B7. Standardize Audit Logging
+### B7. Standardize Audit Logging — DONE
 **Priority:** Medium | **Effort:** Small
 
-Some route files still use local `_audit()` wrappers (`vulnerabilities.py:56-64`, `users.py:30-38`) instead of the centralized `record_audit()` from `services/audit.py`. Some DELETE routes (e.g., in `attack_vectors.py`) skip audit logging entirely.
+- [x] Replaced local `_audit()` wrappers in `users.py` and `vulnerabilities.py` with centralized `record_audit()` from `services/audit.py`
+- [x] Added audit logging to DELETE routes in `attack_vectors.py` and `terminal_impacts.py`
 
-**Actions:**
-- [ ] Replace all local `_audit()` wrappers with `record_audit()` from the service
-- [ ] Ensure all CREATE/UPDATE/DELETE operations produce audit log entries
-- [ ] Standardize flush-before-audit, commit-after pattern for transaction safety
-
-### B8. Standardize Database Exception Handling
+### B8. Standardize Database Exception Handling — DONE
 **Priority:** Medium | **Effort:** Small
 
-Some routes catch bare `Exception` for database errors (e.g., `products.py:221`). These should catch specific SQLAlchemy exceptions (`IntegrityError`, `DataError`) and return meaningful error messages.
+Replaced bare `except Exception` with specific SQLAlchemy exceptions in DB-facing try/except blocks:
+- [x] `vulnerabilities.py` — `IntegrityError` for create, `SQLAlchemyError` for batch update
+- [x] `products.py` — `IntegrityError` for create/update version
+- [x] Left `vuln_ingest.py` as `except Exception` (intentional — catches validation errors for transactional rollback)
+- [x] Left `auth_routes.py` OIDC handler as `except Exception` (not a DB operation)
 
 ### B9. Centralize Configuration with Validation
 **Priority:** Low-Medium | **Effort:** Medium
@@ -138,24 +134,18 @@ Each should be decomposed into smaller, focused modules (e.g., separate filter p
 
 ## Containerization Improvements
 
-### C1. Use a Production WSGI Server
+### C1. Use a Production WSGI Server — DONE
 **Priority:** High | **Effort:** Small
 
-The Dockerfile CMD uses Flask's built-in dev server (`flask run`), which is single-threaded and not suitable for production. Replace with gunicorn:
-```dockerfile
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "backend.uvt_app:create_app()"]
-```
-Add `gunicorn` to `requirements.txt`.
+Replaced Flask dev server with gunicorn in Dockerfile. Added `gunicorn>=22.0,<24.0` to `requirements.txt`.
 
-### C2. Externalize Secrets from docker-compose.yml
+### C2. Externalize Secrets from docker-compose.yml — DONE
 **Priority:** High | **Effort:** Small
 
-`docker-compose.yml` has hardcoded secrets (`SECRET_KEY: dev-secret`, `JWT_SECRET: dev-jwt-secret`, `POSTGRES_PASSWORD: uvt_pass`). These are fine for local dev, but the file ships in version control.
-
-**Actions:**
-- [ ] Reference an `.env` file from docker-compose (`env_file: .env`) instead of inline values
-- [ ] Ship a `.env.example` with placeholder values; gitignore `.env`
-- [ ] Document `POSTGRES_PASSWORD_FILE` for Docker Swarm / Kubernetes secret injection
+- [x] Replaced all hardcoded secrets with `${VAR:-default}` substitution in `docker-compose.yml`
+- [x] Added `env_file: .env` to backend service
+- [x] Created `.env.example` with placeholder values
+- [x] Added `.env` to `.gitignore`
 
 ### C3. Multi-Stage Build Improvements
 **Priority:** Low-Medium | **Effort:** Small

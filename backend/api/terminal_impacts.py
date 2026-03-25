@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import TerminalImpact, Vulnerability, VulnerabilityTerminalImpact
 from ..auth import login_required, role_required
+from ..services.audit import record_audit
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("terminal_impacts_api", __name__, url_prefix="/api")
@@ -83,6 +84,8 @@ def update_terminal_impact(impact_id: int):
 @role_required("Admin")
 def delete_terminal_impact(impact_id: int):
     impact = TerminalImpact.query.get_or_404(impact_id)
+    record_audit("DELETE", "terminal_impacts", impact.id,
+                 old_values={"name": impact.name, "description": impact.description})
     db.session.delete(impact)
     db.session.commit()
     return jsonify({"ok": True})

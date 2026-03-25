@@ -3,7 +3,7 @@ import hashlib
 import io
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -135,7 +135,7 @@ def _retry_window_minutes(retry_count):
 
 
 def _mark_schedule_delivery_state(schedule, *, ok, failure_reason=None):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     schedule.last_run_at = now if ok else schedule.last_run_at
     schedule.last_attempted_at = now
     if ok:
@@ -186,7 +186,7 @@ def _parse_iso_datetime(value, *, field):
 
 
 def _range_start(range_value):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if range_value == "Month to date":
         return datetime(now.year, now.month, 1)
     if range_value == "Quarter to date":
@@ -308,7 +308,7 @@ def _build_export_artifact(*, report_type, export_format, filters, payload, file
         extension = "pdf"
 
     digest = hashlib.sha256(content_bytes).hexdigest()
-    storage_name = f"{filename_prefix}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}.{extension}"
+    storage_name = f"{filename_prefix}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}.{extension}"
     storage_path = os.path.join(_report_dir(), storage_name)
     with open(storage_path, "wb") as handle:
         handle.write(content_bytes)

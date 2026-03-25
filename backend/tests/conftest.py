@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -101,7 +101,7 @@ def sample_product_version(app, admin_user):
 
 @pytest.fixture()
 def sample_vulnerabilities(app, admin_user):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with app.app_context():
         vulns = [
             Vulnerability(

@@ -1,7 +1,7 @@
 import csv
 import io
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import or_
@@ -13,7 +13,7 @@ from ..permissions import ALL_ROLES, ROLE_SCOPES
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
-from ..services.audit import log_audit_event
+from ..services.audit import record_audit
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
@@ -25,17 +25,6 @@ def _user_json(u: User):
 
 def _user_summary(u: User):
     return serialize_user_summary(u)
-
-
-def _audit(user_id, action, table, record_id, old_values=None, new_values=None):
-    db.session.add(log_audit_event(
-        actor_id=user_id,
-        action=action,
-        resource=table,
-        record_id=record_id,
-        old_values=old_values,
-        new_values=new_values,
-    ))
 
 
 def _api_token_json(token: ApiToken):
@@ -73,7 +62,7 @@ def _parse_token_create_payload(data, owner: User):
             days = parse_int(expires_in_days, field="expires_in_days", minimum=1, maximum=3650, required=True)
         except ValidationError as exc:
             return None, error_response(exc.error, field=exc.field, details=exc.details)
-        expires_at = datetime.utcnow() + timedelta(days=days)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=days)
 
     return {
         "name": name,
@@ -158,7 +147,7 @@ def revoke_my_api_token(token_id: int):
     if token.owner_id != request.user.id:
         return error_response("Forbidden", status_code=403)
     if token.revoked_at is None:
-        token.revoked_at = datetime.utcnow()
+        token.revoked_at = datetime.now(timezone.utc)
         db.session.add(token)
         db.session.commit()
     return jsonify(_api_token_json(token))
@@ -192,7 +181,7 @@ def revoke_user_api_token(user_id: int, token_id: int):
     if token.owner_id != user_id:
         return error_response("Token does not belong to user", status_code=404)
     if token.revoked_at is None:
-        token.revoked_at = datetime.utcnow()
+        token.revoked_at = datetime.now(timezone.utc)
         db.session.add(token)
         db.session.commit()
     return jsonify(_api_token_json(token))
@@ -350,7 +339,7 @@ def update_user(user_id: int):
         revoke_tokens(u)
 
     if changed:
-        _audit(request.user.id, "UPDATE", "users", u.id, old_values=old_values or None, new_values=_user_json(u))
+        record_audit("UPDATE", "users", u.id, old_values=old_values or None, new_values=_user_json(u))
 
     db.session.commit()
     return jsonify(_user_json(u))
@@ -371,14 +360,7 @@ def reset_password(user_id: int):
 
     u.password_hash = hash_password(password)
     revoke_tokens(u)
-    _audit(
-        request.user.id,
-        "RESET_PASSWORD",
-        "users",
-        u.id,
-        old_values={"password_reset": True},
-        new_values=None,
-    )
+    record_audit("RESET_PASSWORD", "users", u.id, old_values={"password_reset": True})
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -397,14 +379,9 @@ def impersonate(user_id: int):
         return error_response("reason is required to impersonate", field="reason")
 
     token = generate_token(target.id, target.username, target.role, target.token_version, target.last_revoked_at)
-    _audit(
-        request.user.id,
-        "IMPERSONATE",
-        "users",
-        target.id,
-        old_values={"actor": request.user.username},
-        new_values={"impersonated": target.username, "reason": reason},
-    )
+    record_audit("IMPERSONATE", "users", target.id,
+                 old_values={"actor": request.user.username},
+                 new_values={"impersonated": target.username, "reason": reason})
     db.session.commit()
     return jsonify({"token": token, "user": _user_json(target)})
 
@@ -415,14 +392,9 @@ def toggle_active(user_id: int):
     u = User.query.get_or_404(user_id)
     u.is_active = not u.is_active
     revoke_tokens(u)
-    _audit(
-        request.user.id,
-        "TOGGLE_ACTIVE",
-        "users",
-        u.id,
-        old_values={"is_active": not u.is_active},
-        new_values={"is_active": u.is_active},
-    )
+    record_audit("TOGGLE_ACTIVE", "users", u.id,
+                 old_values={"is_active": not u.is_active},
+                 new_values={"is_active": u.is_active})
     db.session.commit()
     return jsonify(_user_json(u))
 
