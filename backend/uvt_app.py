@@ -6,7 +6,7 @@ from flask_cors import CORS
 
 from .database import init_database
 from .api import register_api
-from . import models  # ensures migrations can discover models
+from . import models  # ensures all models are registered before create_all()
 from .cli import run_notification_scan_cli, run_plugins_cli, seed_admin
 from .auth import enforce_scopes
 from .plugins import init_plugin_registry
@@ -139,7 +139,7 @@ def create_app():
     logging.basicConfig(level=logging.INFO)
     app.logger.setLevel(logging.INFO)
 
-    # DB + migrations
+    # DB
     init_database(app)
 
     # Plugin registry
