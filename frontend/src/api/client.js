@@ -1,19 +1,12 @@
 import { CONFIG } from "../config.js";
-import { getState, logoutSession, setSession } from "../state/store.js";
+import { ApiError } from "./errors.js";
+import { tryRefreshToken, parsePayload } from "./authRetry.js";
 
-export class ApiError extends Error {
-  constructor(message, status, payload) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.payload = payload;
-  }
-}
+export { ApiError } from "./errors.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_RETRIES = 1;
 const RETRY_STATUS = new Set([502, 503, 504]);
-let refreshInFlight = null;
 
 function getCookieValue(name) {
   if (typeof document === "undefined" || !document.cookie) return null;
@@ -43,56 +36,6 @@ function getErrorMessage(payload, status) {
     (typeof payload === "string" && payload) ||
     `HTTP ${status}`
   );
-}
-
-async function parsePayload(res) {
-  if (res.status === 204 || res.status === 205) return null;
-  const contentType = res.headers.get("content-type") || "";
-  const isJson = contentType.includes("application/json");
-  if (isJson) {
-    return res.json().catch(() => null);
-  }
-  const text = await res.text().catch(() => null);
-  return text === "" ? null : text;
-}
-
-async function tryRefreshToken() {
-  if (refreshInFlight) return refreshInFlight;
-
-  const state = getState();
-  const refreshToken = state?.session?.refreshToken;
-  if (!refreshToken) return false;
-
-  refreshInFlight = (async () => {
-    const url = `${CONFIG.API_BASE}/api/auth/refresh`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-      credentials: "include",
-    });
-    const payload = await parsePayload(res);
-    if (!res.ok || !payload?.token) {
-      logoutSession();
-      return false;
-    }
-
-    setSession({
-      token: payload.token,
-      refreshToken: payload.refresh_token || refreshToken || null,
-      user: payload.user || state?.session?.user || null,
-    });
-    return true;
-  })();
-
-  try {
-    return await refreshInFlight;
-  } finally {
-    refreshInFlight = null;
-  }
 }
 
 export async function apiFetch(

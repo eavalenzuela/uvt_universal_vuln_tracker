@@ -103,21 +103,21 @@ Replaced bare `except Exception` with specific SQLAlchemy exceptions in DB-facin
 
 ## Frontend Refactor Items
 
-### F1. Split Oversized View Files
+### F1. Split Oversized View Files — DONE
 **Priority:** Medium | **Effort:** Medium
 
-| File | Lines | Notes |
-|------|-------|-------|
-| `features/vulnerabilities/view/vulnListView.js` | 1,416 | Filter logic, table rendering, bulk actions, caching all in one file |
-| `features/dashboard/view/dashboardView.js` | 1,328 | Charts, layout, data fetching, metric calculations mixed |
-| `views/products/productsView.js` | 753 | CRUD, list, detail rendering combined |
+Split the three largest view files into focused modules:
 
-Each should be decomposed into smaller, focused modules (e.g., separate filter panel, table, and bulk-action components).
+- [x] `vulnListView.js` (1,416 lines) → `vulnShared.js` (82), `vulnVersions.js` (171), `vulnAttackVectors.js` (175), `vulnTerminalImpacts.js` (153), `vulnCard.js` (311), `vulnListView.js` (568)
+- [x] `dashboardView.js` (1,328 lines) → `dashboardConstants.js` (131), `dashboardWidgets.js` (615), `dashboardView.js` (619)
+- [x] `productsView.js` (753 lines) → `productCard.js` (629), `productsView.js` (126)
+- [x] Re-export shims unchanged — no router or external import updates needed
 
-### F2. Split API Client
+### F2. Split API Client — DONE
 **Priority:** Low | **Effort:** Small
 
-`frontend/src/api/client.js` (238 lines) mixes HTTP transport, token refresh retry logic, and error handling. Split into focused modules (core transport, auth retry, error types).
+- [x] `client.js` (238 lines) → `errors.js` (8), `authRetry.js` (54), `client.js` (181)
+- [x] `client.js` re-exports `ApiError` for backward compatibility — no consumer changes needed
 
 ---
 
