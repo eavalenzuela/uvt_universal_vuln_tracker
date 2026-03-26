@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.1
+
+### Security
+- **S1: Fix hardcoded debug mode** — `app.run(debug=True)` in `uvt_app.py` now gates on `FLASK_ENV=development` instead of being unconditionally enabled. Prevents Werkzeug interactive debugger and stack trace exposure in production.
+
 ## Unreleased
 
 ### Security
