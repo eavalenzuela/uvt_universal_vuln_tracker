@@ -100,12 +100,15 @@ Write-Info "Upgrading pip/setuptools/wheel..."
 if (Test-Path ".\requirements.txt") {
   Write-Info "Installing dependencies from requirements.txt..."
   & $python -m pip install -r .\requirements.txt | Out-Host
+  if ($env:DATABASE_URL -like "postgres*" -and (Test-Path ".\requirements-postgres.txt")) {
+    Write-Info "PostgreSQL detected — installing psycopg driver..."
+    & $python -m pip install -r .\requirements-postgres.txt | Out-Host
+  }
 } else {
   Write-Info "requirements.txt not found; installing baseline dependencies..."
   & $python -m pip install `
-    flask flask_sqlalchemy flask_migrate alembic flask_cors`
-    pyjwt werkzeug `
-    "psycopg[binary]" | Out-Host
+    flask flask_sqlalchemy flask_migrate alembic flask_cors `
+    pyjwt werkzeug | Out-Host
 }
 
 # --- Configure environment variables for current session ---

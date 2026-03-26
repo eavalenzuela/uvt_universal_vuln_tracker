@@ -113,12 +113,15 @@ write_info "Upgrading pip/setuptools/wheel..."
 if [[ -f "requirements.txt" ]]; then
   write_info "Installing dependencies from requirements.txt..."
   "$python_cmd" -m pip install -r requirements.txt
+  if [[ "${DATABASE_URL:-}" == postgres* ]] && [[ -f "requirements-postgres.txt" ]]; then
+    write_info "PostgreSQL detected — installing psycopg driver..."
+    "$python_cmd" -m pip install -r requirements-postgres.txt
+  fi
 else
   write_info "requirements.txt not found; installing baseline dependencies..."
   "$python_cmd" -m pip install \
     flask flask_sqlalchemy flask_migrate alembic flask_cors \
-    pyjwt werkzeug \
-    "psycopg[binary]"
+    pyjwt werkzeug
 fi
 
 import_dotenv "dev.env"

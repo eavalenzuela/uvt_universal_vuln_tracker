@@ -18,22 +18,4 @@ This app needs a re-assessment of its design, both front and backend. It will be
     [x] If so, design a VISUAL_REWORK.md plan
 [x] Lastly, update the README
 
----
-
-## Testing Improvements
-
-### T1. Remaining Low-Coverage Services
-**Priority:** Medium | **Effort:** Medium
-
-- [ ] `services/component_correlation.py` — no coverage
-- [ ] `services/oidc_mapping.py` (78%)
-- [ ] `services/sbom_ingest.py` (59%)
-
----
-
-## Dependency Cleanup
-
-### D1. Audit psycopg Dependency
-**Priority:** Low | **Effort:** Small
-
-- [ ] Audit whether `psycopg[binary]` is needed in dev (SQLite is the default); consider making it an optional extra
+All goals, testing improvements, and dependency cleanup items are complete.
