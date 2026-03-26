@@ -107,7 +107,7 @@ if (Test-Path ".\requirements.txt") {
 } else {
   Write-Info "requirements.txt not found; installing baseline dependencies..."
   & $python -m pip install `
-    flask flask_sqlalchemy flask_migrate alembic flask_cors `
+    flask flask_sqlalchemy flask_cors `
     pyjwt werkzeug | Out-Host
 }
 
@@ -132,32 +132,21 @@ if (-not $env:SECRET_KEY) { $env:SECRET_KEY = "dev-secret" }
 Write-Info "FLASK_APP=$env:FLASK_APP"
 Write-Info "DATABASE_URL=$env:DATABASE_URL"
 
-# Optional: set secrets for dev session if not already set
-if (-not $env:JWT_SECRET)  { $env:JWT_SECRET  = "dev-jwt-secret" }
-if (-not $env:SECRET_KEY)  { $env:SECRET_KEY  = "dev-secret" }
-
-Write-Info "FLASK_APP=$env:FLASK_APP"
-Write-Info "DATABASE_URL=$env:DATABASE_URL"
-
 # --- Sanity: can Flask import the app? ---
 Write-Info "Verifying Flask can load the app..."
 & $python -m flask --app $env:FLASK_APP routes | Out-Null
 Write-Info "App import OK."
 
-# --- Initialize migrations if needed ---
-if (-not (Test-Path ".\migrations")) {
-  Write-Warn "migrations/ not found. Initializing Flask-Migrate..."
-  & $python -m flask --app $env:FLASK_APP db init | Out-Host
-
-  Write-Info "Creating initial migration..."
-  & $python -m flask --app $env:FLASK_APP db migrate -m "initial schema" | Out-Host
-} else {
-  Write-Info "migrations/ exists; skipping db init/migrate."
-}
-
-# --- Apply migrations ---
-Write-Info "Applying migrations (db upgrade)..."
-& $python -m flask --app $env:FLASK_APP db upgrade | Out-Host
+# --- Create database tables ---
+Write-Info "Creating database tables..."
+& $python -c @"
+from backend.uvt_app import create_app
+from backend.database import db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('[UVT] Tables created.')
+"@ | Out-Host
 
 Write-Info "Done."
 Write-Host ""

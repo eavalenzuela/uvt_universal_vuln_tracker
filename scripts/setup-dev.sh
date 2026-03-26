@@ -120,7 +120,7 @@ if [[ -f "requirements.txt" ]]; then
 else
   write_info "requirements.txt not found; installing baseline dependencies..."
   "$python_cmd" -m pip install \
-    flask flask_sqlalchemy flask_migrate alembic flask_cors \
+    flask flask_sqlalchemy flask_cors \
     pyjwt werkzeug
 fi
 
@@ -148,18 +148,15 @@ write_info "Verifying Flask can load the app..."
 "$python_cmd" -m flask --app "$FLASK_APP" routes >/dev/null
 write_info "App import OK."
 
-if [[ ! -d "migrations" ]]; then
-  write_warn "migrations/ not found. Initializing Flask-Migrate..."
-  "$python_cmd" -m flask --app "$FLASK_APP" db init
-
-  write_info "Creating initial migration..."
-  "$python_cmd" -m flask --app "$FLASK_APP" db migrate -m "initial schema"
-else
-  write_info "migrations/ exists; skipping db init/migrate."
-fi
-
-write_info "Applying migrations (db upgrade)..."
-"$python_cmd" -m flask --app "$FLASK_APP" db upgrade
+write_info "Creating database tables..."
+"$python_cmd" -c "
+from backend.uvt_app import create_app
+from backend.database import db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('[UVT] Tables created.')
+"
 
 write_info "Done."
 printf '\n'

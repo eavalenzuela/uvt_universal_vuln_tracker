@@ -6,8 +6,8 @@ Missing features and improvements needed to bring UVT to production readiness, o
 
 ## P0 — Production Blockers
 
-### F1. Commit Alembic Migrations Directory
-WE WILL NOT BE USING ALEMBIC. Remove any remaining references.
+### ~~F1. Remove Alembic References~~ ✅ Done (v2.0.7)
+Removed `flask_migrate` and `alembic` from setup scripts. Replaced migration commands with `db.create_all()`.
 
 ### F2. Self-Service Password Reset
 **Effort:** Medium
@@ -211,7 +211,7 @@ No hotkeys for power users navigating large vulnerability sets.
 
 | ID | Priority | Effort | Description |
 |----|----------|--------|-------------|
-| F1 | P0 | Small | Commit Alembic migrations directory |
+| ~~F1~~ | ~~P0~~ | ~~Small~~ | ~~Remove Alembic references~~ ✅ |
 | F2 | P0 | Medium | Self-service password reset |
 | F3 | P0 | Medium | Email verification on registration |
 | F4 | P0 | Medium | OpenAPI / Swagger documentation |

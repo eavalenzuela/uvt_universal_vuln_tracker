@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.7
+
+### Changed
+- **F1: Remove Alembic/Flask-Migrate references** — Removed `flask_migrate` and `alembic` from fallback pip install in `setup-dev.sh` and `setup-dev.ps1`. Replaced migration init/upgrade commands with direct `db.create_all()` via the app factory. Fixed duplicate env var block in PowerShell script.
+
 ## v2.0.6
 
 ### Security
