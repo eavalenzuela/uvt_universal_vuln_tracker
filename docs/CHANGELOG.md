@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.2
+
+### Security
+- **S3: Tighten rate limits on user creation/invite** — `create_user` and `invite_user` endpoints now use `RATE_LIMIT_SENSITIVE_LIMIT` (10/60s) instead of the generic write limit (30/60s), reducing bulk-creation risk from compromised admin accounts.
+
 ## v2.0.1
 
 ### Security

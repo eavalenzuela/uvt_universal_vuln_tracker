@@ -119,7 +119,7 @@ def list_users():
 
 @bp.post("/users")
 @role_required("Admin")
-@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="create_user")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="create_user")
 def create_user_admin():
     """
     Create a user (Admin-only).
@@ -159,7 +159,7 @@ def create_user_admin():
 
 @bp.post("/users/invite")
 @role_required("Admin")
-@rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="invite_user")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="invite_user")
 def invite_user():
     data = request.get_json(silent=True) or {}
 
