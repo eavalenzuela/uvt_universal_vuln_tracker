@@ -7,15 +7,7 @@ Missing features and improvements needed to bring UVT to production readiness, o
 ## P0 — Production Blockers
 
 ### F1. Commit Alembic Migrations Directory
-**Effort:** Small
-
-Setup scripts reference Flask-Migrate and `flask db upgrade`, but the `migrations/` directory is not in the repo. Currently schema changes rely on `db.create_all()` and manual SQLite column backfills in `database.py`.
-
-**What to do:**
-- Run `flask db init` and `flask db migrate -m "initial schema"`
-- Commit the `migrations/` directory
-- Remove the SQLite backfill hack from `init_database()`
-- Document the migration workflow in the README
+WE WILL NOT BE USING ALEMBIC. Remove any remaining references.
 
 ### F2. Self-Service Password Reset
 **Effort:** Medium
@@ -29,14 +21,7 @@ No forgot-password flow exists. Admins must manually reset passwords (and the te
 - Rate-limit the forgot-password endpoint aggressively
 
 ### F3. Email Verification on Registration
-**Effort:** Medium
-
-New users (via registration or admin invite) are immediately active with no email verification.
-
-**What to do:**
-- Add `email_verified` flag to User model (migration)
-- Send verification email on registration/invite
-- Gate login on verified email (with grace period option)
+This feature requires too much additional configuration (and relies on the external email service), and will not be implemented.
 
 ### F4. OpenAPI / Swagger Documentation
 **Effort:** Medium
