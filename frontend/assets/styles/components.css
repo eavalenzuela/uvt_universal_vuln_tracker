@@ -79,6 +79,36 @@ textarea.input {
 .toast .title { font-weight: 700; margin-bottom: var(--spacing-xs); }
 .toast .msg { color: rgba(230,232,238,0.85); }
 
+/* ── Badges & Pills ──────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+/* Severity badges */
+.badge-critical { background: #fef2f2; color: #7f1d1d; border-color: #fecaca; }
+.badge-high     { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.badge-medium   { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.badge-low      { background: #f0fdf4; color: #365314; border-color: #bbf7d0; }
+.badge-none     { background: #f8fafc; color: #334155; border-color: #e2e8f0; }
+
+/* Status pills */
+.pill-open       { background: #eef2ff; color: #312e81; border-color: #c7d2fe; }
+.pill-in-progress { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.pill-resolved   { background: #f0fdf4; color: #365314; border-color: #bbf7d0; }
+.pill-closed     { background: #f8fafc; color: #334155; border-color: #e2e8f0; }
+
+/* SLA badges */
+.badge-sla-breached  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.badge-sla-due-soon  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.badge-sla-on-track  { background: #ecfeff; color: #155e75; border-color: #a5f3fc; }
+
 .inbox { margin-top: var(--spacing-md); }
 .inbox-list { margin-top: 10px; display: grid; gap: var(--spacing-sm); }
 .inbox-item {
