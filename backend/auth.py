@@ -1,10 +1,13 @@
 import datetime
 import hashlib
+import logging
 import secrets
 from functools import wraps
 
 import jwt
 from flask import current_app, request, jsonify
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -196,6 +199,11 @@ def _validate_csrf() -> tuple[bool, tuple | None]:
     csrf_cookie = request.cookies.get("uvt_csrf_token")
     csrf_header = request.headers.get("X-CSRF-Token")
     if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+        logger.warning(
+            "CSRF validation failed: method=%s path=%s remote=%s cookie_present=%s header_present=%s",
+            request.method, request.path, request.remote_addr,
+            bool(csrf_cookie), bool(csrf_header),
+        )
         return False, (jsonify({"error": "CSRF validation failed"}), 403)
     return True, None
 

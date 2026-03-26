@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.3
+
+### Security
+- **S5: Log CSRF validation failures** — CSRF check in `auth.py` now logs a warning with method, path, remote address, and whether cookie/header were present, aiding detection of potential attack attempts.
+
 ## v2.0.2
 
 ### Security
