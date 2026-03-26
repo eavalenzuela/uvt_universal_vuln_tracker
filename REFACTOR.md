@@ -6,17 +6,17 @@ This app needs a re-assessment of its design, both front and backend. It will be
 * webpage-by-webpage (screenshot visual design analysis)
 
 ## Goals
-[ ] Document each backend source module (high level)
-    [ ] Create a BACKEND.md wiki file
-[ ] Document each webpage (high level)
-    [ ] Create a FRONTEND.md wiki file
-[ ] Identify security fixes and redesigns
-    [ ] Create a SECURITY_FIXES.md plan
-[ ] Identify missing features needed to bring this to a production-ready tool
-    [ ] Create a detailed FEATURE_ROADMAP.md plan
-[ ] Determine whether the current visual design of the app needs rework
-    [ ] If so, design a VISUAL_REWORK.md plan
-[ ] Lastly, update the README
+[x] Document each backend source module (high level)
+    [x] Create a BACKEND.md wiki file
+[x] Document each webpage (high level)
+    [x] Create a FRONTEND.md wiki file
+[x] Identify security fixes and redesigns
+    [x] Create a SECURITY_FIXES.md plan
+[x] Identify missing features needed to bring this to a production-ready tool
+    [x] Create a detailed FEATURE_ROADMAP.md plan
+[x] Determine whether the current visual design of the app needs rework
+    [x] If so, design a VISUAL_REWORK.md plan
+[x] Lastly, update the README
 
 ---
 

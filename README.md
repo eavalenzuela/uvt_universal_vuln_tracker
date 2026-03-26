@@ -1,128 +1,176 @@
 # Universal Vulnerability Tracker (UVT)
 
-Universal Vulnerability Tracker (UVT) is a Flask + vanilla JavaScript application for tracking products, versions, and vulnerabilities. It includes:
-- A Python API backend (Flask + SQLAlchemy)
-- A static frontend (ES modules, no bundler required)
-- Built-in auth, catalog management, and vulnerability workflow endpoints
+A full-stack vulnerability management platform with a Python/Flask API backend and vanilla JavaScript frontend. Track products, software components, vulnerabilities, SLA compliance, and risk trends across your organization.
 
-## Table of contents
-- [Project layout](#project-layout)
-- [Quick start](#quick-start)
+**Key capabilities:**
+- Product catalog with SBOM ingestion (CycloneDX/SPDX) and dependency graphing
+- Vulnerability lifecycle management with severity, status, SLA tracking, and merge/dedup
+- Role-based access control (Admin / Analyst / Viewer) with JWT + cookie auth and optional OIDC SSO
+- Multi-widget dashboard with risk trends, SLA deadlines, and per-user work queues
+- Plugin framework for external feeds (NVD, ExploitDB) and integrations (Slack, Jira)
+- Notification rules with email, Slack, and webhook delivery + escalation
+- Report templates and scheduled delivery (CSV, JSON, PDF)
+- Security control catalog with framework mapping
+
+## Table of Contents
+- [Quick Start](#quick-start)
+- [Docker Deployment](#docker-deployment)
 - [Configuration](#configuration)
-- [Common workflows](#common-workflows)
+- [Project Layout](#project-layout)
 - [Testing](#testing)
-- [Repository hygiene](#repository-hygiene)
-- [Backend architecture](#backend-architecture)
+- [Documentation](#documentation)
 
-## Project layout
-- `backend/` – Flask app factory, API blueprints, services, and models
-- `frontend/` – Static HTML/CSS/JS client
-- `scripts/` – Repo utility scripts
-- `requirements.txt` – Python dependencies
-- `TESTING_README.md` – Expanded testing guide
+## Quick Start
 
-## Quick start
-
-### 1) Backend setup
-Prerequisites:
+### Prerequisites
 - Python 3.11+
-- Optional: Postgres (default is local SQLite)
+- Node.js 18+ (for frontend smoke tests only)
+- Optional: PostgreSQL (default is local SQLite)
 
-Install dependencies:
+### Backend
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-Run the API:
-```bash
 export FLASK_APP=backend.uvt_app
-flask run --debug
-```
-
-By default, the API is available at `http://127.0.0.1:5000` and provides a health check at `/api/health`.
-
-### 2) Frontend setup
-Serve the `frontend/` directory with any static server:
-```bash
-cd frontend
-python -m http.server 5173
-```
-
-Frontend default URL: `http://127.0.0.1:5173`
-
-### 3) (Optional) Seed an admin user
-```bash
+flask run --debug          # http://127.0.0.1:5000
 flask seed-admin --username admin --email admin@example.com --password changeme
 ```
 
-## Configuration
-
-### Core environment variables
-- `DATABASE_URL` – DB connection string (default: `sqlite:///uvt.db`)
-- `SECRET_KEY` – Flask session secret (default: `dev-secret`)
-- `JWT_SECRET` – Token signing secret (default: `dev-jwt-secret`)
-- `ALLOW_PUBLIC_REGISTRATION` – Set `true` to allow `/api/auth/register` (default: `false`)
-
-### CORS
-- `CORS_ALLOWED_ORIGINS` – Comma-separated list of allowed origins for `/api/*`
-  - Example: `http://localhost:5173,https://uvt.example.com`
-  - Must be full origins (`http://` or `https://` only; no paths/query/fragments)
-  - If unset, UVT allows common local dev origins:
-    - `http://127.0.0.1:5173`
-    - `http://localhost:5173`
-    - `http://127.0.0.1:5000`
-    - `http://localhost:5000`
-
-### Auth cookie / OIDC settings
-- `AUTH_COOKIE_SECURE` – `Secure` cookie flag (production-like default: `true`, otherwise `false`)
-- `AUTH_COOKIE_SAMESITE` – One of `Lax`, `Strict`, or `None` (default: `Lax`)
-- `AUTH_COOKIE_DOMAIN` – Optional cookie domain override
-
-## Common workflows
-
-### Point frontend to a different API base
-Set a global before `src/main.js` loads:
-```html
-<script>
-  window.__UVT_API_BASE__ = "http://127.0.0.1:5000";
-</script>
+### Frontend
+```bash
+cd frontend && python -m http.server 5173   # http://127.0.0.1:5173
 ```
 
-### Useful entry points
-- `backend/uvt_app.py` – App factory and extension wiring
-- `backend/models/` – Core SQLAlchemy models organized by bounded context
-- `frontend/src/main.js` – Frontend bootstrap and routing
+To point the frontend at a different API:
+```html
+<script>window.__UVT_API_BASE__ = "https://api.example.com";</script>
+```
 
-### Flask shell for local inspection
+## Docker Deployment
+
 ```bash
-flask --app backend.uvt_app shell
+docker compose up --build
+```
+
+Services: backend (Gunicorn), frontend (Nginx), PostgreSQL, Redis (rate limiting).
+
+## Configuration
+
+### Core
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `sqlite:///uvt.db` | DB connection string (PostgreSQL supported) |
+| `SECRET_KEY` | `dev-secret` | Flask session secret (**must change in prod**) |
+| `JWT_SECRET` | `dev-jwt-secret` | Token signing secret (**must change in prod**) |
+| `ALLOW_PUBLIC_REGISTRATION` | `false` | Enable `/api/auth/register` |
+
+### CORS
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORS_ALLOWED_ORIGINS` | local dev origins | Comma-separated full origins |
+
+### Auth Cookies
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_COOKIE_SECURE` | `true` in production | `Secure` cookie flag |
+| `AUTH_COOKIE_SAMESITE` | `Lax` | `Lax`, `Strict`, or `None` |
+| `AUTH_COOKIE_DOMAIN` | unset | Cookie domain override |
+
+### OIDC (Optional SSO)
+| Variable | Description |
+|----------|-------------|
+| `OIDC_ENABLED` | Enable OIDC authentication |
+| `OIDC_ISSUER` | OIDC provider issuer URL |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | OAuth2 client credentials |
+| `OIDC_REDIRECT_URL` | Callback URL |
+| `OIDC_SCOPES` | Requested scopes |
+| `OIDC_GROUPS_CLAIM` | Claim for group-to-role mapping |
+| `OIDC_ROLE_MAPPING` | JSON map of group names to UVT roles |
+
+### Rate Limiting
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_ENABLED` | `true` | Enable rate limiting |
+| `RATE_LIMIT_BACKEND` | `memory` | `memory` or `redis` |
+
+### Plugins
+| Variable | Description |
+|----------|-------------|
+| `PLUGIN_IMPORT_PATHS` | Comma-separated Python module paths for custom plugins |
+
+See `backend/dev.env` for the full variable reference.
+
+## Project Layout
+
+```
+backend/
+  uvt_app.py          App factory
+  config.py           Typed configuration (AppConfig dataclass)
+  auth.py             JWT/cookie auth, API tokens, password hashing
+  permissions.py      RBAC (Admin/Analyst/Viewer), scope enforcement
+  database.py         SQLAlchemy setup, TZDateTime type
+  rate_limiter.py     Sliding-window rate limiting (memory/Redis)
+  cli.py              CLI commands (seed-admin, run-plugins, run-notification-scan)
+  api/                24 Flask blueprints (auth, products, vulns, users, plugins, etc.)
+  services/           Business logic (20 modules)
+  models/             SQLAlchemy models by bounded context (auth, products, vulns, notifications, plugins, reports)
+  serializers/        JSON response helpers
+  plugins/            Plugin framework + 7 built-in plugins (NVD, ExploitDB, Slack, Jira, CIS, PCI-DSS, STIG)
+
+frontend/
+  index.html          HTML shell
+  src/main.js         Bootstrap, SSE notifications, session management
+  src/router/         Hash-based router with auth/role guards
+  src/state/          Centralized store, session persistence, permissions
+  src/api/            API adapters (16 modules)
+  src/features/       Feature modules (dashboard, vulnerabilities)
+  src/views/          Page components (18 views)
+  src/ui/             Shared primitives (el, modal, toast, loading, filters, layout)
+  assets/styles/      CSS (base, layout, components, pages)
+
+scripts/              Dev setup, DB update, artifact checks
+docs/                 Architecture docs
 ```
 
 ## Testing
 
-See `TESTING_README.md` for full details.
-
-Common commands:
 ```bash
+# Backend tests with coverage
 pytest --cov=backend --cov-report=term-missing
+
+# Single test
+pytest backend/tests/test_auth.py::test_function_name -v
+
+# Frontend smoke tests
 node --test frontend/tests/**/*.test.js
 ```
 
-## Repository hygiene
-- Do not commit Python cache/build artifacts.
-- Validate with:
-  ```bash
-  ./scripts/check-no-artifacts.sh
-  ```
-- Clean local Python cache files if needed:
-  ```bash
-  find . -type d -name '__pycache__' -prune -exec rm -rf {} +
-  find . -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyd' \) -delete
-  ```
+See `TESTING_README.md` for the full testing guide.
 
+### Repository Hygiene
+```bash
+./scripts/check-no-artifacts.sh   # CI enforces no .pyc / __pycache__
+```
 
-## Backend architecture
+## CLI Commands
 
-See `docs/backend-architecture.md` for bounded context ownership and model placement rules.
+```bash
+flask seed-admin --username admin --email admin@example.com --password changeme
+flask run-plugins [--plugin-id ID] [--include-disabled] [--only-due]
+flask run-notification-scan [--dry-run]
+flask shell   # Interactive Python shell with app context
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [BACKEND.md](BACKEND.md) | Backend architecture wiki — modules, models, services, auth |
+| [FRONTEND.md](FRONTEND.md) | Frontend architecture wiki — pages, routes, state, API adapters |
+| [SECURITY_FIXES.md](SECURITY_FIXES.md) | Security audit findings and fix plan |
+| [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Missing features for production readiness |
+| [VISUAL_REWORK.md](VISUAL_REWORK.md) | Frontend visual design improvement plan |
+| [REFACTOR.md](REFACTOR.md) | Ongoing refactor tracking |
+| [TESTING_README.md](TESTING_README.md) | Expanded testing guide |
+| [docs/backend-architecture.md](docs/backend-architecture.md) | Model bounded context rules |
