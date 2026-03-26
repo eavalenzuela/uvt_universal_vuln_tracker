@@ -18,6 +18,7 @@ A full-stack vulnerability management platform with a Python/Flask API backend a
 - [Configuration](#configuration)
 - [Project Layout](#project-layout)
 - [Testing](#testing)
+- [v2 Improvements](#v2-improvements)
 - [Documentation](#documentation)
 
 ## Quick Start
@@ -162,15 +163,64 @@ flask run-notification-scan [--dry-run]
 flask shell   # Interactive Python shell with app context
 ```
 
+## v2 Improvements
+
+Planned improvements across security, features, and visual design — organized into phases by impact and dependency order.
+
+### Phase 1 — Quick Security Wins
+Small, high-impact fixes to harden what's already deployed.
+
+- S1: Fix hardcoded `debug=True` in entry point (critical, 1-line)
+- S3: Tighten rate limits on user creation/invite
+- S5: Log CSRF validation failures
+- S6: Add password complexity validation
+- S8: Fix account enumeration via login timing
+- S9: Rate-limit health endpoint
+- F1: Remove remaining Alembic references
+
+### Phase 2 — Security Headers + Visual Foundation
+Set the stage for frontend improvements and close remaining security gaps.
+
+- S4 / F10: Add security response headers (CSP, X-Frame-Options, HSTS, etc.)
+- V2: CSS custom properties / design tokens (unlocks all later visual work)
+- V7: Hover & interactive states
+- V8 + V9: Badge/pill CSS system + typography scale
+
+### Phase 3 — Backend Features
+Password reset flow, logging, and infrastructure hardening.
+
+- S2 + F2: Self-service password reset (replaces temp password in API response)
+- F5: Structured JSON logging with request ID correlation
+- F11: Database connection pool tuning
+- S7: Add `pip-audit` to CI
+
+### Phase 4 — Frontend Visual Overhaul
+Bulk visual improvements, building on the Phase 2 CSS foundation.
+
+- V1: Extract inline styles from JS to CSS (large)
+- V3: Responsive / mobile layout
+- V4: Consistent spacing system
+- V5: Loading & empty states
+
+### Phase 5 — Larger Features
+Production-readiness and platform capabilities.
+
+- F4: OpenAPI / Swagger documentation
+- F6: Production deployment guide
+- V6: Table / data grid component
+- V10: Light theme option
+- F7+: Background job queue, metrics, full-text search, caching, data retention
+
+See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md), and [VISUAL_REWORK.md](VISUAL_REWORK.md) for full details on each item.
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [BACKEND.md](BACKEND.md) | Backend architecture wiki — modules, models, services, auth |
-| [FRONTEND.md](FRONTEND.md) | Frontend architecture wiki — pages, routes, state, API adapters |
+| [docs/BACKEND.md](docs/BACKEND.md) | Backend architecture wiki — modules, models, services, auth |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | Frontend architecture wiki — pages, routes, state, API adapters |
 | [SECURITY_FIXES.md](SECURITY_FIXES.md) | Security audit findings and fix plan |
 | [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Missing features for production readiness |
 | [VISUAL_REWORK.md](VISUAL_REWORK.md) | Frontend visual design improvement plan |
-| [REFACTOR.md](REFACTOR.md) | Ongoing refactor tracking |
-| [TESTING_README.md](TESTING_README.md) | Expanded testing guide |
+| [docs/TESTING_README.md](docs/TESTING_README.md) | Expanded testing guide |
 | [docs/backend-architecture.md](docs/backend-architecture.md) | Model bounded context rules |
