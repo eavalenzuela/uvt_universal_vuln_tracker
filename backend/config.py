@@ -146,6 +146,8 @@ class AppConfig:
     rate_limit_write_window_seconds: int = 60
     rate_limit_sensitive_limit: int = 10
     rate_limit_sensitive_window_seconds: int = 60
+    rate_limit_health_limit: int = 120
+    rate_limit_health_window_seconds: int = 60
 
     # Plugins
     plugin_import_paths: list[str] = field(default_factory=list)
@@ -201,6 +203,8 @@ def load_config() -> AppConfig:
         rate_limit_write_window_seconds=_int("RATE_LIMIT_WRITE_WINDOW_SECONDS", 60),
         rate_limit_sensitive_limit=_int("RATE_LIMIT_SENSITIVE_LIMIT", 10),
         rate_limit_sensitive_window_seconds=_int("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", 60),
+        rate_limit_health_limit=_int("RATE_LIMIT_HEALTH_LIMIT", 120),
+        rate_limit_health_window_seconds=_int("RATE_LIMIT_HEALTH_WINDOW_SECONDS", 60),
         plugin_import_paths=_parse_plugin_paths(),
     )
 
@@ -255,6 +259,8 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["RATE_LIMIT_WRITE_WINDOW_SECONDS"] = cfg.rate_limit_write_window_seconds
     app.config["RATE_LIMIT_SENSITIVE_LIMIT"] = cfg.rate_limit_sensitive_limit
     app.config["RATE_LIMIT_SENSITIVE_WINDOW_SECONDS"] = cfg.rate_limit_sensitive_window_seconds
+    app.config["RATE_LIMIT_HEALTH_LIMIT"] = cfg.rate_limit_health_limit
+    app.config["RATE_LIMIT_HEALTH_WINDOW_SECONDS"] = cfg.rate_limit_health_window_seconds
 
     app.config["SQLALCHEMY_DATABASE_URI"] = cfg.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

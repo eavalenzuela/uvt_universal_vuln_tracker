@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.6
+
+### Security
+- **S9: Rate-limit health endpoint** — `/api/health` now rate-limited at 120 requests/60s via configurable `RATE_LIMIT_HEALTH_LIMIT` / `RATE_LIMIT_HEALTH_WINDOW_SECONDS` env vars, preventing abuse as an unauthenticated DoS vector.
+
 ## v2.0.5
 
 ### Security

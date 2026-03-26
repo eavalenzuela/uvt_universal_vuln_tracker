@@ -11,6 +11,7 @@ from .cli import run_notification_scan_cli, run_plugins_cli, seed_admin
 from .auth import enforce_scopes
 from .plugins import init_plugin_registry
 from .api.validation import ValidationError, error_response
+from .rate_limiter import rate_limit
 
 
 def create_app():
@@ -50,6 +51,7 @@ def create_app():
 
     # Simple health endpoint
     @app.get("/api/health")
+    @rate_limit("RATE_LIMIT_HEALTH_LIMIT", "RATE_LIMIT_HEALTH_WINDOW_SECONDS", identifier="health")
     def health():
         return jsonify({"ok": True})
 
