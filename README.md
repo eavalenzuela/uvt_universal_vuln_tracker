@@ -167,24 +167,24 @@ flask shell   # Interactive Python shell with app context
 
 Planned improvements across security, features, and visual design — organized into phases by impact and dependency order.
 
-### Phase 1 — Quick Security Wins
+### Phase 1 — Quick Security Wins ✅
 Small, high-impact fixes to harden what's already deployed.
 
-- S1: Fix hardcoded `debug=True` in entry point (critical, 1-line)
-- S3: Tighten rate limits on user creation/invite
-- S5: Log CSRF validation failures
-- S6: Add password complexity validation
-- S8: Fix account enumeration via login timing
-- S9: Rate-limit health endpoint
-- F1: Remove remaining Alembic references
+- ~~S1: Fix hardcoded `debug=True` in entry point~~ (v2.0.1)
+- ~~S3: Tighten rate limits on user creation/invite~~ (v2.0.2)
+- ~~S5: Log CSRF validation failures~~ (v2.0.3)
+- ~~S6: Add password complexity validation~~ (v2.0.4)
+- ~~S8: Fix account enumeration via login timing~~ (v2.0.5)
+- ~~S9: Rate-limit health endpoint~~ (v2.0.6)
+- ~~F1: Remove remaining Alembic references~~ (v2.0.7)
 
-### Phase 2 — Security Headers + Visual Foundation
+### Phase 2 — Security Headers + Visual Foundation ✅
 Set the stage for frontend improvements and close remaining security gaps.
 
-- S4 / F10: Add security response headers (CSP, X-Frame-Options, HSTS, etc.)
-- V2: CSS custom properties / design tokens (unlocks all later visual work)
-- V7: Hover & interactive states
-- V8 + V9: Badge/pill CSS system + typography scale
+- ~~S4 / F10: Add security response headers (CSP, X-Frame-Options, HSTS, etc.)~~ (v2.1.1)
+- ~~V2: CSS custom properties / design tokens (unlocks all later visual work)~~ (v2.1.2)
+- ~~V7: Hover & interactive states~~ (v2.1.3)
+- ~~V8 + V9: Badge/pill CSS system + typography scale~~ (v2.1.4)
 
 ### Phase 3 — Backend Features
 Password reset flow, logging, and infrastructure hardening.
