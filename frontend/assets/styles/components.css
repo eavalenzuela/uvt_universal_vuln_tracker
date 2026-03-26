@@ -1,4 +1,4 @@
-.row { display: flex; gap: 12px; align-items: center; }
+.row { display: flex; gap: var(--spacing-md); align-items: center; }
 .spacer { flex: 1; }
 
 .brand {
@@ -7,23 +7,23 @@
 }
 
 .card {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 14px;
 }
 
 .btn {
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.06);
-  color: #e6e8ee;
-  padding: 8px 12px;
-  border-radius: 10px;
+  color: var(--color-text);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 .btn.primary {
   border-color: rgba(106,169,255,0.6);
-  background: rgba(106,169,255,0.18);
+  background: var(--color-accent-subtle);
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -31,9 +31,9 @@
   width: 100%;
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.06);
-  color: #e6e8ee;
-  padding: 10px 12px;
-  border-radius: 10px;
+  color: var(--color-text);
+  padding: 10px var(--spacing-md);
+  border-radius: var(--radius-md);
 }
 
 textarea.input {
@@ -44,40 +44,40 @@ textarea.input {
 .nav a {
   display: block;
   padding: 10px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   color: rgba(230,232,238,0.9);
 }
 .nav a.active {
-  background: rgba(106,169,255,0.18);
+  background: var(--color-accent-subtle);
   border: 1px solid rgba(106,169,255,0.25);
 }
 
 #toast-root {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: var(--spacing-lg);
+  bottom: var(--spacing-lg);
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-sm);
   z-index: 9999;
 }
 .toast {
   min-width: 260px;
   max-width: 360px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 10px var(--spacing-md);
+  border-radius: var(--radius-md);
   background: rgba(20,24,35,0.95);
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid var(--color-border-subtle);
 }
-.toast .title { font-weight: 700; margin-bottom: 4px; }
+.toast .title { font-weight: 700; margin-bottom: var(--spacing-xs); }
 .toast .msg { color: rgba(230,232,238,0.85); }
 
-.inbox { margin-top: 12px; }
-.inbox-list { margin-top: 10px; display: grid; gap: 8px; }
+.inbox { margin-top: var(--spacing-md); }
+.inbox-list { margin-top: 10px; display: grid; gap: var(--spacing-sm); }
 .inbox-item {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: rgba(230,232,238,0.9);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 8px;
-  padding: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
   background: rgba(255,255,255,0.03);
 }

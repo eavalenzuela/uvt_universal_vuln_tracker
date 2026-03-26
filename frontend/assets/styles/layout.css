@@ -1,9 +1,9 @@
 #app-shell { min-height: 100%; display: flex; flex-direction: column; }
 
 #app-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: #0f1320;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 #app-body {
@@ -14,12 +14,12 @@
 }
 
 #app-sidebar {
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid var(--color-border);
   background: #0c1020;
-  padding: 12px;
+  padding: var(--spacing-md);
 }
 
 #app-main {
-  padding: 16px;
+  padding: var(--spacing-lg);
   min-width: 0;
 }
