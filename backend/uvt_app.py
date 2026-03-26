@@ -49,6 +49,21 @@ def create_app():
     # Auth scope enforcement
     enforce_scopes(app)
 
+    # Security response headers
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; frame-ancestors 'none'"
+        )
+        if cfg.auth_cookie_secure:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains"
+            )
+        return response
+
     # Simple health endpoint
     @app.get("/api/health")
     @rate_limit("RATE_LIMIT_HEALTH_LIMIT", "RATE_LIMIT_HEALTH_WINDOW_SECONDS", identifier="health")

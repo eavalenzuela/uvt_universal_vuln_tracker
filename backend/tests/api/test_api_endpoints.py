@@ -78,6 +78,22 @@ def test_health_endpoint(client):
     assert resp.get_json() == {"ok": True}
 
 
+def test_security_response_headers(client):
+    resp = client.get("/api/health")
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert resp.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "default-src 'none'" in resp.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in resp.headers["Content-Security-Policy"]
+
+
+def test_hsts_header_only_when_cookie_secure(app, client):
+    """HSTS should only be set when auth_cookie_secure is True (i.e. production)."""
+    resp = client.get("/api/health")
+    # Test env has auth_cookie_secure=False by default
+    assert "Strict-Transport-Security" not in resp.headers
+
+
 def test_auth_register_login_and_me(client):
     register = client.post(
         "/api/auth/register",
