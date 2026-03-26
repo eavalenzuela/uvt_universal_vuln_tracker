@@ -7,7 +7,7 @@ from backend.services.notification_rules import _passes_product_scope
 
 
 def _seed_admin():
-    admin = create_user("admin_scope", "admin_scope@example.com", "secret", role="Admin")
+    admin = create_user("admin_scope", "admin_scope@example.com", "secret-pass-12", role="Admin")
     db.session.flush()
     return admin
 

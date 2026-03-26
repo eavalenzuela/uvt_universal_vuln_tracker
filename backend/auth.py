@@ -22,6 +22,18 @@ def revoke_tokens(user: User):
     db.session.add(user)
 
 
+MIN_PASSWORD_LENGTH = 12
+
+
+class PasswordTooWeakError(ValueError):
+    pass
+
+
+def validate_password(password: str) -> None:
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        raise PasswordTooWeakError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+
+
 def hash_password(password: str) -> str:
     return generate_password_hash(password)
 
@@ -346,6 +358,7 @@ def create_user(username, email, password, role="Analyst"):
         raise ValueError("Username already exists")
     if User.query.filter_by(email=email).first():
         raise ValueError("Email already exists")
+    validate_password(password)
 
     user = User(username=username, email=email, password_hash=hash_password(password), role=role)
     db.session.add(user)

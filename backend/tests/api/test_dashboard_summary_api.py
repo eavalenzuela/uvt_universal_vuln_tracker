@@ -12,7 +12,7 @@ def _auth_header(user):
 
 def _create_admin(app):
     with app.app_context():
-        user = create_user("dash_admin", "dash_admin@example.com", "secret", role="Admin")
+        user = create_user("dash_admin", "dash_admin@example.com", "secret-pass-12", role="Admin")
         db.session.refresh(user)
         db.session.expunge(user)
         return user

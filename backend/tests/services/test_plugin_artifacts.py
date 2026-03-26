@@ -62,7 +62,7 @@ def test_plugin_artifact_persistence_and_retrieval_permissions(app, client, admi
     assert artifacts[0]["storage_path"] == "scan-log.json"
 
     with app.app_context():
-        viewer = create_user("viewer_artifacts", "viewer_artifacts@example.com", "secret", role="Viewer")
+        viewer = create_user("viewer_artifacts", "viewer_artifacts@example.com", "secret-pass-12", role="Viewer")
         db.session.refresh(viewer)
 
     viewer_headers = auth_header(viewer)

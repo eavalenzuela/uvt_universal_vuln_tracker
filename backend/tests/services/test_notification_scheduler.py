@@ -7,7 +7,7 @@ from backend.services.notification_rules import run_scheduled_notification_scan
 
 
 def _seed_admin():
-    admin = create_user("admin_sched", "admin_sched@example.com", "secret", role="Admin")
+    admin = create_user("admin_sched", "admin_sched@example.com", "secret-pass-12", role="Admin")
     db.session.flush()
     return admin
 

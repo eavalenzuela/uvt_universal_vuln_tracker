@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.4
+
+### Security
+- **S6: Password complexity validation** — Added `validate_password()` with 12-character minimum to `auth.py`. Enforced in `create_user()`, admin user creation, invite, and password reset endpoints. Auto-generated invite passwords now use `token_urlsafe(16)` to meet the minimum. All test fixtures updated to use compliant passwords.
+
 ## v2.0.3
 
 ### Security

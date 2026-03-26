@@ -3,7 +3,7 @@ from backend.models import RefreshToken
 
 
 def test_login_returns_refresh_token_and_persists_hash(client, admin_user):
-    res = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    res = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     assert res.status_code == 200
     payload = res.get_json()
     assert payload["token"]
@@ -21,7 +21,7 @@ def test_login_returns_refresh_token_and_persists_hash(client, admin_user):
 
 
 def test_refresh_rotates_refresh_token(client, admin_user):
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     first = login.get_json()
 
     refresh = client.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]})
@@ -43,7 +43,7 @@ def test_refresh_rotates_refresh_token(client, admin_user):
 
 
 def test_logout_revokes_refresh_token_and_blocks_future_refresh(client, admin_user):
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     refresh_token = login.get_json()["refresh_token"]
 
     logout = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
@@ -54,7 +54,7 @@ def test_logout_revokes_refresh_token_and_blocks_future_refresh(client, admin_us
 
 
 def test_logout_clears_auth_cookie_with_or_without_refresh_token(client, admin_user):
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     refresh_token = login.get_json()["refresh_token"]
 
     with_token = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
@@ -75,7 +75,7 @@ def test_logout_clears_auth_cookie_with_or_without_refresh_token(client, admin_u
 
 
 def test_logout_all_revokes_access_token_and_refresh_tokens(client, admin_user):
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     payload = login.get_json()
 
     before = client.get("/api/auth/me", headers={"Authorization": f"Bearer {payload['token']}"})
@@ -92,7 +92,7 @@ def test_logout_all_revokes_access_token_and_refresh_tokens(client, admin_user):
 
 
 def test_logout_all_clears_auth_cookie(client, admin_user):
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     payload = login.get_json()
 
     logout_all = client.post("/api/auth/logout_all", headers={"Authorization": f"Bearer {payload['token']}"})
@@ -104,8 +104,8 @@ def test_logout_all_clears_auth_cookie(client, admin_user):
 
 
 def test_logout_all_revokes_all_refresh_tokens(client, admin_user, auth_header):
-    first = client.post("/api/auth/login", json={"username": "admin", "password": "secret"}).get_json()
-    second = client.post("/api/auth/login", json={"username": "admin", "password": "secret"}).get_json()
+    first = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"}).get_json()
+    second = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"}).get_json()
 
     logout_all = client.post("/api/auth/logout_all", headers=auth_header(admin_user))
     assert logout_all.status_code == 200

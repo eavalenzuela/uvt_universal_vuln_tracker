@@ -67,7 +67,7 @@ def user_factory(app):
 @pytest.fixture()
 def admin_user(app):
     with app.app_context():
-        user = create_user("admin", "admin@example.com", "secret", role="Admin")
+        user = create_user("admin", "admin@example.com", "secret-pass-12", role="Admin")
         db.session.refresh(user)
         db.session.expunge(user)
         return user

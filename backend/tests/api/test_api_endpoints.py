@@ -25,7 +25,7 @@ def auth_header(user):
 
 def create_admin(app):
     with app.app_context():
-        user = create_user("admin", "admin@example.com", "secret", role="Admin")
+        user = create_user("admin", "admin@example.com", "secret-pass-12", role="Admin")
         db.session.refresh(user)
         db.session.expunge(user)
         return user
@@ -81,7 +81,7 @@ def test_health_endpoint(client):
 def test_auth_register_login_and_me(client):
     register = client.post(
         "/api/auth/register",
-        json={"username": "first", "email": "first@example.com", "password": "secret"},
+        json={"username": "first", "email": "first@example.com", "password": "secret-pass-12"},
     )
     assert register.status_code == 201
     payload = register.get_json()
@@ -89,14 +89,14 @@ def test_auth_register_login_and_me(client):
 
     login = client.post(
         "/api/auth/login",
-        json={"username": "first", "password": "secret"},
+        json={"username": "first", "password": "secret-pass-12"},
     )
     assert login.status_code == 200
     token = login.get_json()["token"]
 
     email_login = client.post(
         "/api/auth/login",
-        json={"username": "first@example.com", "password": "secret"},
+        json={"username": "first@example.com", "password": "secret-pass-12"},
     )
     assert email_login.status_code == 200
     assert email_login.get_json()["user"]["username"] == "first"
@@ -119,7 +119,7 @@ def test_auth_guard_rails(app, client):
 def test_cookie_authenticated_write_requires_csrf_header(app, client):
     create_admin(app)
 
-    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     assert login.status_code == 200
     csrf_token = login.get_json()["csrf_token"]
 
@@ -235,7 +235,7 @@ def test_user_management_endpoints(app, client):
     create_resp = client.post(
         "/api/users",
         headers=headers,
-        json={"username": "analyst", "email": "analyst@example.com", "password": "secret", "role": "Analyst"},
+        json={"username": "analyst", "email": "analyst@example.com", "password": "secret-pass-12", "role": "Analyst"},
     )
     assert create_resp.status_code == 201
     analyst_id = create_resp.get_json()["id"]
@@ -270,7 +270,7 @@ def test_user_management_endpoints(app, client):
     assert patch_resp.get_json()["role"] == "Viewer"
     assert patch_resp.get_json()["is_active"] is False
 
-    reset_resp = client.post(f"/api/users/{analyst_id}/reset-password", headers=headers, json={"password": "newpass"})
+    reset_resp = client.post(f"/api/users/{analyst_id}/reset-password", headers=headers, json={"password": "newpass-secure-12"})
     assert reset_resp.status_code == 200
 
     reset_log = _latest_audit(app, action="RESET_PASSWORD", table_name="users")
@@ -1971,16 +1971,16 @@ def test_rate_limit_login_threshold_crossing_and_retry_metadata(app, client):
 
     create_admin(app)
 
-    first = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    first = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     assert first.status_code == 200
     assert first.headers.get("X-RateLimit-Limit") == "2"
     assert first.headers.get("X-RateLimit-Remaining") == "1"
 
-    second = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    second = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     assert second.status_code == 200
     assert second.headers.get("X-RateLimit-Remaining") == "0"
 
-    blocked = client.post("/api/auth/login", json={"username": "admin", "password": "secret"})
+    blocked = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     assert blocked.status_code == 429
     payload = blocked.get_json()
     assert payload["error"] == "Rate limit exceeded"

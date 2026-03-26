@@ -8,7 +8,7 @@ from sqlalchemy import or_
 
 from ..database import db
 from ..models import ApiToken, User
-from ..auth import role_required, hash_password, generate_token, revoke_tokens
+from ..auth import role_required, hash_password, generate_token, revoke_tokens, validate_password, PasswordTooWeakError
 from ..permissions import ALL_ROLES, ROLE_SCOPES
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
@@ -135,6 +135,10 @@ def create_user_admin():
 
     if not username or not email or not password:
         return error_response("Required field missing", field="username", details="username, email, password are required")
+    try:
+        validate_password(password)
+    except PasswordTooWeakError as exc:
+        return error_response(str(exc), field="password")
     if role not in _ALLOWED_ROLES:
         return error_response(f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}", field="role")
 
@@ -166,10 +170,16 @@ def invite_user():
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
     role = (data.get("role") or "Analyst").strip()
-    password = (data.get("password") or "").strip() or secrets.token_urlsafe(10)
+    user_supplied_password = (data.get("password") or "").strip()
+    password = user_supplied_password or secrets.token_urlsafe(16)
 
     if not username or not email:
         return error_response("Required field missing", field="username", details="username and email are required")
+    if user_supplied_password:
+        try:
+            validate_password(user_supplied_password)
+        except PasswordTooWeakError as exc:
+            return error_response(str(exc), field="password")
     if role not in _ALLOWED_ROLES:
         return error_response(f"Invalid role. Allowed: {', '.join(sorted(_ALLOWED_ROLES))}", field="role")
 
@@ -288,6 +298,10 @@ def reset_password(user_id: int):
     password = data.get("password") or ""
     if not password:
         return error_response("password is required", field="password")
+    try:
+        validate_password(password)
+    except PasswordTooWeakError as exc:
+        return error_response(str(exc), field="password")
 
     u.password_hash = hash_password(password)
     revoke_tokens(u)

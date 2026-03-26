@@ -9,7 +9,7 @@ def _auth_header(user):
 
 def _create_user(app, username, role="Analyst"):
     with app.app_context():
-        user = create_user(username, f"{username}@example.com", "secret", role=role)
+        user = create_user(username, f"{username}@example.com", "secret-pass-12", role=role)
         db.session.refresh(user)
         db.session.expunge(user)
         return user
