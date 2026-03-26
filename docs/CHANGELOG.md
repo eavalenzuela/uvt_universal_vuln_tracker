@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.5
+
+### Security
+- **S8: Fix account enumeration timing** — `authenticate_user()` now runs `verify_password()` against a dummy hash when the user is not found or inactive, ensuring constant-time response regardless of username validity.
+
 ## v2.0.4
 
 ### Security

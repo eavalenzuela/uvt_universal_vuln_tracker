@@ -366,9 +366,13 @@ def create_user(username, email, password, role="Analyst"):
     return user
 
 
+_DUMMY_HASH = generate_password_hash("timing-attack-dummy")
+
+
 def authenticate_user(username, password):
     user = get_user_by_identity(username)
     if not user or not user.is_active:
+        verify_password(password, _DUMMY_HASH)
         return None
     if not verify_password(password, user.password_hash):
         return None
