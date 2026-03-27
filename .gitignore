@@ -15,5 +15,11 @@ env/
 # Environment files with secrets
 .env
 
+# Test coverage
+.coverage
+
+# Flask instance folder (SQLite DB, runtime data)
+instance/
+
 # Local Docker overrides
 docker-compose.local.yml
