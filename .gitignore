@@ -14,3 +14,6 @@ env/
 
 # Environment files with secrets
 .env
+
+# Local Docker overrides
+docker-compose.local.yml
