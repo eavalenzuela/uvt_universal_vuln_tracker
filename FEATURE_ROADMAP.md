@@ -23,15 +23,8 @@ No forgot-password flow exists. Admins must manually reset passwords (and the te
 ### F3. Email Verification on Registration
 This feature requires too much additional configuration (and relies on the external email service), and will not be implemented.
 
-### F4. OpenAPI / Swagger Documentation
-**Effort:** Medium
-
-The API has 24 blueprints with no machine-readable documentation. Consumers have to read source code to understand endpoints.
-
-**What to do:**
-- Add `flask-smorest` or `apispec` to generate OpenAPI 3.0 spec from blueprints
-- Serve Swagger UI at `/api/docs`
-- Include request/response schemas from serializers
+### ~~F4. OpenAPI / Swagger Documentation~~ ✅ Done (v3.0.0)
+Added `apispec` with Flask plugin for OpenAPI 3.0.3 spec generation, Swagger UI at `/api/docs`, spec at `/api/openapi.json`. All 100 paths (140 operations) documented with YAML docstrings, 32 component schemas, and security schemes.
 
 ### F5. Structured Logging
 **Effort:** Small
@@ -44,16 +37,8 @@ Currently uses `logging.basicConfig(level=INFO)` with no structured output. Prod
 - Configurable log level via env var
 - Access log with timing, status, user ID
 
-### F6. Production Deployment Guide
-**Effort:** Small
-
-README covers dev setup only. No documentation for production deployment, required env vars, scaling, or operational procedures.
-
-**What to do:**
-- Document all env vars with defaults and production recommendations
-- Add Kubernetes manifest examples or Helm chart
-- Document backup/restore procedures (the scripts exist but aren't documented)
-- Runbook for common operational tasks
+### ~~F6. Production Deployment Guide~~ ✅ Done (v4.0.0)
+Added `docs/DEPLOYMENT.md` covering all env vars with production recommendations, Docker Compose / standalone / Kubernetes deployment options, Gunicorn tuning, database backup/restore, logging and monitoring, operational runbook, and security checklist.
 
 ---
 
@@ -214,9 +199,9 @@ No hotkeys for power users navigating large vulnerability sets.
 | ~~F1~~ | ~~P0~~ | ~~Small~~ | ~~Remove Alembic references~~ ✅ |
 | F2 | P0 | Medium | Self-service password reset |
 | F3 | P0 | Medium | Email verification on registration |
-| F4 | P0 | Medium | OpenAPI / Swagger documentation |
+| ~~F4~~ | ~~P0~~ | ~~Medium~~ | ~~OpenAPI / Swagger documentation~~ ✅ |
 | F5 | P0 | Small | Structured logging |
-| F6 | P0 | Small | Production deployment guide |
+| ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
 | F7 | P1 | Large | Background job queue (Celery) |
 | F8 | P1 | Medium | Application metrics & monitoring |
 | F9 | P1 | Medium | Full-text search |

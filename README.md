@@ -205,8 +205,8 @@ Bulk visual improvements, building on the Phase 2 CSS foundation.
 ### Phase 5 — Larger Features
 Production-readiness and platform capabilities.
 
-- F4: OpenAPI / Swagger documentation
-- F6: Production deployment guide
+- ~~F4: OpenAPI / Swagger documentation~~ (v3.0.0)
+- ~~F6: Production deployment guide~~ (v4.0.0)
 - V6: Table / data grid component
 - V10: Light theme option
 - F7+: Background job queue, metrics, full-text search, caching, data retention
@@ -222,5 +222,6 @@ See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP
 | [SECURITY_FIXES.md](SECURITY_FIXES.md) | Security audit findings and fix plan |
 | [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Missing features for production readiness |
 | [VISUAL_REWORK.md](VISUAL_REWORK.md) | Frontend visual design improvement plan |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment guide — env vars, Docker, K8s, backups, runbook |
 | [docs/TESTING_README.md](docs/TESTING_README.md) | Expanded testing guide |
 | [docs/backend-architecture.md](docs/backend-architecture.md) | Model bounded context rules |
