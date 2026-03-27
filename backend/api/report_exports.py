@@ -452,6 +452,59 @@ def _resolve_template_for_user(template_id, *, user, required=False):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_vuln_export")
 def export_vulnerabilities():
+    """Export vulnerabilities as CSV, JSON, or PDF.
+    ---
+    get:
+      summary: Export vulnerabilities report
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [csv, json, pdf]
+            default: csv
+        - in: query
+          name: report_template_id
+          schema:
+            type: integer
+          description: Optional report template to apply filters and format from
+        - in: query
+          name: severity
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: product_id
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Export artifact created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifact:
+                    $ref: '#/components/schemas/ReportArtifact'
+        400:
+          description: Invalid format or filter error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     export_format = (request.args.get("format") or "csv").lower()
     if export_format not in ALLOWED_EXPORT_FORMATS:
         return error_response("format must be one of csv, json, pdf", status_code=400)
@@ -485,6 +538,47 @@ def export_vulnerabilities():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="report_dashboard_export")
 def export_dashboard_summary():
+    """Export dashboard summary as CSV, JSON, or PDF.
+    ---
+    get:
+      summary: Export dashboard summary report
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [csv, json, pdf]
+            default: csv
+        - in: query
+          name: report_template_id
+          schema:
+            type: integer
+          description: Optional report template to apply filters and format from
+      responses:
+        200:
+          description: Export artifact created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifact:
+                    $ref: '#/components/schemas/ReportArtifact'
+        400:
+          description: Invalid format or filter error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     export_format = (request.args.get("format") or "csv").lower()
     if export_format not in ALLOWED_EXPORT_FORMATS:
         return error_response("format must be one of csv, json, pdf", status_code=400)
@@ -517,6 +611,53 @@ def export_dashboard_summary():
 @bp.get("/reports/artifacts/<int:artifact_id>/download")
 @login_required
 def download_report_artifact(artifact_id):
+    """Download a report artifact file.
+    ---
+    get:
+      summary: Download a report artifact
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: artifact_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Signed download token (valid for 10 minutes)
+      responses:
+        200:
+          description: Artifact file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        403:
+          description: Missing, invalid, or expired token, or forbidden access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     artifact = ReportArtifact.query.filter_by(id=artifact_id).first()
     if not artifact:
         return error_response("Artifact not found", status_code=404)
@@ -548,6 +689,44 @@ def download_report_artifact(artifact_id):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="dashboard_summary")
 def dashboard_summary():
+    """Get aggregated dashboard summary with by_severity, by_status, and total.
+    ---
+    get:
+      summary: Get dashboard summary
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: group_by
+          schema:
+            type: string
+            default: Severity
+        - in: query
+          name: range
+          schema:
+            type: string
+            default: Last 14 days
+          description: Time range filter (e.g. "Last 14 days", "Month to date", "Quarter to date")
+      responses:
+        200:
+          description: Dashboard summary data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        400:
+          description: Invalid filter parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     filters = request.args
     group_by = request.args.get("group_by") or "Severity"
     range_value = request.args.get("range") or "Last 14 days"
@@ -562,6 +741,32 @@ def dashboard_summary():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="risk_trends")
 def report_risk_trends():
+    """Get risk trend data over time.
+    ---
+    get:
+      summary: Get risk trend data
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Risk trend data
+          content:
+            application/json:
+              schema:
+                type: object
+        400:
+          description: Invalid filter parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     try:
         payload = _risk_trends(request.args)
     except ValueError as exc:

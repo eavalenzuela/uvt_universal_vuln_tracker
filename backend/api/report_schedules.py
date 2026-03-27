@@ -70,6 +70,74 @@ def _schedule_json(schedule):
 @bp.post("/reports/schedules")
 @role_required("Admin", "Analyst")
 def create_report_schedule():
+    """Create a new report schedule.
+    ---
+    post:
+      summary: Create a new report schedule
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                report_type:
+                  type: string
+                  enum: [vulnerabilities, dashboard_summary]
+                  default: vulnerabilities
+                frequency:
+                  type: string
+                  enum: [daily, weekly]
+                  default: daily
+                delivery_channel:
+                  type: string
+                  enum: [email, slack]
+                  default: email
+                recipient:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                timezone:
+                  type: string
+                  default: UTC
+                filter_preset:
+                  type: string
+                  nullable: true
+                filters:
+                  type: object
+                delivery_preferences:
+                  type: object
+                report_template_id:
+                  type: integer
+                  nullable: true
+      responses:
+        201:
+          description: Report schedule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSchedule'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin or Analyst role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     payload = request.get_json(silent=True) or {}
 
     try:
@@ -121,6 +189,50 @@ def create_report_schedule():
 @bp.get("/reports/schedules")
 @login_required
 def list_report_schedules():
+    """List report schedules visible to the current user.
+    ---
+    get:
+      summary: List report schedules
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: Paginated list of report schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportSchedule'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+                  pages:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     q = ReportSchedule.query
     if request.user.role != "Admin":
         q = q.filter(ReportSchedule.created_by == request.user.id)
@@ -135,6 +247,80 @@ def list_report_schedules():
 @bp.patch("/reports/schedules/<int:schedule_id>")
 @role_required("Admin", "Analyst")
 def update_report_schedule(schedule_id):
+    """Update an existing report schedule.
+    ---
+    patch:
+      summary: Update a report schedule
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                report_type:
+                  type: string
+                  enum: [vulnerabilities, dashboard_summary]
+                frequency:
+                  type: string
+                  enum: [daily, weekly]
+                delivery_channel:
+                  type: string
+                  enum: [email, slack]
+                recipient:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                timezone:
+                  type: string
+                filter_preset:
+                  type: string
+                  nullable: true
+                filters:
+                  type: object
+                delivery_preferences:
+                  type: object
+                report_template_id:
+                  type: integer
+                  nullable: true
+      responses:
+        200:
+          description: Updated report schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSchedule'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — not owner or Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     schedule = ReportSchedule.query.get_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
@@ -180,6 +366,38 @@ def update_report_schedule(schedule_id):
 @bp.delete("/reports/schedules/<int:schedule_id>")
 @role_required("Admin", "Analyst")
 def delete_report_schedule(schedule_id):
+    """Delete a report schedule.
+    ---
+    delete:
+      summary: Delete a report schedule
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Schedule deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        403:
+          description: Forbidden — not owner or Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     schedule = ReportSchedule.query.get_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
@@ -192,6 +410,58 @@ def delete_report_schedule(schedule_id):
 @role_required("Admin", "Analyst")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="report_run")
 def run_report_schedule(schedule_id):
+    """Manually trigger a report schedule delivery.
+    ---
+    post:
+      summary: Run a report schedule now
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Report delivery result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [sent, failed]
+                  delivery:
+                    type: object
+                  schedule:
+                    $ref: '#/components/schemas/ReportSchedule'
+        400:
+          description: Filter or query error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — not owner or Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     schedule = ReportSchedule.query.get_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)

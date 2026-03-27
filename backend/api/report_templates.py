@@ -48,6 +48,50 @@ def _can_manage_template(user, template):
 @bp.get("/reports/templates")
 @login_required
 def list_report_templates():
+    """List report templates visible to the current user.
+    ---
+    get:
+      summary: List report templates
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: Paginated list of report templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportTemplate'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+                  pages:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = _query_visible_templates(request.user).order_by(
         asc(ReportTemplate.name),
         asc(ReportTemplate.id),
@@ -62,6 +106,73 @@ def list_report_templates():
 @bp.post("/reports/templates")
 @role_required("Admin", "Analyst")
 def create_report_template():
+    """Create a new report template.
+    ---
+    post:
+      summary: Create a new report template
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                report_type:
+                  type: string
+                  enum: [vulnerabilities, dashboard_summary]
+                  default: vulnerabilities
+                format:
+                  type: string
+                  enum: [csv, json, pdf]
+                  default: csv
+                delivery_channel:
+                  type: string
+                  enum: [email, slack]
+                  default: email
+                visibility:
+                  type: string
+                  enum: [private, team]
+                  default: private
+                recipient:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                filters:
+                  type: object
+                fields:
+                  type: array
+                  items:
+                    type: string
+                delivery_preferences:
+                  type: object
+      responses:
+        201:
+          description: Report template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTemplate'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin or Analyst role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     payload = request.get_json(silent=True) or {}
     user = request.user
     try:
@@ -104,6 +215,79 @@ def create_report_template():
 @bp.patch("/reports/templates/<int:template_id>")
 @role_required("Admin", "Analyst")
 def update_report_template(template_id):
+    """Update an existing report template.
+    ---
+    patch:
+      summary: Update a report template
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                report_type:
+                  type: string
+                  enum: [vulnerabilities, dashboard_summary]
+                format:
+                  type: string
+                  enum: [csv, json, pdf]
+                delivery_channel:
+                  type: string
+                  enum: [email, slack]
+                visibility:
+                  type: string
+                  enum: [private, team]
+                recipient:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                filters:
+                  type: object
+                fields:
+                  type: array
+                  items:
+                    type: string
+                delivery_preferences:
+                  type: object
+      responses:
+        200:
+          description: Updated report template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTemplate'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — not owner or Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user = request.user
     template = ReportTemplate.query.get_or_404(template_id)
     if not _can_manage_template(user, template):
@@ -150,6 +334,38 @@ def update_report_template(template_id):
 @bp.delete("/reports/templates/<int:template_id>")
 @role_required("Admin", "Analyst")
 def delete_report_template(template_id):
+    """Delete a report template.
+    ---
+    delete:
+      summary: Delete a report template
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Template deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        403:
+          description: Forbidden — not owner or Admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user = request.user
     template = ReportTemplate.query.get_or_404(template_id)
     if not _can_manage_template(user, template):

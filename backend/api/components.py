@@ -16,6 +16,34 @@ bp = Blueprint("components_api", __name__, url_prefix="/api")
 @bp.get("/product_versions/<int:product_version_id>/components")
 @login_required
 def list_components(product_version_id: int):
+    """List all software components for a product version.
+    ---
+    get:
+      summary: List all software components for a product version
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_version_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of software components with dependencies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SoftwareComponent'
+        404:
+          description: Product version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     ProductVersion.query.get_or_404(product_version_id)
     components = (
         SoftwareComponent.query
@@ -56,6 +84,55 @@ def list_components(product_version_id: int):
 @role_required("Admin", "Analyst")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="sbom_import")
 def import_sbom(product_version_id: int):
+    """Import an SBOM for a product version.
+    ---
+    post:
+      summary: Import an SBOM for a product version
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_version_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - format
+                - sbom
+              properties:
+                format:
+                  type: string
+                  enum:
+                    - cyclonedx
+                    - spdx
+                sbom:
+                  type: object
+                  description: The SBOM document object
+      responses:
+        200:
+          description: SBOM imported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  stats:
+                    type: object
+        422:
+          description: Validation or format error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     payload = request.get_json(silent=True) or {}
     fmt = (payload.get("format") or "").strip().lower()
     sbom = payload.get("sbom")
@@ -76,6 +153,37 @@ def import_sbom(product_version_id: int):
 @bp.get("/product_versions/compare/components")
 @login_required
 def compare_components_between_versions():
+    """Compare software components between two product versions.
+    ---
+    get:
+      summary: Compare software components between two product versions
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: from_product_version_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: to_product_version_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Component comparison result
+          content:
+            application/json:
+              schema:
+                type: object
+        422:
+          description: Missing required query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     from_product_version_id = request.args.get("from_product_version_id", type=int)
     to_product_version_id = request.args.get("to_product_version_id", type=int)
 
@@ -92,6 +200,91 @@ def compare_components_between_versions():
 @bp.get("/product_versions/<int:product_version_id>/dependency_graph")
 @login_required
 def get_dependency_graph(product_version_id: int):
+    """Get the dependency graph for a product version.
+    ---
+    get:
+      summary: Get the dependency graph for a product version
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_version_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Dependency graph with nodes, edges, and root node IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  product_version_id:
+                    type: integer
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        version:
+                          type: string
+                        ecosystem:
+                          type: string
+                        component_type:
+                          type: string
+                        bom_ref:
+                          type: string
+                        vulnerability_count:
+                          type: integer
+                        max_severity:
+                          type: string
+                          nullable: true
+                        vulnerabilities:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              title:
+                                type: string
+                              severity:
+                                type: string
+                              status:
+                                type: string
+                  edges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        parent_component_id:
+                          type: integer
+                        child_component_id:
+                          type: integer
+                        dependency_path:
+                          type: string
+                        depth:
+                          type: integer
+                        is_direct:
+                          type: boolean
+                  root_node_ids:
+                    type: array
+                    items:
+                      type: integer
+        404:
+          description: Product version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     ProductVersion.query.get_or_404(product_version_id)
 
     components = (

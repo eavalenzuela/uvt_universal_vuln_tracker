@@ -10,6 +10,59 @@ bp = Blueprint("audit_logs_api", __name__, url_prefix="/api")
 @bp.get("/audit-logs")
 @role_required("Admin")
 def list_audit_logs():
+    """List audit logs with pagination and filtering.
+    ---
+    get:
+      summary: List audit logs with pagination and filtering
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - in: query
+          name: action
+          schema:
+            type: string
+        - in: query
+          name: table
+          schema:
+            type: string
+      responses:
+        200:
+          description: Paginated list of audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     try:
         page = parse_int(request.args.get("page"), field="page", minimum=1) or 1
         page_size = parse_int(request.args.get("page_size"), field="page_size", minimum=1, maximum=500) or 100

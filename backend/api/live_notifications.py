@@ -44,6 +44,35 @@ def _authenticate_stream_user() -> tuple[Any | None, tuple[dict[str, str], int] 
 
 @bp.get("/notifications/stream")
 def notification_stream():
+    """Server-Sent Events stream for live notifications.
+    ---
+    get:
+      summary: SSE stream for live notifications
+      description: >
+        Opens a persistent Server-Sent Events connection. Authentication
+        can be provided via Bearer token header, a `token` query parameter,
+        or a `uvt_auth_token` cookie.
+      parameters:
+        - in: query
+          name: token
+          schema:
+            type: string
+          description: JWT auth token (alternative to Authorization header)
+      responses:
+        200:
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Newline-delimited SSE events
+        401:
+          description: Missing, expired, invalid, or revoked token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user, auth_error = _authenticate_stream_user()
     if auth_error:
         body, status = auth_error

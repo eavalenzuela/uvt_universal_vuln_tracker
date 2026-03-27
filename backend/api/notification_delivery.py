@@ -69,6 +69,75 @@ def _audit(action: str, record_id: int, *, old_values=None, new_values=None):
 @bp.get("/notification-delivery-attempts")
 @role_required("Admin")
 def list_delivery_attempts():
+    """List notification delivery attempts.
+    ---
+    get:
+      summary: List notification delivery attempts
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+        - in: query
+          name: failed_only
+          schema:
+            type: boolean
+            default: false
+      responses:
+        200:
+          description: List of delivery attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    rule_id:
+                      type: integer
+                    vulnerability_id:
+                      type: integer
+                    event_type:
+                      type: string
+                    status:
+                      type: string
+                      enum: [delivered, failed]
+                    channel:
+                      type: string
+                    error:
+                      type: string
+                      nullable: true
+                    retry_count:
+                      type: integer
+                    next_retry_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    response_payload:
+                      type: object
+                    created_at:
+                      type: string
+                      format: date-time
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     try:
         limit = parse_int(request.args.get("limit", 100), field="limit", minimum=1, maximum=500, required=True)
         failed_only = str(request.args.get("failed_only", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -105,6 +174,52 @@ def _retry_or_replay(*, log_row: NotificationDeliveryLog, action: str, guard_fai
 @bp.post("/notification-delivery-attempts/<int:attempt_id>/retry")
 @role_required("Admin")
 def retry_delivery_attempt(attempt_id: int):
+    """Retry a failed notification delivery attempt.
+    ---
+    post:
+      summary: Retry a failed delivery attempt
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: attempt_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Retry initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  attempts:
+                    type: integer
+                  latest_attempt_id:
+                    type: integer
+                    nullable: true
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Delivery attempt not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        409:
+          description: Only failed attempts can be retried
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     row = NotificationDeliveryLog.query.get_or_404(attempt_id)
     result = _retry_or_replay(log_row=row, action="retry", guard_failures_only=True)
     _audit(
@@ -120,6 +235,52 @@ def retry_delivery_attempt(attempt_id: int):
 @bp.post("/notification-delivery-attempts/<int:attempt_id>/replay")
 @role_required("Admin")
 def replay_delivery_attempt(attempt_id: int):
+    """Replay a notification delivery attempt regardless of its status.
+    ---
+    post:
+      summary: Replay a delivery attempt
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: attempt_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Replay initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  attempts:
+                    type: integer
+                  latest_attempt_id:
+                    type: integer
+                    nullable: true
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Delivery attempt not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        409:
+          description: Cannot replay without rule_id and vulnerability_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     row = NotificationDeliveryLog.query.get_or_404(attempt_id)
     result = _retry_or_replay(log_row=row, action="replay", guard_failures_only=False)
     _audit(

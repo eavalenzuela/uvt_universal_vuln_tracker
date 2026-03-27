@@ -31,6 +31,22 @@ def _attack_vector_json(attack_vector):
 @bp.get("/attack_vectors")
 @login_required
 def list_attack_vectors():
+    """List all attack vectors.
+    ---
+    get:
+      summary: List all attack vectors
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttackVector'
+    """
     vectors = svc_list()
     return jsonify([_attack_vector_json(v) for v in vectors])
 
@@ -38,6 +54,39 @@ def list_attack_vectors():
 @bp.post("/attack_vectors")
 @role_required("Admin", "Analyst")
 def create_attack_vector():
+    """Create a new attack vector.
+    ---
+    post:
+      summary: Create a new attack vector
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        201:
+          description: Attack vector created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackVector'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         name = required_string(data, "name")
@@ -51,6 +100,32 @@ def create_attack_vector():
 @bp.get("/attack_vectors/<int:vector_id>")
 @login_required
 def get_attack_vector(vector_id: int):
+    """Get a single attack vector by ID.
+    ---
+    get:
+      summary: Get a single attack vector by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vector_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackVector'
+        404:
+          description: Attack vector not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     vector = svc_get(vector_id)
     return jsonify(_attack_vector_json(vector))
 
@@ -58,6 +133,49 @@ def get_attack_vector(vector_id: int):
 @bp.patch("/attack_vectors/<int:vector_id>")
 @role_required("Admin", "Analyst")
 def update_attack_vector(vector_id: int):
+    """Update an existing attack vector.
+    ---
+    patch:
+      summary: Update an existing attack vector
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vector_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        200:
+          description: Attack vector updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackVector'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Attack vector not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         vector = svc_update(vector_id, data)
@@ -69,6 +187,32 @@ def update_attack_vector(vector_id: int):
 @bp.delete("/attack_vectors/<int:vector_id>")
 @role_required("Admin")
 def delete_attack_vector(vector_id: int):
+    """Delete an attack vector.
+    ---
+    delete:
+      summary: Delete an attack vector
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vector_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Attack vector deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        404:
+          description: Attack vector not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     svc_delete(vector_id)
     return jsonify({"ok": True})
 
@@ -76,6 +220,34 @@ def delete_attack_vector(vector_id: int):
 @bp.get("/vulnerabilities/<int:vuln_id>/attack_vectors")
 @login_required
 def list_vulnerability_attack_vectors(vuln_id: int):
+    """List attack vector mappings for a vulnerability.
+    ---
+    get:
+      summary: List attack vector mappings for a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        404:
+          description: Vulnerability not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     mappings = svc_list_mappings(vuln_id)
     return jsonify([serialize_mapping(m) for m in mappings])
 
@@ -83,6 +255,54 @@ def list_vulnerability_attack_vectors(vuln_id: int):
 @bp.post("/vulnerabilities/<int:vuln_id>/attack_vectors")
 @role_required("Admin", "Analyst")
 def attach_vulnerability_attack_vectors(vuln_id: int):
+    """Attach attack vectors to a vulnerability.
+    ---
+    post:
+      summary: Attach attack vectors to a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mappings:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        200:
+          description: Attack vectors attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  added:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Vulnerability not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     mappings = data.get("mappings") or []
     try:
@@ -95,6 +315,49 @@ def attach_vulnerability_attack_vectors(vuln_id: int):
 @bp.patch("/vulnerabilities/<int:vuln_id>/attack_vectors/<int:mapping_id>")
 @role_required("Admin", "Analyst")
 def update_vulnerability_attack_vector(vuln_id: int, mapping_id: int):
+    """Update a vulnerability-attack-vector mapping.
+    ---
+    patch:
+      summary: Update a vulnerability-attack-vector mapping
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: mapping_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: Mapping updated
+          content:
+            application/json:
+              schema:
+                type: object
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         mapping = svc_update_mapping(vuln_id, mapping_id, data)
@@ -106,5 +369,36 @@ def update_vulnerability_attack_vector(vuln_id: int, mapping_id: int):
 @bp.delete("/vulnerabilities/<int:vuln_id>/attack_vectors/<int:mapping_id>")
 @role_required("Admin", "Analyst")
 def delete_vulnerability_attack_vector(vuln_id: int, mapping_id: int):
+    """Delete a vulnerability-attack-vector mapping.
+    ---
+    delete:
+      summary: Delete a vulnerability-attack-vector mapping
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: mapping_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Mapping deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        404:
+          description: Mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     svc_delete_mapping(vuln_id, mapping_id)
     return jsonify({"ok": True})

@@ -75,6 +75,66 @@ def _parse_token_create_payload(data, owner: User):
 @bp.get("/users")
 @role_required("Admin")
 def list_users():
+    """List users with filtering and pagination.
+    ---
+    get:
+      summary: List users with filtering and pagination
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 25
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by username, email, first_name, or last_name
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [Admin, Analyst, Viewer]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, disabled]
+      responses:
+        200:
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        400:
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = User.query
 
     try:
@@ -122,10 +182,51 @@ def list_users():
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="create_user")
 def create_user_admin():
-    """
-    Create a user (Admin-only).
-    Body:
-      { "username": "...", "email": "...", "password": "...", "role": "Analyst|Viewer|Admin", ... }
+    """Create a user (Admin-only).
+    ---
+    post:
+      summary: Create a new user
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                role:
+                  type: string
+                  enum: [Admin, Analyst, Viewer]
+                  default: Analyst
+                is_active:
+                  type: boolean
+                  default: true
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+      responses:
+        201:
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     """
     data = request.get_json(silent=True) or {}
 
@@ -166,6 +267,58 @@ def create_user_admin():
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="invite_user")
 def invite_user():
+    """Invite a user by email with a password-reset link.
+    ---
+    post:
+      summary: Invite a new user and send a reset-password email
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email]
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [Admin, Analyst, Viewer]
+                  default: Analyst
+                password:
+                  type: string
+                  description: Optional initial password; a random one is generated if omitted
+                is_active:
+                  type: boolean
+                  default: true
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+      responses:
+        201:
+          description: User created and reset email sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      reset_email_sent:
+                        type: boolean
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
 
     username = (data.get("username") or "").strip()
@@ -214,6 +367,51 @@ def invite_user():
 @bp.get("/users/active")
 @role_required("Admin")
 def list_active_users():
+    """List active users with pagination.
+    ---
+    get:
+      summary: List active users
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 25
+      responses:
+        200:
+          description: Paginated list of active users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        400:
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = User.query.filter(User.is_active.is_(True)).order_by(User.username.asc())
     try:
         from .validation import paginate_query
@@ -225,15 +423,88 @@ def list_active_users():
 @bp.get("/users/<int:user_id>")
 @role_required("Admin")
 def get_user(user_id: int):
+    """Get a single user by ID.
+    ---
+    get:
+      summary: Get a user by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     u = User.query.get_or_404(user_id)
     return jsonify(_user_json(u))
 
 @bp.patch("/users/<int:user_id>")
 @role_required("Admin")
 def update_user(user_id: int):
-    """
-    Patch fields:
-      email, first_name, last_name, role, is_active
+    """Patch user fields.
+    ---
+    patch:
+      summary: Update a user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                role:
+                  type: string
+                  enum: [Admin, Analyst, Viewer]
+                is_active:
+                  type: boolean
+      responses:
+        200:
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     """
     u = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
@@ -295,9 +566,47 @@ def update_user(user_id: int):
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="password_reset")
 def reset_password(user_id: int):
-    """
-    Body:
-      { "password": "newpass" }
+    """Reset a user's password (Admin-only).
+    ---
+    post:
+      summary: Reset a user's password
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        200:
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     """
     u = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
@@ -320,6 +629,53 @@ def reset_password(user_id: int):
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="impersonate")
 def impersonate(user_id: int):
+    """Impersonate a user and receive a JWT for that user.
+    ---
+    post:
+      summary: Impersonate a user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        200:
+          description: Impersonation token and user object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        400:
+          description: Validation error or user inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     target = User.query.get_or_404(user_id)
     if not target.is_active:
         return error_response("Cannot impersonate inactive user")
@@ -340,6 +696,32 @@ def impersonate(user_id: int):
 @bp.post("/users/<int:user_id>/toggle-active")
 @role_required("Admin")
 def toggle_active(user_id: int):
+    """Toggle a user's active status.
+    ---
+    post:
+      summary: Toggle user active/disabled status
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Updated user with toggled status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        404:
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     u = User.query.get_or_404(user_id)
     u.is_active = not u.is_active
     revoke_tokens(u)
@@ -353,6 +735,48 @@ def toggle_active(user_id: int):
 @bp.get("/users/export")
 @role_required("Admin")
 def export_users():
+    """Export users as a CSV file.
+    ---
+    get:
+      summary: Export users as CSV
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Search by username, email, first_name, or last_name
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [Admin, Analyst, Viewer]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, disabled]
+      responses:
+        200:
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=users.csv
+        400:
+          description: Invalid filter parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = User.query
 
     search = (request.args.get("search") or "").strip()

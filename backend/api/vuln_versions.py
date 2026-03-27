@@ -16,11 +16,51 @@ bp = Blueprint("vuln_versions_api", __name__, url_prefix="/api")
 @bp.post("/vulnerabilities/<int:vuln_id>/versions")
 @role_required("Admin", "Analyst")
 def attach_versions(vuln_id: int):
-    """
-    Body:
-      {
-        "product_version_ids": [1,2,3]
-      }
+    """Attach product versions to a vulnerability.
+    ---
+    post:
+      summary: Attach product versions to a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - product_version_ids
+              properties:
+                product_version_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of product version IDs to attach
+      responses:
+        200:
+          description: Versions attached successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  added:
+                    type: integer
+                    description: Number of new version mappings created (duplicates skipped)
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability not found
     """
     v = Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
@@ -54,6 +94,73 @@ def attach_versions(vuln_id: int):
 @bp.patch("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
 @role_required("Admin", "Analyst")
 def update_vulnerability_version(vuln_id: int, mapping_id: int):
+    """Update a vulnerability-version mapping.
+    ---
+    patch:
+      summary: Update a vulnerability-version mapping
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: mapping_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                affected:
+                  type: boolean
+                fixed_in_version:
+                  type: string
+                  nullable: true
+                mitigation_status:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+      responses:
+        200:
+          description: Updated mapping
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  vulnerability_id:
+                    type: integer
+                  product_version_id:
+                    type: integer
+                  affected:
+                    type: boolean
+                  fixed_in_version:
+                    type: string
+                    nullable: true
+                  mitigation_status:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability or mapping not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
     data = request.get_json(silent=True) or {}
@@ -106,6 +213,37 @@ def update_vulnerability_version(vuln_id: int, mapping_id: int):
 @bp.delete("/vulnerabilities/<int:vuln_id>/versions/<int:mapping_id>")
 @role_required("Admin", "Analyst")
 def delete_vulnerability_version(vuln_id: int, mapping_id: int):
+    """Delete a vulnerability-version mapping.
+    ---
+    delete:
+      summary: Delete a vulnerability-version mapping
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: mapping_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability or mapping not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
 

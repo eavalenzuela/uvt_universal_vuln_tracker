@@ -14,6 +14,22 @@ bp = Blueprint("controls_api", __name__, url_prefix="/api")
 @bp.get("/controls")
 @login_required
 def list_controls():
+    """List all controls.
+    ---
+    get:
+      summary: List all controls
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Control'
+    """
     controls = Control.query.order_by(asc(Control.framework), asc(Control.name)).all()
     return jsonify([_control_json(c) for c in controls])
 
@@ -21,6 +37,41 @@ def list_controls():
 @bp.post("/controls")
 @role_required("Admin", "Analyst")
 def create_control():
+    """Create a new control.
+    ---
+    post:
+      summary: Create a new control
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                framework:
+                  type: string
+                description:
+                  type: string
+      responses:
+        201:
+          description: Control created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     if not name:
@@ -41,6 +92,32 @@ def create_control():
 @bp.get("/controls/<int:control_id>")
 @login_required
 def get_control(control_id: int):
+    """Get a single control by ID.
+    ---
+    get:
+      summary: Get a single control by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: control_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+        404:
+          description: Control not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     control = Control.query.get_or_404(control_id)
     return jsonify(_control_json(control))
 
@@ -48,6 +125,51 @@ def get_control(control_id: int):
 @bp.patch("/controls/<int:control_id>")
 @role_required("Admin", "Analyst")
 def update_control(control_id: int):
+    """Update an existing control.
+    ---
+    patch:
+      summary: Update an existing control
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: control_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                framework:
+                  type: string
+                description:
+                  type: string
+      responses:
+        200:
+          description: Control updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Control not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     control = Control.query.get_or_404(control_id)
     data = request.get_json(silent=True) or {}
 
@@ -73,6 +195,32 @@ def update_control(control_id: int):
 @bp.delete("/controls/<int:control_id>")
 @role_required("Admin")
 def delete_control(control_id: int):
+    """Delete a control.
+    ---
+    delete:
+      summary: Delete a control
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: control_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Control deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        404:
+          description: Control not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     control = Control.query.get_or_404(control_id)
     _audit("DELETE", "controls", control.id, old_values=model_snapshot(control))
     db.session.delete(control)

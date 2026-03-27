@@ -36,6 +36,89 @@ def _serialize_watcher(watcher):
 @role_required("Admin", "Analyst")
 @rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_batch_update")
 def batch_update_vulnerabilities():
+    """Batch update multiple vulnerabilities (alias for /bulk).
+    ---
+    patch:
+      summary: Batch update multiple vulnerabilities
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vulnerability_ids
+              properties:
+                vulnerability_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of vulnerability IDs to update
+                status:
+                  type: string
+                  enum: [Open, In Progress, Resolved, Closed, Accepted]
+                severity:
+                  type: string
+                  enum: [Critical, High, Medium, Low, Informational]
+                assigned_to:
+                  type: integer
+                  nullable: true
+                sla_due_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        200:
+          description: Batch update results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  updated_ids:
+                    type: array
+                    items:
+                      type: integer
+                  updated_count:
+                    type: integer
+                  skipped_ids:
+                    type: array
+                    items:
+                      type: integer
+                  skipped_count:
+                    type: integer
+                  missing_ids:
+                    type: array
+                    items:
+                      type: integer
+                  missing_count:
+                    type: integer
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        error:
+                          type: string
+                  failed_count:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+    """
     return _bulk_update_vulnerabilities()
 
 
@@ -43,6 +126,89 @@ def batch_update_vulnerabilities():
 @role_required("Admin", "Analyst")
 @rate_limit("RATE_LIMIT_WRITE_LIMIT", "RATE_LIMIT_WRITE_WINDOW_SECONDS", identifier="vuln_bulk_update")
 def bulk_update_vulnerabilities():
+    """Bulk update multiple vulnerabilities.
+    ---
+    patch:
+      summary: Bulk update multiple vulnerabilities
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vulnerability_ids
+              properties:
+                vulnerability_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of vulnerability IDs to update
+                status:
+                  type: string
+                  enum: [Open, In Progress, Resolved, Closed, Accepted]
+                severity:
+                  type: string
+                  enum: [Critical, High, Medium, Low, Informational]
+                assigned_to:
+                  type: integer
+                  nullable: true
+                sla_due_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        200:
+          description: Bulk update results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  updated_ids:
+                    type: array
+                    items:
+                      type: integer
+                  updated_count:
+                    type: integer
+                  skipped_ids:
+                    type: array
+                    items:
+                      type: integer
+                  skipped_count:
+                    type: integer
+                  missing_ids:
+                    type: array
+                    items:
+                      type: integer
+                  missing_count:
+                    type: integer
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        error:
+                          type: string
+                  failed_count:
+                    type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+    """
     return _bulk_update_vulnerabilities()
 
 
@@ -163,6 +329,32 @@ def _bulk_update_vulnerabilities():
 @bp.get("/vulnerabilities/<int:vuln_id>/watchers")
 @login_required
 def list_vulnerability_watchers(vuln_id: int):
+    """List watchers for a vulnerability.
+    ---
+    get:
+      summary: List watchers for a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Array of watchers ordered by creation time
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VulnerabilityWatcher'
+        401:
+          description: Unauthorized
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     watchers = (
         VulnerabilityWatcher.query
@@ -176,6 +368,54 @@ def list_vulnerability_watchers(vuln_id: int):
 @bp.post("/vulnerabilities/<int:vuln_id>/watch")
 @role_required("Admin", "Analyst")
 def watch_vulnerability(vuln_id: int):
+    """Add a watcher to a vulnerability.
+    ---
+    post:
+      summary: Watch a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: integer
+                  description: User ID to add as watcher (defaults to current user; only admins can set other users)
+      responses:
+        200:
+          description: User is already watching (returns existing watcher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityWatcher'
+        201:
+          description: Watcher created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityWatcher'
+        400:
+          description: Invalid user_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role; only admins can add watchers for other users
+        404:
+          description: Vulnerability or user not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     requested_user_id = data.get("user_id", request.user.id)
@@ -204,6 +444,37 @@ def watch_vulnerability(vuln_id: int):
 @bp.delete("/vulnerabilities/<int:vuln_id>/watch/<int:user_id>")
 @role_required("Admin", "Analyst")
 def unwatch_vulnerability(vuln_id: int, user_id: int):
+    """Remove a watcher from a vulnerability.
+    ---
+    delete:
+      summary: Unwatch a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Watcher removed (or was not watching)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role; only admins can remove watchers for other users
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     if request.user.role != "Admin" and user_id != request.user.id:
         return error_response("Only admins can remove watchers for other users", status_code=403)

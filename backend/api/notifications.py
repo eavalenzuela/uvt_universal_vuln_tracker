@@ -33,6 +33,70 @@ def _notification_json(row: Notification):
 @bp.get("")
 @login_required
 def list_notifications():
+    """List notifications for the current user.
+    ---
+    get:
+      summary: List notifications for the current user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - in: query
+          name: unread_only
+          schema:
+            type: boolean
+            default: false
+      responses:
+        200:
+          description: Paginated list of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+                      pagination:
+                        type: object
+                        properties:
+                          page:
+                            type: integer
+                          page_size:
+                            type: integer
+                          pages:
+                            type: integer
+                          total:
+                            type: integer
+                          has_next:
+                            type: boolean
+                          has_prev:
+                            type: boolean
+                      unread_count:
+                        type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     try:
         page = parse_int(request.args.get("page", 1), field="page", minimum=1, required=True)
         page_size = parse_int(request.args.get("page_size", 20), field="page_size", minimum=1, maximum=MAX_PAGE_SIZE, required=True)
@@ -69,6 +133,59 @@ def list_notifications():
 @bp.patch("/<int:notification_id>")
 @login_required
 def update_notification(notification_id: int):
+    """Update a notification's read status.
+    ---
+    patch:
+      summary: Update a notification's read status
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: notification_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_read
+              properties:
+                is_read:
+                  type: boolean
+      responses:
+        200:
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      notification:
+                        $ref: '#/components/schemas/Notification'
+                      unread_count:
+                        type: integer
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     row = Notification.query.filter_by(id=notification_id, user_id=request.user.id).first()
     if not row:
         return error_response("Notification not found", field="notification_id", status_code=404)
@@ -90,6 +207,30 @@ def update_notification(notification_id: int):
 @bp.post("/read-all")
 @login_required
 def mark_all_notifications_read():
+    """Mark all unread notifications as read for the current user.
+    ---
+    post:
+      summary: Mark all notifications as read
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                      unread_count:
+                        type: integer
+    """
     updated = Notification.query.filter_by(user_id=request.user.id, is_read=False).update(
         {Notification.is_read: True},
         synchronize_session=False,
@@ -101,6 +242,58 @@ def mark_all_notifications_read():
 @bp.delete("/<int:notification_id>")
 @login_required
 def archive_or_delete_notification(notification_id: int):
+    """Delete or archive a notification.
+    ---
+    delete:
+      summary: Delete or archive a notification
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: notification_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: mode
+          schema:
+            type: string
+            enum: [delete, archive]
+            default: delete
+      responses:
+        200:
+          description: Notification deleted or archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: boolean
+                      mode:
+                        type: string
+                      notification_id:
+                        type: integer
+                      unread_count:
+                        type: integer
+        400:
+          description: Invalid mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     row = Notification.query.filter_by(id=notification_id, user_id=request.user.id).first()
     if not row:
         return error_response("Notification not found", field="notification_id", status_code=404)

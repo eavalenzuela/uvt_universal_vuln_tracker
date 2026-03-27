@@ -21,6 +21,50 @@ bp = Blueprint("products_api", __name__, url_prefix="/api")
 @bp.get("/products")
 @login_required
 def list_products():
+    """List all products with pagination.
+    ---
+    get:
+      summary: List all products with pagination
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+            default: 25
+      responses:
+        200:
+          description: Paginated list of products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  pages:
+                    type: integer
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = svc_list_products()
     try:
         products, meta = paginate_query(query)
@@ -32,6 +76,46 @@ def list_products():
 @bp.post("/products")
 @role_required("Admin", "Analyst")
 def create_product():
+    """Create a new product.
+    ---
+    post:
+      summary: Create a new product
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        201:
+          description: Product created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  description:
+                    type: string
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         p = svc_create_product(
@@ -47,6 +131,32 @@ def create_product():
 @bp.get("/products/<int:product_id>")
 @login_required
 def get_product(product_id: int):
+    """Get a single product with full details.
+    ---
+    get:
+      summary: Get a single product with full details
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetail'
+        404:
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     p = svc_get_product(product_id)
     return jsonify(_product_json(p, include_details=True))
 
@@ -54,6 +164,49 @@ def get_product(product_id: int):
 @bp.patch("/products/<int:product_id>")
 @role_required("Admin", "Analyst")
 def update_product(product_id: int):
+    """Update an existing product.
+    ---
+    patch:
+      summary: Update an existing product
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        200:
+          description: Updated product detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetail'
+        404:
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         p = svc_update_product(product_id, data)
@@ -65,6 +218,32 @@ def update_product(product_id: int):
 @bp.delete("/products/<int:product_id>")
 @role_required("Admin")
 def delete_product(product_id: int):
+    """Delete a product.
+    ---
+    delete:
+      summary: Delete a product
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Product deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        404:
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     svc_delete_product(product_id)
     return jsonify({"ok": True})
 
@@ -72,6 +251,34 @@ def delete_product(product_id: int):
 @bp.get("/products/<int:product_id>/versions")
 @login_required
 def list_versions(product_id: int):
+    """List all versions for a product.
+    ---
+    get:
+      summary: List all versions for a product
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of product versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductVersion'
+        404:
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     versions = svc_list_versions(product_id)
     return jsonify([_version_json(v) for v in versions])
 
@@ -79,6 +286,55 @@ def list_versions(product_id: int):
 @bp.post("/products/<int:product_id>/versions")
 @role_required("Admin", "Analyst")
 def create_version(product_id: int):
+    """Create a new version for a product.
+    ---
+    post:
+      summary: Create a new version for a product
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - version
+              properties:
+                version:
+                  type: string
+                release_date:
+                  type: string
+                  format: date
+                is_active:
+                  type: boolean
+                  default: true
+      responses:
+        201:
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVersion'
+        404:
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         v = svc_create_version(
@@ -95,6 +351,57 @@ def create_version(product_id: int):
 @bp.patch("/products/<int:product_id>/versions/<int:version_id>")
 @role_required("Admin", "Analyst")
 def update_version(product_id: int, version_id: int):
+    """Update an existing product version.
+    ---
+    patch:
+      summary: Update an existing product version
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: version_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: string
+                release_date:
+                  type: string
+                  format: date
+                is_active:
+                  type: boolean
+      responses:
+        200:
+          description: Updated product version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVersion'
+        404:
+          description: Product or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         v = svc_update_version(product_id, version_id, data)
@@ -106,5 +413,36 @@ def update_version(product_id: int, version_id: int):
 @bp.delete("/products/<int:product_id>/versions/<int:version_id>")
 @role_required("Admin", "Analyst")
 def delete_version(product_id: int, version_id: int):
+    """Delete a product version.
+    ---
+    delete:
+      summary: Delete a product version
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: version_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Version deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        404:
+          description: Product or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     svc_delete_version(product_id, version_id)
     return jsonify({"ok": True})

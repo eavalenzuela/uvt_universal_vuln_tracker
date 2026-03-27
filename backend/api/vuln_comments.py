@@ -26,6 +26,32 @@ def _serialize_comment(comment):
 @bp.get("/vulnerabilities/<int:vuln_id>/comments")
 @login_required
 def list_vulnerability_comments(vuln_id: int):
+    """List all comments for a vulnerability.
+    ---
+    get:
+      summary: List comments for a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Array of comments ordered by creation time
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VulnerabilityComment'
+        401:
+          description: Unauthorized
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     comments = (
         VulnerabilityComment.query
@@ -39,6 +65,50 @@ def list_vulnerability_comments(vuln_id: int):
 @bp.post("/vulnerabilities/<int:vuln_id>/comments")
 @role_required("Admin", "Analyst")
 def create_vulnerability_comment(vuln_id: int):
+    """Create a comment on a vulnerability.
+    ---
+    post:
+      summary: Create a comment on a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  description: Comment text (supports @mentions)
+      responses:
+        201:
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityComment'
+        400:
+          description: Validation error (missing body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     try:
@@ -70,6 +140,54 @@ def create_vulnerability_comment(vuln_id: int):
 @bp.put("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
 @role_required("Admin", "Analyst")
 def update_vulnerability_comment(vuln_id: int, comment_id: int):
+    """Update a comment on a vulnerability.
+    ---
+    put:
+      summary: Update a vulnerability comment
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: comment_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+      responses:
+        200:
+          description: Updated comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityComment'
+        400:
+          description: Validation error (missing body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role, or comment authorship
+        404:
+          description: Vulnerability or comment not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
     if not _can_moderate_comment(request.user, comment):
@@ -100,6 +218,37 @@ def update_vulnerability_comment(vuln_id: int, comment_id: int):
 @bp.delete("/vulnerabilities/<int:vuln_id>/comments/<int:comment_id>")
 @role_required("Admin", "Analyst")
 def delete_vulnerability_comment(vuln_id: int, comment_id: int):
+    """Delete a comment on a vulnerability.
+    ---
+    delete:
+      summary: Delete a vulnerability comment
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: comment_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role, or comment authorship
+        404:
+          description: Vulnerability or comment not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
     if not _can_moderate_comment(request.user, comment):

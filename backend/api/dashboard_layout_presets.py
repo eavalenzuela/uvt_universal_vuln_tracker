@@ -46,6 +46,22 @@ def _can_manage(user, item):
 @bp.get("")
 @login_required
 def list_layout_presets():
+    """List dashboard layout presets visible to the current user.
+    ---
+    get:
+      summary: List dashboard layout presets
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardLayoutPreset'
+    """
     user = request.user
     items = _query_visible_presets(user).order_by(
         asc(DashboardLayoutPreset.name),
@@ -57,6 +73,24 @@ def list_layout_presets():
 @bp.get("/default")
 @login_required
 def get_default_layout_preset():
+    """Get the default dashboard layout preset for the current user.
+    ---
+    get:
+      summary: Get the default dashboard layout preset
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Default preset or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  default:
+                    nullable: true
+                    $ref: '#/components/schemas/DashboardLayoutPreset'
+    """
     user = request.user
     item = _query_visible_presets(user).filter_by(is_default=True).order_by(DashboardLayoutPreset.id.desc()).first()
     if not item:
@@ -67,6 +101,47 @@ def get_default_layout_preset():
 @bp.post("")
 @login_required
 def create_layout_preset():
+    """Create a new dashboard layout preset.
+    ---
+    post:
+      summary: Create a new dashboard layout preset
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - widget_config_json
+              properties:
+                name:
+                  type: string
+                widget_config_json:
+                  type: object
+                visibility:
+                  type: string
+                  enum:
+                    - private
+                    - team
+                is_default:
+                  type: boolean
+      responses:
+        201:
+          description: Preset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardLayoutPreset'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user = request.user
     data = request.get_json(silent=True) or {}
 
@@ -103,6 +178,62 @@ def create_layout_preset():
 @bp.put("/<int:preset_id>")
 @login_required
 def update_layout_preset(preset_id):
+    """Update a dashboard layout preset.
+    ---
+    put:
+      summary: Update a dashboard layout preset
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: preset_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                widget_config_json:
+                  type: object
+                visibility:
+                  type: string
+                  enum:
+                    - private
+                    - team
+                is_default:
+                  type: boolean
+      responses:
+        200:
+          description: Preset updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardLayoutPreset'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Preset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user = request.user
     item = DashboardLayoutPreset.query.get(preset_id)
     if not item:
@@ -147,6 +278,34 @@ def update_layout_preset(preset_id):
 @bp.delete("/<int:preset_id>")
 @login_required
 def delete_layout_preset(preset_id):
+    """Delete a dashboard layout preset.
+    ---
+    delete:
+      summary: Delete a dashboard layout preset
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: preset_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        204:
+          description: Preset deleted
+        403:
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Preset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     user = request.user
     item = DashboardLayoutPreset.query.get(preset_id)
     if not item:

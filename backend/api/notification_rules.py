@@ -21,6 +21,50 @@ VALID_SEVERITIES = {"None", "Low", "Medium", "High", "Critical"}
 @bp.get("/notification-rules")
 @role_required("Admin")
 def list_rules():
+    """List all notification rules.
+    ---
+    get:
+      summary: List all notification rules
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: Paginated list of notification rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationRule'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+                  pages:
+                    type: integer
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     query = NotificationRule.query.order_by(NotificationRule.id.desc())
     try:
         rows, meta = paginate_query(query)
@@ -32,6 +76,82 @@ def list_rules():
 @bp.post("/notification-rules")
 @role_required("Admin")
 def create_rule():
+    """Create a new notification rule.
+    ---
+    post:
+      summary: Create a new notification rule
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                is_enabled:
+                  type: boolean
+                  default: true
+                delivery_adapter:
+                  type: string
+                  enum: [slack, jira, webhook, email]
+                  default: slack
+                delivery_config:
+                  type: object
+                severity_threshold:
+                  type: string
+                  enum: [None, Low, Medium, High, Critical]
+                  default: Medium
+                notify_on_status_change:
+                  type: boolean
+                  default: true
+                notify_on_assignment_change:
+                  type: boolean
+                  default: true
+                product_scope:
+                  type: array
+                  items:
+                    type: integer
+                frequency_days:
+                  type: integer
+                  minimum: 1
+                  default: 3
+                escalation_after_days:
+                  type: integer
+                  minimum: 0
+                  default: 7
+                channels:
+                  type: array
+                  items:
+                    type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        201:
+          description: Notification rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRule'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         name = required_string(data, "name")
@@ -68,6 +188,85 @@ def create_rule():
 @bp.put("/notification-rules/<int:rule_id>")
 @role_required("Admin")
 def update_rule(rule_id: int):
+    """Update an existing notification rule.
+    ---
+    put:
+      summary: Update an existing notification rule
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: rule_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_enabled:
+                  type: boolean
+                delivery_adapter:
+                  type: string
+                  enum: [slack, jira, webhook, email]
+                delivery_config:
+                  type: object
+                severity_threshold:
+                  type: string
+                  enum: [None, Low, Medium, High, Critical]
+                notify_on_status_change:
+                  type: boolean
+                notify_on_assignment_change:
+                  type: boolean
+                product_scope:
+                  type: array
+                  items:
+                    type: integer
+                frequency_days:
+                  type: integer
+                  minimum: 1
+                escalation_after_days:
+                  type: integer
+                  minimum: 0
+                channels:
+                  type: array
+                  items:
+                    type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        200:
+          description: Updated notification rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRule'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     rule = NotificationRule.query.get_or_404(rule_id)
     data = request.get_json(silent=True) or {}
     old = _rule_json(rule)
@@ -145,6 +344,38 @@ def update_rule(rule_id: int):
 @bp.delete("/notification-rules/<int:rule_id>")
 @role_required("Admin")
 def delete_rule(rule_id: int):
+    """Delete a notification rule.
+    ---
+    delete:
+      summary: Delete a notification rule
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: rule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     rule = NotificationRule.query.get_or_404(rule_id)
     old = _rule_json(rule)
     _audit("DELETE", "notification_rules", rule.id, old_values=old)
@@ -157,6 +388,55 @@ def delete_rule(rule_id: int):
 @role_required("Admin")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="notification_test_send")
 def test_send(rule_id: int):
+    """Send a test notification using the most recently updated vulnerability.
+    ---
+    post:
+      summary: Send a test notification for a rule
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: rule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Test notification sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  sent:
+                    type: integer
+        400:
+          description: No vulnerabilities available for test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     rule = NotificationRule.query.get_or_404(rule_id)
     vuln = Vulnerability.query.order_by(desc(Vulnerability.updated_at)).first()
     if not vuln:
@@ -178,6 +458,62 @@ def test_send(rule_id: int):
 @bp.get("/notification-delivery-logs")
 @role_required("Admin")
 def list_delivery_logs():
+    """List notification delivery logs.
+    ---
+    get:
+      summary: List notification delivery logs
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+      responses:
+        200:
+          description: List of delivery log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    rule_id:
+                      type: integer
+                    vulnerability_id:
+                      type: integer
+                    event_type:
+                      type: string
+                    delivery_adapter:
+                      type: string
+                    success:
+                      type: boolean
+                    response_payload:
+                      type: object
+                    error_message:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     try:
         limit = parse_int(request.args.get("limit", 100), field="limit", minimum=1, maximum=500, required=True)
     except ValidationError as exc:

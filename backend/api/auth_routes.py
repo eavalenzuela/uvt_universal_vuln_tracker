@@ -108,6 +108,42 @@ def _issue_csrf_token(payload=None):
 @bp.post("/login")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
 def login():
+    """Authenticate a user with username and password.
+    ---
+    post:
+      summary: Log in with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        401:
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     try:
         username = required_string(data, "username")
@@ -131,6 +167,40 @@ def login():
 
 @bp.post("/refresh")
 def refresh():
+    """Rotate a refresh token and issue new access and refresh tokens.
+    ---
+    post:
+      summary: Refresh access token using a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        200:
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        400:
+          description: Missing refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     refresh_token = data.get("refresh_token")
     if not isinstance(refresh_token, str) or not refresh_token.strip():
@@ -150,6 +220,27 @@ def refresh():
 
 @bp.post("/logout")
 def logout():
+    """Log out the current session and optionally revoke a refresh token.
+    ---
+    post:
+      summary: Log out and optionally revoke a refresh token
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        200:
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+    """
     data = request.get_json(silent=True) or {}
     refresh_token = data.get("refresh_token")
     if isinstance(refresh_token, str) and refresh_token.strip():
@@ -161,6 +252,26 @@ def logout():
 @bp.post("/logout_all")
 @login_required
 def logout_all():
+    """Revoke all access and refresh tokens for the current user.
+    ---
+    post:
+      summary: Log out all sessions for the current user
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     revoke_tokens(request.user)
     revoke_all_refresh_tokens(request.user)
     db.session.commit()
@@ -169,6 +280,26 @@ def logout_all():
 
 @bp.get("/providers")
 def providers():
+    """Return available authentication providers and their status.
+    ---
+    get:
+      summary: List available authentication providers
+      responses:
+        200:
+          description: Authentication providers info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  oidc:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      login_url:
+                        type: string
+    """
     return jsonify({
         "oidc": {
             "enabled": oidc_enabled(current_app.config),
@@ -179,6 +310,27 @@ def providers():
 
 @bp.get("/oidc/login")
 def oidc_login():
+    """Initiate OIDC login by redirecting to the identity provider.
+    ---
+    get:
+      summary: Redirect to OIDC identity provider for login
+      parameters:
+        - in: query
+          name: next
+          schema:
+            type: string
+          required: false
+          description: Path to redirect to after successful login
+      responses:
+        302:
+          description: Redirect to OIDC provider
+        404:
+          description: OIDC is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     if not oidc_enabled(current_app.config):
         return error_response("OIDC disabled", status_code=404)
 
@@ -188,6 +340,45 @@ def oidc_login():
 
 @bp.get("/oidc/callback")
 def oidc_callback():
+    """Handle the OIDC provider callback after authentication.
+    ---
+    get:
+      summary: OIDC callback endpoint
+      parameters:
+        - in: query
+          name: code
+          schema:
+            type: string
+          required: true
+          description: Authorization code from OIDC provider
+        - in: query
+          name: state
+          schema:
+            type: string
+          required: true
+          description: State parameter for CSRF protection
+      responses:
+        302:
+          description: Redirect to frontend with auth cookie set
+        400:
+          description: Missing callback parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: OIDC authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: OIDC is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     if not oidc_enabled(current_app.config):
         return error_response("OIDC disabled", status_code=404)
 
@@ -213,15 +404,56 @@ def oidc_callback():
 @bp.post("/register")
 @rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_register")
 def register():
-
+    """Register a new user account. Simple bootstrap rule: if there are no
+    users yet, the first registered user becomes Admin; otherwise the default
+    role is Analyst.
+    ---
+    post:
+      summary: Register a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        400:
+          description: Invalid input or user creation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Registration is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        422:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     if not current_app.config.get("ALLOW_PUBLIC_REGISTRATION", False):
         return error_response("Registration disabled", status_code=403)
 
-    """
-    Simple bootstrap rule:
-    - If there are no users yet, the first registered user becomes Admin.
-    - Otherwise default role is Analyst.
-    """
     data = request.get_json(silent=True) or {}
     try:
         username = required_string(data, "username")
@@ -246,6 +478,35 @@ def register():
 @bp.post("/forgot-password")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="forgot_password")
 def forgot_password():
+    """Request a password reset email. Always returns 200 to prevent email enumeration.
+    ---
+    post:
+      summary: Request a password reset link via email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        200:
+          description: Reset email sent if account exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkMessage'
+        400:
+          description: Email is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     if not email:
@@ -264,6 +525,36 @@ def forgot_password():
 @bp.post("/reset-password")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="reset_password")
 def reset_password():
+    """Reset a user password using a valid reset token.
+    ---
+    post:
+      summary: Reset password with a reset token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkMessage'
+        400:
+          description: Invalid input, weak password, or invalid/expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     data = request.get_json(silent=True) or {}
     token = (data.get("token") or "").strip()
     password = data.get("password") or ""
@@ -297,6 +588,21 @@ def reset_password():
 
 @bp.get("/csrf")
 def csrf_token():
+    """Return or generate a CSRF token for cookie-based auth.
+    ---
+    get:
+      summary: Get a CSRF token
+      responses:
+        200:
+          description: CSRF token returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  csrf_token:
+                    type: string
+    """
     existing = request.cookies.get("uvt_csrf_token")
     csrf_token = existing or _issue_csrf_token()
     response = jsonify({"csrf_token": csrf_token})
@@ -308,5 +614,34 @@ def csrf_token():
 @bp.get("/me")
 @login_required
 def me():
+    """Return the current authenticated user's profile information.
+    ---
+    get:
+      summary: Get current user profile
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+                  email:
+                    type: string
+                  role:
+                    type: string
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     u = request.user
     return jsonify({"id": u.id, "username": u.username, "email": u.email, "role": u.role})

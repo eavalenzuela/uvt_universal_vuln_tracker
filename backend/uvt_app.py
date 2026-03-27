@@ -12,6 +12,7 @@ from .cli import run_notification_scan_cli, run_plugins_cli, seed_admin
 from .auth import enforce_scopes
 from .plugins import init_plugin_registry
 from .api.validation import ValidationError, error_response
+from .openapi import init_openapi
 from .rate_limiter import rate_limit
 
 
@@ -68,6 +69,18 @@ def create_app():
     @app.get("/api/health")
     @rate_limit("RATE_LIMIT_HEALTH_LIMIT", "RATE_LIMIT_HEALTH_WINDOW_SECONDS", identifier="health")
     def health():
+        """Health check endpoint.
+        ---
+        get:
+          summary: Health check
+          responses:
+            200:
+              description: Service is healthy
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/Ok'
+        """
         return jsonify({"ok": True})
 
     # Error handlers
@@ -83,6 +96,9 @@ def create_app():
     def server_error(e):
         app.logger.exception("Unhandled 500 error: %s", e)
         return jsonify({"error": "Server error"}), 500
+
+    # OpenAPI spec + Swagger UI (after all routes are registered)
+    init_openapi(app)
 
     return app
 

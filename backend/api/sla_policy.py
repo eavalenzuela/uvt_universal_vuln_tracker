@@ -12,12 +12,46 @@ bp = Blueprint("sla_policy_api", __name__, url_prefix="/api")
 @bp.get("/sla_policy")
 @login_required
 def get_policy():
+    """Get the current SLA policy.
+    ---
+    get:
+      summary: Get the current SLA policy
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlaPolicy'
+    """
     return jsonify(get_sla_policy())
 
 
 @bp.put("/sla_policy")
 @role_required("Admin")
 def update_policy():
+    """Update the SLA policy.
+    ---
+    put:
+      summary: Update the SLA policy
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlaPolicy'
+      responses:
+        200:
+          description: SLA policy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlaPolicy'
+    """
     payload = request.get_json(silent=True) or {}
     normalized = normalize_sla_policy(payload)
     row = SlaPolicy.query.order_by(SlaPolicy.id.desc()).first()

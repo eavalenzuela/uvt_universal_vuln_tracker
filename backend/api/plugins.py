@@ -137,6 +137,22 @@ def _plugin_introspection_payload(plugin_cls: type[BasePlugin], *, already_regis
 @bp.get("/plugins")
 @login_required
 def list_plugins():
+    """List all registered plugins with their config and last run status.
+    ---
+    get:
+      summary: List all registered plugins
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: List of plugins
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PluginInfo'
+    """
     registry = _get_registry()
     plugins = []
     for plugin_cls in registry.list_plugins():
@@ -163,6 +179,22 @@ def list_plugins():
 @bp.get("/plugins/configs")
 @login_required
 def list_plugin_configs():
+    """List all plugin configurations.
+    ---
+    get:
+      summary: List all plugin configurations
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: List of plugin configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PluginConfig'
+    """
     configs = PluginConfig.query.order_by(asc(PluginConfig.plugin_id)).all()
     return jsonify([_plugin_config_json(config) for config in configs])
 
@@ -170,6 +202,32 @@ def list_plugin_configs():
 @bp.get("/plugins/<plugin_id>")
 @login_required
 def get_plugin(plugin_id: str):
+    """Get details for a single plugin.
+    ---
+    get:
+      summary: Get plugin details
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: plugin_id
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Plugin details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginInfo'
+        404:
+          description: Plugin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
@@ -195,6 +253,59 @@ def get_plugin(plugin_id: str):
 @role_required("Admin", "Analyst")
 @rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="plugin_run")
 def run_plugin_now(plugin_id: str):
+    """Trigger an asynchronous plugin run.
+    ---
+    post:
+      summary: Run a plugin now
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: plugin_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                config:
+                  type: object
+                  description: Optional config overrides for this run
+      responses:
+        202:
+          description: Plugin run enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginRun'
+        400:
+          description: Invalid config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin or Analyst role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Plugin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
@@ -218,6 +329,32 @@ def run_plugin_now(plugin_id: str):
 @bp.get("/plugins/runs/<int:run_id>")
 @login_required
 def get_plugin_run_status(run_id: int):
+    """Get the status of a plugin run.
+    ---
+    get:
+      summary: Get plugin run status
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Plugin run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginRun'
+        404:
+          description: Plugin run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     run = get_plugin_run_by_id(run_id)
     if not run:
         return error_response("Plugin run not found", status_code=404)
@@ -227,6 +364,62 @@ def get_plugin_run_status(run_id: int):
 @bp.post("/plugins/<plugin_id>/config")
 @role_required("Admin", "Analyst")
 def update_plugin_config(plugin_id: str):
+    """Update configuration for a plugin.
+    ---
+    post:
+      summary: Update plugin configuration
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: plugin_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                config:
+                  type: object
+                  description: Plugin-specific configuration values
+                enabled:
+                  type: boolean
+                schedule_cron:
+                  type: string
+                  nullable: true
+                interval_minutes:
+                  type: integer
+                  nullable: true
+      responses:
+        200:
+          description: Updated plugin configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginConfig'
+        400:
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin or Analyst role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Plugin not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     registry = _get_registry()
     plugin_cls = _get_plugin_class(registry, plugin_id)
     if not plugin_cls:
@@ -289,6 +482,34 @@ def update_plugin_config(plugin_id: str):
 @bp.get("/plugins/runs/<int:run_id>/artifacts")
 @login_required
 def list_plugin_run_artifacts(run_id: int):
+    """List artifacts produced by a plugin run.
+    ---
+    get:
+      summary: List plugin run artifacts
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of artifacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PluginArtifact'
+        404:
+          description: Plugin run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     run = get_plugin_run_by_id(run_id)
     if not run:
         return error_response("Plugin run not found", status_code=404)
@@ -299,6 +520,39 @@ def list_plugin_run_artifacts(run_id: int):
 @bp.get("/plugins/artifacts/<int:artifact_id>/download")
 @login_required
 def download_plugin_run_artifact(artifact_id: int):
+    """Download a plugin run artifact file.
+    ---
+    get:
+      summary: Download a plugin run artifact
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: artifact_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Artifact file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        403:
+          description: Forbidden — Admin or Analyst role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        404:
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     artifact = PluginRunArtifact.query.filter_by(id=artifact_id).first()
     if not artifact:
         return error_response("Artifact not found", status_code=404)
@@ -318,12 +572,92 @@ def download_plugin_run_artifact(artifact_id: int):
 @bp.get("/plugins/import/sources")
 @role_required("Admin")
 def list_plugin_import_sources():
+    """List configured plugin import source paths.
+    ---
+    get:
+      summary: List plugin import source paths
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Configured import paths
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paths:
+                    type: array
+                    items:
+                      type: string
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     return jsonify({"paths": _allowed_import_paths()})
 
 
 @bp.post("/plugins/import/validate")
 @role_required("Admin")
 def validate_plugin_import():
+    """Validate a plugin module before importing it.
+    ---
+    post:
+      summary: Validate a plugin import
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - module_path
+                - class_name
+              properties:
+                module_path:
+                  type: string
+                class_name:
+                  type: string
+      responses:
+        200:
+          description: Plugin validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugin_id:
+                    type: string
+                  display_name:
+                    type: string
+                  version:
+                    type: string
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+                  config_schema:
+                    type: object
+                  already_registered:
+                    type: boolean
+        400:
+          description: Validation or import error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return error_response("payload must be an object")
@@ -345,6 +679,87 @@ def validate_plugin_import():
 @bp.post("/plugins/import/register")
 @role_required("Admin")
 def register_plugin_import():
+    """Import and register a plugin from a configured source path.
+    ---
+    post:
+      summary: Register a plugin import
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - module_path
+                - class_name
+              properties:
+                module_path:
+                  type: string
+                class_name:
+                  type: string
+                config:
+                  type: object
+                  description: Initial plugin configuration
+                enabled:
+                  type: boolean
+                  default: true
+      responses:
+        201:
+          description: Plugin registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugin:
+                    type: object
+                    properties:
+                      plugin_id:
+                        type: string
+                      display_name:
+                        type: string
+                      version:
+                        type: string
+                      capabilities:
+                        type: array
+                        items:
+                          type: string
+                      config_schema:
+                        type: object
+                      already_registered:
+                        type: boolean
+                  config:
+                    $ref: '#/components/schemas/PluginConfig'
+                  message:
+                    type: string
+        200:
+          description: Plugin already registered and updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugin:
+                    type: object
+                  config:
+                    $ref: '#/components/schemas/PluginConfig'
+                  message:
+                    type: string
+        400:
+          description: Validation or import error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        403:
+          description: Forbidden — Admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return error_response("payload must be an object")

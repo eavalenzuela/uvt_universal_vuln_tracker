@@ -85,6 +85,54 @@ def _serialize_vulnerability_history_item(log):
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="product_versions")
 def list_product_versions():
+    """List all product versions.
+    ---
+    get:
+      summary: List all product versions
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: include_inactive
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include inactive product versions
+      responses:
+        200:
+          description: Array of product versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    product_id:
+                      type: integer
+                    product_name:
+                      type: string
+                      nullable: true
+                    version:
+                      type: string
+                    release_date:
+                      type: string
+                      format: date
+                      nullable: true
+                    is_active:
+                      type: boolean
+        400:
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+    """
     try:
         include_inactive = parse_query_bool(request.args.get("include_inactive"), field="include_inactive") or False
     except ValidationError as exc:
@@ -111,6 +159,149 @@ def list_product_versions():
 @login_required
 @rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="list_vulnerabilities")
 def list_vulnerabilities():
+    """List vulnerabilities with filtering, sorting, and pagination.
+    ---
+    get:
+      summary: List vulnerabilities with filtering, sorting, and pagination
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: severity
+          required: false
+          schema:
+            type: string
+          description: Filter by severity (comma-separated for multiple, e.g. Critical,High)
+        - in: query
+          name: severity_in
+          required: false
+          schema:
+            type: string
+          description: Alternative multi-value severity filter (comma-separated)
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+          description: Filter by status (comma-separated for multiple, e.g. Open,In Progress)
+        - in: query
+          name: assigned_to
+          required: false
+          schema:
+            oneOf:
+              - type: integer
+              - type: string
+                enum: [unassigned]
+          description: Filter by assigned user ID or 'unassigned'
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Search in title and cve_id (case-insensitive substring match)
+        - in: query
+          name: attack_complexity
+          required: false
+          schema:
+            type: string
+          description: Filter by attack complexity
+        - in: query
+          name: confidentiality_impact
+          required: false
+          schema:
+            type: string
+          description: Filter by confidentiality impact
+        - in: query
+          name: integrity_impact
+          required: false
+          schema:
+            type: string
+          description: Filter by integrity impact
+        - in: query
+          name: availability_impact
+          required: false
+          schema:
+            type: string
+          description: Filter by availability impact
+        - in: query
+          name: component_ecosystem
+          required: false
+          schema:
+            type: string
+          description: Filter by software component ecosystem
+        - in: query
+          name: component_name
+          required: false
+          schema:
+            type: string
+          description: Filter by software component name (substring match)
+        - in: query
+          name: component_depth_max
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Filter by maximum transitive dependency depth
+        - in: query
+          name: sort
+          required: false
+          schema:
+            type: string
+            default: updated_at
+            enum: [id, cve_id, title, severity, cvss_score, status, published_date, last_modified_date, created_at, updated_at, assigned_to]
+          description: Field to sort by
+        - in: query
+          name: order
+          required: false
+          schema:
+            type: string
+            default: desc
+            enum: [asc, desc]
+          description: Sort direction
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+          description: Number of items per page
+      responses:
+        200:
+          description: Paginated list of vulnerabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vulnerability'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+        400:
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+    """
     try:
         q, query_meta = build_vulnerability_query(
             request.args,
@@ -170,6 +361,90 @@ def list_vulnerabilities():
 @bp.post("/vulnerabilities")
 @role_required("Admin", "Analyst")
 def create_vulnerability():
+    """Create a new vulnerability.
+    ---
+    post:
+      summary: Create a new vulnerability
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - severity
+              properties:
+                cve_id:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                severity:
+                  type: string
+                  enum: [Critical, High, Medium, Low, Informational]
+                status:
+                  type: string
+                  enum: [Open, In Progress, Resolved, Closed, Accepted]
+                cvss_score:
+                  type: number
+                  format: float
+                cvss_vector:
+                  type: string
+                cvss_version:
+                  type: string
+                cwe_id:
+                  type: string
+                references_json:
+                  type: array
+                  items:
+                    type: string
+                attack_complexity:
+                  type: string
+                confidentiality_impact:
+                  type: string
+                integrity_impact:
+                  type: string
+                availability_impact:
+                  type: string
+                assigned_to:
+                  type: integer
+                  nullable: true
+                sla_due_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                published_date:
+                  type: string
+                  format: date-time
+                attack_vectors:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        201:
+          description: Vulnerability created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+        400:
+          description: Validation error or duplicate CVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+    """
     data = request.get_json(silent=True) or {}
 
     try:
@@ -210,6 +485,30 @@ def create_vulnerability():
 @bp.get("/vulnerabilities/<int:vuln_id>")
 @login_required
 def get_vulnerability(vuln_id: int):
+    """Get a single vulnerability with full details.
+    ---
+    get:
+      summary: Get vulnerability details
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Full vulnerability details including affected versions, attack vectors, terminal impacts, and components
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vulnerability'
+        401:
+          description: Unauthorized
+        404:
+          description: Vulnerability not found
+    """
     v = Vulnerability.query.get_or_404(vuln_id)
 
     mappings = VulnerabilityVersion.query.filter_by(vulnerability_id=v.id).all()
@@ -309,6 +608,51 @@ def get_vulnerability(vuln_id: int):
 @bp.get("/vulnerabilities/<int:vuln_id>/merge_candidates")
 @role_required("Admin", "Analyst")
 def list_vulnerability_merge_candidates(vuln_id: int):
+    """List merge candidates for a vulnerability.
+    ---
+    get:
+      summary: List merge candidates for a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+          description: Maximum number of candidates to return
+      responses:
+        200:
+          description: List of merge candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+        400:
+          description: Invalid limit parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability not found
+    """
     v = Vulnerability.query.get_or_404(vuln_id)
     try:
         limit = parse_int(request.args.get("limit"), field="limit", minimum=1) or 20
@@ -321,6 +665,56 @@ def list_vulnerability_merge_candidates(vuln_id: int):
 @bp.post("/vulnerabilities/<int:target_vuln_id>/merge")
 @role_required("Admin", "Analyst")
 def merge_vulnerability_into_target(target_vuln_id: int):
+    """Merge a source vulnerability into a target vulnerability.
+    ---
+    post:
+      summary: Merge a source vulnerability into a target
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: target_vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - source_vulnerability_id
+              properties:
+                source_vulnerability_id:
+                  type: integer
+                  description: ID of the vulnerability to merge into the target
+                reason:
+                  type: string
+                  description: Optional reason for the merge
+      responses:
+        200:
+          description: Merge successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    description: Additional merge result fields
+        400:
+          description: Validation error or merge conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Source or target vulnerability not found
+    """
     target = Vulnerability.query.get_or_404(target_vuln_id)
     data = request.get_json(silent=True) or {}
     try:
@@ -353,6 +747,61 @@ def merge_vulnerability_into_target(target_vuln_id: int):
 @bp.get("/vulnerabilities/<int:vuln_id>/activity")
 @login_required
 def get_vulnerability_activity(vuln_id: int):
+    """Get activity log for a vulnerability.
+    ---
+    get:
+      summary: Get vulnerability activity log
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of audit log entries (max 250)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    action:
+                      type: string
+                    table_name:
+                      type: string
+                    record_id:
+                      type: integer
+                    old_values:
+                      type: object
+                      nullable: true
+                    new_values:
+                      type: object
+                      nullable: true
+                    created_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    user:
+                      type: object
+                      nullable: true
+                      properties:
+                        id:
+                          type: integer
+                        username:
+                          type: string
+                        email:
+                          type: string
+        401:
+          description: Unauthorized
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
 
     logs = (
@@ -388,6 +837,32 @@ def get_vulnerability_activity(vuln_id: int):
 @bp.get("/vulnerabilities/<int:vuln_id>/history")
 @login_required
 def get_vulnerability_history(vuln_id: int):
+    """Get change history for a vulnerability.
+    ---
+    get:
+      summary: Get vulnerability change history
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: List of history entries (max 250)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        401:
+          description: Unauthorized
+        404:
+          description: Vulnerability not found
+    """
     Vulnerability.query.get_or_404(vuln_id)
     logs = (
         AuditLog.query
@@ -405,6 +880,90 @@ def get_vulnerability_history(vuln_id: int):
 @bp.put("/vulnerabilities/<int:vuln_id>")
 @role_required("Admin", "Analyst")
 def update_vulnerability(vuln_id: int):
+    """Update a vulnerability.
+    ---
+    put:
+      summary: Update a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cve_id:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                severity:
+                  type: string
+                  enum: [Critical, High, Medium, Low, Informational]
+                status:
+                  type: string
+                  enum: [Open, In Progress, Resolved, Closed, Accepted]
+                cvss_score:
+                  type: number
+                  format: float
+                  nullable: true
+                cvss_vector:
+                  type: string
+                cvss_version:
+                  type: string
+                cwe_id:
+                  type: string
+                references_json:
+                  type: array
+                  items:
+                    type: string
+                attack_complexity:
+                  type: string
+                confidentiality_impact:
+                  type: string
+                integrity_impact:
+                  type: string
+                availability_impact:
+                  type: string
+                assigned_to:
+                  type: integer
+                  nullable: true
+                sla_due_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                attack_vectors:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        200:
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability not found
+    """
     v = Vulnerability.query.get_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
 
@@ -479,6 +1038,32 @@ def update_vulnerability(vuln_id: int):
 @bp.delete("/vulnerabilities/<int:vuln_id>")
 @role_required("Admin", "Analyst")
 def delete_vulnerability(vuln_id: int):
+    """Delete a vulnerability.
+    ---
+    delete:
+      summary: Delete a vulnerability
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability not found
+    """
     v = Vulnerability.query.get_or_404(vuln_id)
     old = model_snapshot(v)
 
@@ -500,6 +1085,94 @@ def delete_vulnerability(vuln_id: int):
 @bp.post("/vulnerabilities/<int:vuln_id>/enrich")
 @role_required("Admin", "Analyst")
 def enrich_vulnerability(vuln_id: int):
+    """Enrich a vulnerability with CVE data from upstream sources.
+    ---
+    post:
+      summary: Enrich vulnerability with CVE data
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: vuln_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Overwrite existing non-empty fields with enriched data
+      responses:
+        200:
+          description: Enrichment successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  enrichment:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [enriched]
+                      error:
+                        type: string
+                        nullable: true
+                      force:
+                        type: boolean
+                      applied_fields:
+                        type: array
+                        items:
+                          type: string
+                  vulnerability:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      severity:
+                        type: string
+                      cvss_score:
+                        type: number
+                        nullable: true
+                      cvss_vector:
+                        type: string
+                        nullable: true
+                      cvss_version:
+                        type: string
+                        nullable: true
+                      cwe_id:
+                        type: string
+                        nullable: true
+                      references_json:
+                        type: array
+                        items:
+                          type: string
+                      sla_due_at:
+                        type: string
+                        format: date-time
+                        nullable: true
+        400:
+          description: Vulnerability has no cve_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Unauthorized
+        403:
+          description: Forbidden — requires Admin or Analyst role
+        404:
+          description: Vulnerability or CVE not found
+        502:
+          description: Upstream CVE source request error
+        504:
+          description: Upstream CVE source timeout
+    """
     v = Vulnerability.query.get_or_404(vuln_id)
     try:
         force = parse_query_bool(request.args.get("force"), field="force") or False
