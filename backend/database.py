@@ -35,6 +35,8 @@ _SQLITE_VULN_COLUMN_BACKFILL = [
 
 def init_database(app):
     db.init_app(app)
+    with app.app_context():
+        db.create_all()
     _ensure_sqlite_schema(app)
 
 

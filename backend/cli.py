@@ -18,6 +18,7 @@ def seed_admin(username, email, password):
     Create or update an Admin user.
     Safe to run multiple times.
     """
+    db.create_all()
     user = User.query.filter(
         (User.username == username) | (User.email == email)
     ).first()
