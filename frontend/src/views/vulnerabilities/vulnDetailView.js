@@ -36,11 +36,11 @@ function field(label, value) {
 function renderList(title, items, renderItem) {
   return el(
     "div",
-    { class: "card", style: "margin-top: 12px;" },
-    el("h3", { style: "margin-top: 0;", text: title }),
+    { class: "card mt-12" },
+    el("h3", { class: "mt-0", text: title }),
     !items?.length
       ? el("div", { class: "muted", text: "None" })
-      : el("div", { style: "display:flex; flex-direction:column; gap:8px;" }, ...items.map(renderItem)),
+      : el("div", { class: "flex-col-8" }, ...items.map(renderItem)),
   );
 }
 
@@ -53,10 +53,10 @@ function renderActivityItem(item) {
 
   return el(
     "div",
-    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
-    el("div", { style: "font-weight:600;", text: summary }),
+    { class: "detail-border p-10" },
+    el("div", { class: "font-semibold", text: summary }),
     el("div", { class: "muted", text: `${formatDateTime(item.created_at)} by ${actor}` }),
-    el("pre", { style: "white-space:pre-wrap; margin:8px 0 0; background:#f8fafc; padding:8px; border-radius:8px;" }, delta),
+    el("pre", { class: "text-pre-wrap code-block mt-8" }, delta),
   );
 }
 
@@ -67,10 +67,10 @@ function renderHistoryItem(item) {
 
   return el(
     "div",
-    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
-    el("div", { style: "font-weight:600;", text: item.action || "-" }),
+    { class: "detail-border p-10" },
+    el("div", { class: "font-semibold", text: item.action || "-" }),
     el("div", { class: "muted", text: `${formatDateTime(item.timestamp)} by ${actor}` }),
-    el("pre", { style: "white-space:pre-wrap; margin:8px 0 0; background:#f8fafc; padding:8px; border-radius:8px;" }, delta),
+    el("pre", { class: "text-pre-wrap code-block mt-8" }, delta),
   );
 }
 
@@ -79,8 +79,8 @@ function renderMergeCandidateRow(item, onMerge) {
   const candidate = item?.candidate || {};
   return el(
     "div",
-    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
-    el("div", { style: "font-weight:600;", text: `${candidate.title || `Vulnerability ${candidate.id}`} (${candidate.severity || "-"})` }),
+    { class: "detail-border p-10" },
+    el("div", { class: "font-semibold", text: `${candidate.title || `Vulnerability ${candidate.id}`} (${candidate.severity || "-"})` }),
     el("div", { class: "muted", text: `ID ${candidate.id}${candidate.cve_id ? ` • ${candidate.cve_id}` : ""}` }),
     el("div", { class: "muted", text: `Score: ${item.score} • Reasons: ${(item.reasons || []).join(", ") || "-"}` }),
     el("button", {
@@ -123,11 +123,11 @@ function renderCommentItem(item, currentUser, onRefresh) {
 
   return el(
     "div",
-    { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
-    el("div", { style: "font-weight:600;", text: item.author?.username || `User ${item.author_id}` }),
+    { class: "detail-border p-10" },
+    el("div", { class: "font-semibold", text: item.author?.username || `User ${item.author_id}` }),
     el("div", { class: "muted", text: `${formatDateTime(item.created_at)}${item.updated_at !== item.created_at ? " (edited)" : ""}` }),
-    el("div", { style: "white-space:pre-wrap; margin-top:8px;", text: item.body || "" }),
-    actions.length ? el("div", { class: "row", style: "gap:8px; margin-top:8px;" }, ...actions) : null,
+    el("div", { class: "text-pre-wrap mt-8", text: item.body || "" }),
+    actions.length ? el("div", { class: "row gap-8 mt-8" }, ...actions) : null,
   );
 }
 
@@ -172,7 +172,7 @@ export async function VulnDetailView(params = {}) {
       container.append(
         el(
           "div",
-          { class: "row", style: "justify-content:space-between; align-items:center; margin-bottom:8px;" },
+          { class: "row flex-between items-center mb-8" },
           el("h1", { class: "page-title", text: vuln.title || `Vulnerability ${vuln.id}` }),
           el("button", { class: "btn", onClick: () => navigate("/vulnerabilities") }, "Back to list"),
         ),
@@ -181,11 +181,11 @@ export async function VulnDetailView(params = {}) {
         el("p", { text: vuln.description || "No description provided." }),
         el(
           "div",
-          { class: "card", style: "padding:10px;" },
-          el("h3", { style: "margin-top:0;", text: "Core fields" }),
+          { class: "card p-10" },
+          el("h3", { class: "mt-0", text: "Core fields" }),
           el(
             "div",
-            { class: "row", style: "gap:12px; flex-wrap:wrap;" },
+            { class: "row gap-12 flex-wrap" },
             field("Severity", vuln.severity),
             field("Status", vuln.status),
             field("SLA state", vuln.sla_state),
@@ -203,8 +203,8 @@ export async function VulnDetailView(params = {}) {
         ),
         el(
           "div",
-          { class: "card", style: "margin-top:12px;" },
-          el("h3", { style: "margin-top:0;", text: "Watchers" }),
+          { class: "card mt-12" },
+          el("h3", { class: "mt-0", text: "Watchers" }),
           el("div", { class: "muted", text: watchers.length ? watchers.map((w) => w.username || `User ${w.user_id}`).join(", ") : "No watchers" }),
           canComment
             ? el("button", {
@@ -221,13 +221,13 @@ export async function VulnDetailView(params = {}) {
         ["Admin", "Analyst"].includes(currentUser?.role) && !vuln.is_merged
           ? el(
               "div",
-              { class: "card", style: "margin-top:12px;" },
-              el("h3", { style: "margin-top:0;", text: "Merge candidates" }),
+              { class: "card mt-12" },
+              el("h3", { class: "mt-0", text: "Merge candidates" }),
               !mergeCandidates.length
                 ? el("div", { class: "muted", text: "No high-confidence merge candidates found." })
                 : el(
                     "div",
-                    { style: "display:flex; flex-direction:column; gap:8px;" },
+                    { class: "flex-col-8" },
                     ...mergeCandidates.map((candidate) =>
                       renderMergeCandidateRow(candidate, async (choice) => {
                         const confirm = window.confirm(
@@ -246,14 +246,14 @@ export async function VulnDetailView(params = {}) {
 
         el(
           "div",
-          { class: "card", style: "margin-top:12px;" },
-          el("h3", { style: "margin-top:0;", text: "Discussion" }),
-          canComment ? el("div", { style: "display:flex; flex-direction:column; gap:8px;" }, commentInput, commentSubmit) : el("div", { class: "muted", text: "You do not have permission to add comments." }),
+          { class: "card mt-12" },
+          el("h3", { class: "mt-0", text: "Discussion" }),
+          canComment ? el("div", { class: "flex-col-8" }, commentInput, commentSubmit) : el("div", { class: "muted", text: "You do not have permission to add comments." }),
         ),
         renderList("Comment history", comments, (item) => renderCommentItem(item, currentUser, render)),
         renderList("Linked product versions", vuln.affected_versions, (item) =>
-          el("div", { style: "padding:10px; border:1px solid #e2e8f0; border-radius:10px;" },
-            el("div", { style: "font-weight:600;", text: `${item.product_name || "Product"} ${item.version || ""}` }),
+          el("div", { class: "detail-border p-10" },
+            el("div", { class: "font-semibold", text: `${item.product_name || "Product"} ${item.version || ""}` }),
             el("div", { class: "muted", text: `Affected: ${item.affected ? "Yes" : "No"} • Mitigation: ${item.mitigation_status || "-"}` }),
             item.fixed_in_version ? el("div", { text: `Fixed in: ${item.fixed_in_version}` }) : null,
             item.notes ? el("div", { class: "muted", text: item.notes }) : null,

@@ -25,7 +25,7 @@ import { renderTerminalImpactsSection } from "./vulnTerminalImpacts.js";
 export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
   const { autoOpen = false, writable = false, selectedIds = null, onToggleSelect = null } = options;
   const detailContent = el("div", {});
-  const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
+  const detailCard = el("div", { class: "card p-12 mt-8", style: "display: none;" }, detailContent);
   let detailData = null;
   let isEditing = false;
   const canEdit = canWrite(getState());
@@ -92,24 +92,24 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
 
     const form = el(
       "form",
-      { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 8px;" },
+      { class: "flex-col-10 mt-8" },
       el("div", {}, el("div", { class: "muted", text: "Title" }), titleInput),
       el("div", {}, el("div", { class: "muted", text: "CVE" }), cveInput),
-      el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severitySelect),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexitySelect),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialitySelect),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Integrity impact" }), integritySelect),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Availability impact" }), availabilitySelect),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusSelect),
-        el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
+      el("div", { class: "row gap-10 flex-wrap" },
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Severity" }), severitySelect),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexitySelect),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialitySelect),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Integrity impact" }), integritySelect),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Availability impact" }), availabilitySelect),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Status" }), statusSelect),
+        el("div", { class: "form-field-sm" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
-      el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Published" }), publishedInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Last modified" }), modifiedInput),
+      el("div", { class: "row gap-10 flex-wrap" },
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Published" }), publishedInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Last modified" }), modifiedInput),
       ),
       el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
-      el("div", { class: "row", style: "justify-content: flex-end; gap: 8px;" }, cancelBtn, saveBtn),
+      el("div", { class: "row flex-end gap-8" }, cancelBtn, saveBtn),
     );
 
     form.addEventListener("submit", async (e) => {
@@ -164,7 +164,7 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
 
     const meta = el(
       "div",
-      { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;" },
+      { class: "row flex-wrap gap-12 mb-8" },
       severityBadge(detailData.severity || "Unknown"),
       statusPill(detailData.status || "Open"),
       slaBadge(detailData.sla_state),
@@ -188,11 +188,11 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
     const actionRow = canEdit
       ? el(
           "div",
-          { class: "row", style: "gap: 8px; justify-content: flex-end; flex-wrap: wrap;" },
+          { class: "row flex-end flex-wrap gap-8" },
           el("button", { class: "btn", type: "button", onclick: async () => { isEditing = !isEditing; await loadDetails(); renderDetails(); } }, isEditing ? "Close editor" : "Edit details"),
           isAdmin(getState())
             ? (() => {
-                const delBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Delete");
+                const delBtn = el("button", { class: "btn text-danger" }, "Delete");
                 delBtn.addEventListener("click", async () => {
                   if (!confirm(`Delete ${detailData.title}? This cannot be undone.`)) return;
                   try {
@@ -261,22 +261,22 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
 
   const header = el(
     "div",
-    { class: "card", style: "padding: 12px;" },
+    { class: "card p-12" },
     el(
       "div",
-      { class: "row", style: "justify-content: space-between; align-items: baseline; gap: 8px;" },
+      { class: "row flex-between items-baseline gap-8" },
       el(
         "div",
-        { class: "row", style: "gap: 8px; align-items: flex-start;" },
+        { class: "row gap-8 items-start" },
         selectionCheckbox,
         el(
           "div",
           {},
           el("div", { class: "muted", text: vuln.cve_id || `VULN-${vuln.id}` }),
-          el("div", { style: "font-weight: 600;", text: vuln.title }),
+          el("div", { class: "font-semibold", text: vuln.title }),
         ),
       ),
-      el("div", { class: "row", style: "gap: 6px;" },
+      el("div", { class: "row gap-6" },
         el("button", { class: "btn", type: "button", onClick: () => navigate(`/vulnerabilities/${vuln.id}`) }, "Open page"),
         viewBtn,
         editBtn
@@ -284,7 +284,7 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
     ),
     el(
       "div",
-      { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-top: 6px; align-items: center;" },
+      { class: "row flex-wrap gap-12", style: "margin-top:6px;" },
       severityBadge(vuln.severity || "Medium"),
       statusPill(vuln.status || "Open"),
       slaBadge(vuln.sla_state),

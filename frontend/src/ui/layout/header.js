@@ -41,8 +41,17 @@ export function renderHeader() {
   const authed = isAuthed(state);
   const user = state?.session?.user;
 
-  const left = el("div", { class: "brand" }, "UVT");
-  const right = el("div", { class: "row", style: "align-items:center; gap:8px;" });
+  const sidebarToggle = el("button", {
+    class: "sidebar-toggle",
+    "aria-label": "Toggle sidebar",
+    onclick: () => {
+      const sidebar = document.getElementById("app-sidebar");
+      if (sidebar) sidebar.classList.toggle("open");
+    },
+  }, "\u2630");
+
+  const left = el("div", { class: "flex-row-8" }, sidebarToggle, el("div", { class: "brand" }, "UVT"));
+  const right = el("div", { class: "row gap-8" });
 
   if (authed) {
     const unreadCount = state?.notifications?.unreadCount || 0;
@@ -68,11 +77,10 @@ export function renderHeader() {
     if (dropdownOpen) {
       const items = (state?.notifications?.items || []).slice(0, 5);
       const dropdown = el("div", {
-        class: "card",
+        class: "card notification-dropdown",
         role: "menu",
         "aria-label": "Notifications",
         tabindex: "-1",
-        style: "position:absolute; right:12px; top:56px; width:360px; z-index:40; max-height:420px; overflow:auto;",
       });
       dropdown.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
@@ -92,7 +100,7 @@ export function renderHeader() {
         const first = dropdown.querySelector("button");
         if (first) first.focus();
       });
-      dropdown.appendChild(el("div", { class: "row", style: "padding:10px;" },
+      dropdown.appendChild(el("div", { class: "row p-10" },
         el("strong", {}, "Notification Center"),
         el("div", { class: "spacer" }),
         el("button", {
@@ -111,9 +119,9 @@ export function renderHeader() {
         items.forEach((item) => {
           dropdown.appendChild(
             el("button", {
-              class: "btn",
               role: "menuitem",
-              style: `display:block; text-align:left; width:100%; border-radius:0; border-left:3px solid ${item.is_read ? "transparent" : "#2563eb"};`,
+              class: `btn w-full text-left ${item.is_read ? "notification-item-read" : "notification-item-unread"}`,
+              style: "border-radius:0; display:block;",
               onclick: async () => {
                 if (!item.is_read && item.id) {
                   await markNotificationRead(item.id, true);
@@ -131,7 +139,7 @@ export function renderHeader() {
         });
       }
 
-      dropdown.appendChild(el("div", { style: "padding:10px;" },
+      dropdown.appendChild(el("div", { class: "p-10" },
         el("button", { class: "btn", onclick: () => { dropdownOpen = false; renderHeader(); navigate('/notifications'); } }, "Open full page"),
       ));
       right.appendChild(dropdown);

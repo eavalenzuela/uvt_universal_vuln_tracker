@@ -75,10 +75,10 @@ function tokenCard(token, onRevoke) {
   const revokeBtn = el("button", { class: "btn", disabled: revoked ? "true" : null }, revoked ? "Revoked" : "Revoke");
   revokeBtn.addEventListener("click", () => onRevoke(token));
 
-  return el("div", { class: "card", style: "padding: 12px;" },
-    el("div", { class: "row", style: "justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;" },
-      el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
-        el("div", { style: "font-weight:700;", text: token.name || `Token #${token.id}` }),
+  return el("div", { class: "card p-12" },
+    el("div", { class: "row flex-between items-start gap-10 flex-wrap" },
+      el("div", { class: "flex-col-4" },
+        el("div", { class: "font-bold", text: token.name || `Token #${token.id}` }),
         el("div", { class: "muted", text: `Scopes: ${(token.scopes || []).join(", ") || "None"}` }),
         el("div", { class: "muted", text: `Created: ${formatDate(token.created_at)}` }),
         el("div", { class: "muted", text: `Expires: ${formatDate(token.expires_at)}` }),
@@ -101,34 +101,33 @@ export async function AdminApiTokensView() {
   );
 
   const createBtn = el("button", { class: "btn primary", type: "submit" }, "Create token");
-  const createForm = el("form", { style: "display:flex; flex-direction:column; gap:8px;" },
+  const createForm = el("form", { class: "flex-col-8" },
     el("div", { class: "muted", text: "Token name" }),
     tokenNameInput,
     el("div", { class: "muted", text: "Scopes (choose one or more)" }),
     scopesSelect,
     el("div", { class: "muted", text: "Expiration" }),
     expiresInput,
-    el("div", { class: "row", style: "justify-content:flex-end;" }, createBtn),
+    el("div", { class: "row flex-end" }, createBtn),
   );
 
   const generatedTokenInput = el("input", {
-    class: "input",
+    class: "input text-mono",
     readonly: "true",
-    style: "font-family:monospace;",
     placeholder: "A newly-created token will appear here once",
   });
   const copyBtn = el("button", { class: "btn", type: "button" }, "Copy token");
 
-  const generatedTokenCard = el("div", { class: "card", style: "padding:12px; margin-top: 12px;" },
-    el("h3", { style: "margin-top:0;", text: "New token (shown once)" }),
+  const generatedTokenCard = el("div", { class: "card p-12 mt-12" },
+    el("h3", { class: "mt-0", text: "New token (shown once)" }),
     el("p", {
       class: "muted",
       text: "This plaintext token is only visible now. Copy and store it securely. You will not be able to view it again after leaving this page.",
     }),
-    el("div", { class: "row", style: "gap:8px;" }, generatedTokenInput, copyBtn),
+    el("div", { class: "row gap-8" }, generatedTokenInput, copyBtn),
   );
 
-  const listRoot = el("div", { style: "display:flex; flex-direction:column; gap:10px; margin-top:12px;" });
+  const listRoot = el("div", { class: "flex-col-10 mt-12" });
 
   async function loadTokens() {
     listRoot.innerHTML = "";
@@ -210,12 +209,12 @@ export async function AdminApiTokensView() {
       class: "muted",
       text: "Manage personal API tokens for CLI and integrations. Revoke any token that is no longer needed.",
     }),
-    el("div", { class: "card", style: "padding:12px;" },
-      el("h3", { style: "margin-top:0;", text: "Create token" }),
+    el("div", { class: "card p-12" },
+      el("h3", { class: "mt-0", text: "Create token" }),
       createForm,
     ),
     generatedTokenCard,
-    el("h3", { style: "margin-top:16px;", text: "Existing tokens" }),
+    el("h3", { class: "mt-16", text: "Existing tokens" }),
     listRoot,
   );
 }

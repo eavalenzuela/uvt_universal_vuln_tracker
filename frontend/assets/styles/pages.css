@@ -8,5 +8,5 @@
 
 .page-title { font-size: var(--text-lg); font-weight: 800; margin: 0 0 var(--spacing-md) 0; }
 .muted { color: var(--color-text-muted); }
-.form-grid { display: grid; gap: 10px; }
-.form-actions { display: flex; gap: 10px; margin-top: 10px; }
+.form-grid { display: grid; gap: var(--spacing-md); }
+.form-actions { display: flex; gap: var(--spacing-sm); margin-top: var(--spacing-md); }

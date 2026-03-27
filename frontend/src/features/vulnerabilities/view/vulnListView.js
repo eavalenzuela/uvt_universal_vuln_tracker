@@ -72,7 +72,7 @@ export async function VulnListView(params = {}) {
   const componentNameInput = el("input", { class: "input", placeholder: "Component package name" });
   const componentDepthInput = el("input", { class: "input", type: "number", min: "0", placeholder: "Max transitive depth" });
 
-  const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
+  const list = el("div", { class: "flex-col-12 mt-8" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
   );
   const selectedIds = new Set();
@@ -82,24 +82,24 @@ export async function VulnListView(params = {}) {
   const selectedCountLabel = el("span", { class: "muted", text: "0 selected" });
   const bulkSeveritySelect = el(
     "select",
-    { class: "input", style: "max-width: 170px;" },
+    { class: "input max-w-170" },
     el("option", { value: "", text: "Severity (no change)" }),
     ...SEVERITY_OPTIONS.map((value) => el("option", { value, text: value })),
   );
   const bulkStatusSelect = el(
     "select",
-    { class: "input", style: "max-width: 170px;" },
+    { class: "input max-w-170" },
     el("option", { value: "", text: "Status (no change)" }),
     ...STATUS_OPTIONS.map((value) => el("option", { value, text: value })),
   );
-  const bulkAssigneeInput = el("input", { class: "input", type: "number", min: "1", placeholder: "Assignee user ID", style: "max-width: 170px;" });
-  const bulkSlaInput = el("input", { class: "input", type: "datetime-local", style: "max-width: 220px;" });
+  const bulkAssigneeInput = el("input", { class: "input max-w-170", type: "number", min: "1", placeholder: "Assignee user ID" });
+  const bulkSlaInput = el("input", { class: "input max-w-220", type: "datetime-local" });
   const applyBulkBtn = el("button", { class: "btn", type: "button" }, "Apply to selected");
 
   const bulkToolbar = el(
     "div",
-    { class: "card", style: "margin-top: 8px; padding: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;" },
-    el("label", { class: "row", style: "gap: 6px; align-items: center;" }, selectAllCheckbox, el("span", { text: "Select all on page" })),
+    { class: "card mt-8 p-10 flex-row-8 flex-wrap items-center" },
+    el("label", { class: "row gap-6 items-center" }, selectAllCheckbox, el("span", { text: "Select all on page" })),
     selectedCountLabel,
     bulkSeveritySelect,
     bulkStatusSelect,
@@ -231,7 +231,7 @@ export async function VulnListView(params = {}) {
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
   applyBtn.addEventListener("click", load);
 
-  const exportFormatSelect = el("select", { class: "input", style: "max-width: 120px;" },
+  const exportFormatSelect = el("select", { class: "input max-w-120" },
     el("option", { value: "csv", text: "CSV" }),
     el("option", { value: "json", text: "JSON" }),
     el("option", { value: "pdf", text: "PDF" }),
@@ -379,7 +379,7 @@ export async function VulnListView(params = {}) {
     controls: [searchInput, statusSelect, severitySelect, attackComplexitySelect, confidentialitySelect, integritySelect, availabilitySelect, componentEcosystemInput, componentNameInput, componentDepthInput],
     actions: [applyBtn, exportBtn, savedFiltersSelect, saveCurrentBtn, setDefaultBtn, deleteSavedBtn],
   });
-  controls.style.margin = "12px 0";
+  controls.classList.add("my-12");
 
   let creationCard = null;
   if (writable) {
@@ -436,25 +436,25 @@ export async function VulnListView(params = {}) {
 
     const form = el(
       "form",
-      { style: "display: flex; flex-direction: column; gap: 10px;" },
+      { class: "flex-col-10" },
       el("div", {}, el("div", { class: "muted", text: "Title" }), titleInput),
       el("div", {}, el("div", { class: "muted", text: "CVE" }), cveInput),
-      el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Severity" }), severityInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexityInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialityInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Integrity impact" }), integrityInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Availability impact" }), availabilityInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Status" }), statusInput),
-        el("div", { style: "flex: 1; min-width: 120px;" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
+      el("div", { class: "row gap-10 flex-wrap" },
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Severity" }), severityInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Attack complexity" }), attackComplexityInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Confidentiality impact" }), confidentialityInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Integrity impact" }), integrityInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Availability impact" }), availabilityInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Status" }), statusInput),
+        el("div", { class: "form-field-sm" }, el("div", { class: "muted", text: "CVSS" }), cvssInput),
       ),
-      el("div", { class: "row", style: "gap: 10px; flex-wrap: wrap;" },
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Published" }), publishedInput),
-        el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Last modified" }), modifiedInput),
+      el("div", { class: "row gap-10 flex-wrap" },
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Published" }), publishedInput),
+        el("div", { class: "form-field" }, el("div", { class: "muted", text: "Last modified" }), modifiedInput),
       ),
       el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
       el("div", {}, el("div", { class: "muted", text: "Link product versions (optional)" }), versionSelect, el("div", { class: "muted", text: "Hold Ctrl/Cmd to select multiple" })),
-      el("div", { class: "row", style: "justify-content: flex-end; gap: 8px;" }, cancelBtn, submitBtn),
+      el("div", { class: "row flex-end gap-8" }, cancelBtn, submitBtn),
     );
 
     form.addEventListener("submit", async (e) => {
@@ -517,8 +517,8 @@ export async function VulnListView(params = {}) {
 
     creationCard = el(
       "div",
-      { class: "card", style: "margin: 12px 0; display: none;" },
-      el("h3", { style: "margin-top: 0;", text: "Add vulnerability" }),
+      { class: "card mt-12 mb-12", style: "display: none;" },
+      el("h3", { class: "mt-0", text: "Add vulnerability" }),
       el("p", { class: "muted", text: "Create and optionally link affected product versions." }),
       form,
     );

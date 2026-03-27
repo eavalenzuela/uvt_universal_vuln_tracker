@@ -194,13 +194,13 @@ Password reset flow, logging, and infrastructure hardening.
 - ~~F11: Database connection pool tuning~~ (v2.2.3)
 - ~~S7: Add `pip-audit` to CI~~ (v2.2.4)
 
-### Phase 4 — Frontend Visual Overhaul
+### Phase 4 — Frontend Visual Overhaul ✅
 Bulk visual improvements, building on the Phase 2 CSS foundation.
 
-- V1: Extract inline styles from JS to CSS (large)
-- V3: Responsive / mobile layout
-- V4: Consistent spacing system
-- V5: Loading & empty states
+- ~~V1: Extract inline styles from JS to CSS~~ (v2.3.1)
+- ~~V3: Responsive / mobile layout~~ (v2.3.2)
+- ~~V4: Consistent spacing system~~ (v2.3.3)
+- ~~V5: Loading & empty states~~ (v2.3.4)
 
 ### Phase 5 — Larger Features
 Production-readiness and platform capabilities.

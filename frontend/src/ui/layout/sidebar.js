@@ -64,7 +64,7 @@ export function renderSidebar() {
   );
 
   if (admin) {
-    nav.appendChild(el("div", { style: "height:10px" }));
+    nav.appendChild(el("div", { class: "mt-8" }));
     nav.appendChild(navLink("Admin: Users", "/admin/users"));
     nav.appendChild(navLink("Admin: Logs", "/admin/logs"));
     nav.appendChild(navLink("Admin: Plugins", "/admin/plugins"));
@@ -94,6 +94,6 @@ export function renderSidebar() {
   }
 
   inbox.appendChild(list);
-  root.appendChild(el("div", { style: "height:10px" }));
+  root.appendChild(el("div", { class: "mt-8" }));
   root.appendChild(inbox);
 }

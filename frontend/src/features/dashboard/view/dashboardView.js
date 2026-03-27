@@ -17,7 +17,6 @@ import {
   SEVERITY_OPTIONS,
   RANGE_OPTIONS,
   WIDGET_BORDER,
-  WIDGET_BG,
   WIDGET_BORDER_HIGHLIGHT,
 } from "./dashboardConstants.js";
 import {
@@ -53,7 +52,7 @@ export async function DashboardView() {
     settings: { ...savedState.settings },
   };
 
-  const container = el("div", { class: "card", style: "display:flex; flex-direction:column; gap:16px;" });
+  const container = el("div", { class: "card flex-col-16" });
 
   const exportStatusSelect = el("select", { class: "input", style: "max-width: 180px;" },
     el("option", { value: "", text: "All statuses" }),
@@ -97,19 +96,16 @@ export async function DashboardView() {
 
   const header = el(
     "div",
-    { style: "display:flex; flex-direction:column; gap:6px;" },
+    { class: "flex-col-6" },
     el("h1", { class: "page-title", text: "Dashboard" }),
     el("p", { class: "muted", text: `Signed in as ${user?.username || "?"} (${user?.role || "?"}).` }),
     el("p", { class: "muted", text: "Drag widgets to reorder or use the move controls for keyboard access." }),
-    el("div", { class: "row", style: "gap: 8px; flex-wrap: wrap; align-items: center;" }, exportStatusSelect, exportSeveritySelect, exportFormatSelect, exportBtn),
+    el("div", { class: "row flex-wrap" }, exportStatusSelect, exportSeveritySelect, exportFormatSelect, exportBtn),
   );
 
-  const gridWrapper = el("div", { style: "display:flex; flex-direction:column; gap:12px;" });
-  const grid = el("div", {
-    style:
-      "display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; align-items:stretch;",
-  });
-  const hiddenList = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const gridWrapper = el("div", { class: "flex-col-12" });
+  const grid = el("div", { class: "widget-grid" });
+  const hiddenList = el("div", { class: "flex-col-8" });
 
   const presetSelect = el("select", { class: "input", style: "max-width: 260px;" });
   const presetNameInput = el("input", { class: "input", type: "text", placeholder: "Preset name", style: "max-width: 220px;" });
@@ -274,8 +270,7 @@ export async function DashboardView() {
     const currentVisibility = layoutState.visibility[widgetId] ?? true;
 
     const overlay = el("div", {
-      style:
-        "position:fixed; inset:0; background:rgba(15, 23, 42, 0.55); display:flex; align-items:center; justify-content:center; z-index:40;",
+      class: "modal-backdrop",
       onClick: (event) => {
         if (event.target === overlay) closeModal();
       },
@@ -284,8 +279,7 @@ export async function DashboardView() {
     const modal = el(
       "div",
       {
-        style:
-          "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(520px, 92vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
+        class: "modal-panel modal-sm",
         role: "dialog",
         "aria-modal": "true",
         "aria-label": `Configure ${widget.title}`,
@@ -325,27 +319,27 @@ export async function DashboardView() {
     });
 
     modal.append(
-      el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+      el("div", { class: "flex-col-6" },
         el("label", { text: "Filter" }),
         filterInput,
       ),
-      el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+      el("div", { class: "flex-col-6" },
         el("label", { text: "Product filter" }),
         productFilterInput,
       ),
-      el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+      el("div", { class: "flex-col-6" },
         el("label", { text: "Date range" }),
         rangeSelect,
       ),
-      el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+      el("div", { class: "flex-col-6" },
         el("label", { text: "Grouping" }),
         groupingSelect,
       ),
-      el("label", { style: "display:flex; align-items:center; gap:8px;" },
+      el("label", { class: "flex-row-8" },
         visibleToggle,
         el("span", { text: "Widget visible" }),
       ),
-      el("div", { style: "display:flex; justify-content:flex-end; gap:8px;" },
+      el("div", { class: "flex-end gap-8" },
         el("button", { class: "btn", text: "Cancel", onClick: closeModal }),
         el("button", {
           class: "btn primary",
@@ -400,8 +394,7 @@ export async function DashboardView() {
       const widgetSettings = { ...widget.settings, ...layoutState.settings[widgetId] };
 
       const card = el("div", {
-        style:
-          `border:1px solid ${WIDGET_BORDER}; border-radius:12px; padding:12px; background:${WIDGET_BG}; display:flex; flex-direction:column; gap:10px;`,
+        class: "widget-card",
         onDragOver: (event) => {
           event.preventDefault();
           card.style.borderColor = WIDGET_BORDER_HIGHLIGHT;
@@ -445,7 +438,7 @@ export async function DashboardView() {
 
       const actions = el(
         "div",
-        { style: "display:flex; gap:6px; align-items:center;" },
+        { class: "flex-row-6" },
         el("button", {
           class: "btn",
           text: "\u2699\uFE0F",
@@ -481,10 +474,10 @@ export async function DashboardView() {
 
       const headerRow = el(
         "div",
-        { style: "display:flex; justify-content:space-between; align-items:center; gap:8px;" },
-        el("div", { style: "display:flex; align-items:center; gap:8px;" },
+        { class: "flex-between gap-8" },
+        el("div", { class: "flex-row-8" },
           dragHandle,
-          el("div", { style: "display:flex; flex-direction:column;" },
+          el("div", { class: "flex-col" },
             el("strong", { text: widget.title }),
             el("span", { class: "muted", text: widget.description }),
           ),
@@ -497,7 +490,7 @@ export async function DashboardView() {
         ? widgetRenderer(widgetSettings)
         : el(
           "div",
-          { style: "display:flex; flex-direction:column; gap:4px;" },
+          { class: "flex-col-4" },
           el("div", { class: "muted", text: `Filter: ${widgetSettings.filter}` }),
           el("div", { class: "muted", text: `Date range: ${widgetSettings.range}` }),
           el("div", { class: "muted", text: `Grouping: ${widgetSettings.grouping || "None"}` }),
@@ -511,7 +504,7 @@ export async function DashboardView() {
     if (hiddenWidgets.length) {
       hiddenList.append(
         el("div", { class: "muted", text: "Hidden widgets" }),
-        el("div", { style: "display:flex; flex-wrap:wrap; gap:8px;" },
+        el("div", { class: "flex-row-8 flex-wrap" },
           hiddenWidgets.map((id) => {
             const widget = widgetById.get(id);
             if (!widget) return null;
@@ -545,11 +538,11 @@ export async function DashboardView() {
 
   const controlsRow = el(
     "div",
-    { style: "display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;" },
+    { class: "flex-between gap-8 flex-wrap" },
     el("h2", { text: "Widget layout" }),
     el(
       "div",
-      { style: "display:flex; gap:8px; flex-wrap:wrap; align-items:center;" },
+      { class: "flex-row-8 flex-wrap" },
       presetSelect,
       el("button", { class: "btn", text: "Load", onClick: () => applySelectedPreset() }),
       presetNameInput,

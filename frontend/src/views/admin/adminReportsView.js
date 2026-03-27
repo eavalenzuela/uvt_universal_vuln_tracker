@@ -55,7 +55,7 @@ function templateCard(template, handlers) {
   const deleteBtn = el("button", { class: "btn" }, "Delete");
   deleteBtn.onclick = async () => handlers.onDelete(template.id);
 
-  return el("div", { class: "card", style: "padding:12px; display:flex; flex-direction:column; gap:8px;" },
+  return el("div", { class: "card p-12 flex-col-8" },
     el("h3", { text: `${template.name} (#${template.id})` }),
     el("div", { class: "muted", text: `Owner: ${template.owner?.username || "unknown"} · Visibility: ${template.visibility}` }),
     el("label", {}, "Name", name),
@@ -67,7 +67,7 @@ function templateCard(template, handlers) {
     el("label", {}, "Fields (comma-separated)", fields),
     el("label", {}, "Filters (JSON)", filters),
     el("label", {}, "Delivery preferences (JSON)", preferences),
-    el("div", { class: "row", style: "gap:8px;" }, saveBtn, deleteBtn),
+    el("div", { class: "row gap-8" }, saveBtn, deleteBtn),
   );
 }
 
@@ -114,7 +114,7 @@ function scheduleCard(schedule, templates, handlers) {
   const deleteBtn = el("button", { class: "btn" }, "Delete");
   deleteBtn.onclick = async () => handlers.onDelete(schedule.id);
 
-  return el("div", { class: "card", style: "padding:12px; display:flex; flex-direction:column; gap:8px;" },
+  return el("div", { class: "card p-12 flex-col-8" },
     el("h3", { text: `${schedule.name} (#${schedule.id})` }),
     el("div", { class: "muted", text: `Last run: ${schedule.last_run_at || "Never"} · Status: ${schedule.last_run_status || "never"}` }),
     schedule.report_template ? el("div", { class: "muted", text: `Template: ${schedule.report_template.name} (#${schedule.report_template.id})` }) : null,
@@ -130,13 +130,13 @@ function scheduleCard(schedule, templates, handlers) {
     el("label", {}, "Timezone", timezone),
     el("label", {}, "Filters (JSON)", filters),
     el("label", {}, "Delivery preferences (JSON)", preferences),
-    el("div", { class: "row", style: "gap:8px;" }, saveBtn, runBtn, deleteBtn),
+    el("div", { class: "row gap-8" }, saveBtn, runBtn, deleteBtn),
   );
 }
 
 export async function AdminReportsView() {
-  const templateList = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
-  const scheduleList = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
+  const templateList = el("div", { class: "flex-col" });
+  const scheduleList = el("div", { class: "flex-col" });
 
   async function refresh() {
     const [templates, schedules] = await Promise.all([listReportTemplates(), listReportSchedules()]);

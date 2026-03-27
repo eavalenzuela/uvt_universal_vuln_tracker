@@ -17,9 +17,107 @@
   border-right: 1px solid var(--color-border);
   background: #0c1020;
   padding: var(--spacing-md);
+  overflow-y: auto;
 }
 
 #app-main {
   padding: var(--spacing-lg);
   min-width: 0;
+  overflow-y: auto;
+}
+
+/* Hamburger menu toggle (hidden on desktop) */
+.sidebar-toggle {
+  display: none;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.18);
+  color: var(--color-text);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+/* ── Tablet: narrow sidebar with icons ──────────────────── */
+@media (max-width: 1024px) {
+  #app-body {
+    grid-template-columns: 56px 1fr;
+  }
+  #app-sidebar {
+    padding: var(--spacing-sm) var(--spacing-xs);
+    overflow: hidden;
+  }
+  #app-sidebar .nav a {
+    font-size: 0;
+    padding: 10px;
+    text-align: center;
+  }
+  /* Show first letter as icon-like abbreviation */
+  #app-sidebar .nav a::first-letter {
+    font-size: var(--text-base);
+  }
+  #app-sidebar .inbox { display: none; }
+}
+
+/* ── Mobile: collapsible sidebar overlay ────────────────── */
+@media (max-width: 768px) {
+  .sidebar-toggle { display: block; }
+
+  #app-body {
+    grid-template-columns: 1fr;
+  }
+  #app-sidebar {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 260px;
+    padding: var(--spacing-md);
+  }
+  #app-sidebar.open {
+    display: block;
+  }
+  #app-sidebar .nav a {
+    font-size: var(--text-base);
+  }
+  #app-sidebar .inbox { display: block; }
+
+  /* Responsive dashboard widget grid */
+  .widget-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stack wide table grids on mobile */
+  .widget-grid-high-risk,
+  .widget-grid-top-risk {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xs);
+  }
+
+  /* Notification dropdown full width on mobile */
+  .notification-dropdown {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 56px;
+    width: auto;
+    max-height: 60vh;
+  }
+
+  #app-main {
+    padding: var(--spacing-md);
+  }
+}
+
+/* ── Small mobile ───────────────────────────────────────── */
+@media (max-width: 480px) {
+  .widget-grid-sla {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xs);
+  }
+  .widget-rollup {
+    grid-template-columns: 1fr;
+  }
+  .form-grid { gap: var(--spacing-sm); }
 }

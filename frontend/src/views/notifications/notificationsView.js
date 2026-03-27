@@ -6,8 +6,8 @@ export function NotificationsView() {
   const root = el("div", { class: "stack" });
   root.appendChild(el("h2", {}, "Notifications"));
 
-  const actions = el("div", { class: "row", style: "gap:8px;" });
-  const tableWrap = el("div", { class: "card" }, el("div", { class: "muted", style: "padding:10px;" }, "Loading..."));
+  const actions = el("div", { class: "row gap-8" });
+  const tableWrap = el("div", { class: "card" }, el("div", { class: "muted p-10" }, "Loading..."));
 
   let page = 1;
   const pageSize = 25;
@@ -20,14 +20,14 @@ export function NotificationsView() {
 
     tableWrap.innerHTML = "";
     if (!items.length) {
-      tableWrap.appendChild(el("div", { class: "muted", style: "padding:10px;" }, "No notifications."));
+      tableWrap.appendChild(el("div", { class: "muted p-10" }, "No notifications."));
       return;
     }
 
-    const list = el("div", { class: "stack", style: "padding:8px;" });
+    const list = el("div", { class: "stack p-8" });
     items.forEach((item) => {
-      list.appendChild(el("div", { class: "row", style: `gap:8px; align-items:flex-start; padding:8px; border-left:3px solid ${item.is_read ? "transparent" : "#2563eb"};` },
-        el("div", { class: "stack", style: "flex:1;" },
+      list.appendChild(el("div", { class: `row gap-8 items-start p-8 ${item.is_read ? "notification-item-read" : "notification-item-unread"}` },
+        el("div", { class: "stack flex-1" },
           el("div", {}, item.message || "Notification"),
           el("div", { class: "muted" }, item.created_at ? new Date(item.created_at).toLocaleString() : ""),
         ),
@@ -49,7 +49,7 @@ export function NotificationsView() {
       ));
     });
 
-    const pagination = el("div", { class: "row", style: "padding:8px;" },
+    const pagination = el("div", { class: "row p-8" },
       el("button", {
         class: "btn",
         disabled: !data?.pagination?.has_prev,
@@ -79,7 +79,7 @@ export function NotificationsView() {
   root.append(actions, tableWrap);
   load().catch((err) => {
     tableWrap.innerHTML = "";
-    tableWrap.appendChild(el("div", { class: "muted", style: "padding:10px;" }, `Failed to load notifications: ${err?.message || err}`));
+    tableWrap.appendChild(el("div", { class: "muted p-10" }, `Failed to load notifications: ${err?.message || err}`));
   });
 
   return root;

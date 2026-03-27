@@ -44,7 +44,7 @@ export async function ProductDependencyGraphView(params = {}) {
 
   root.append(
     el("div", { class: "card" },
-      el("div", { class: "row", style: "justify-content:space-between; align-items:center;" },
+      el("div", { class: "row flex-between" },
         el("h1", { class: "page-title", text: "Dependency graph" }),
         el("button", { class: "btn", type: "button", onClick: () => navigate(`/products/${productId}`) }, "Back to product"),
       ),
@@ -57,22 +57,22 @@ export async function ProductDependencyGraphView(params = {}) {
     const depthMap = computeDepths(graph.nodes || [], graph.edges || [], graph.root_node_ids || []);
     const maxDepth = Math.max(0, ...[...depthMap.values()].filter(Number.isFinite));
 
-    const controls = el("div", { class: "row", style: "gap:8px; flex-wrap:wrap; align-items:end;" });
+    const controls = el("div", { class: "row gap-8 flex-wrap items-end" });
     const depthInput = el("input", { class: "input", type: "number", min: "1", value: String(Math.max(1, maxDepth)), style: "width:100px;" });
     const showTransitiveToggle = el("input", { type: "checkbox", checked: true });
     const vulnOnlyToggle = el("input", { type: "checkbox" });
 
     controls.append(
-      el("label", { style: "display:flex; flex-direction:column; gap:4px;" },
+      el("label", { class: "flex-col-4" },
         el("span", { class: "muted", text: "Max depth" }),
         depthInput,
       ),
-      el("label", { class: "row", style: "gap:6px; align-items:center;" }, showTransitiveToggle, el("span", { text: "Show transitive edges" })),
-      el("label", { class: "row", style: "gap:6px; align-items:center;" }, vulnOnlyToggle, el("span", { text: "Highlight vulnerable only" })),
+      el("label", { class: "row gap-6" }, showTransitiveToggle, el("span", { text: "Show transitive edges" })),
+      el("label", { class: "row gap-6" }, vulnOnlyToggle, el("span", { text: "Highlight vulnerable only" })),
     );
 
-    const graphWrap = el("div", { style: "overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff;" });
-    const detailPane = el("div", { class: "card", style: "margin-top:12px;" }, el("div", { class: "muted", text: "Select a node to inspect details." }));
+    const graphWrap = el("div", { class: "detail-border", style: "overflow:auto; background:#fff;" });
+    const detailPane = el("div", { class: "card mt-12" }, el("div", { class: "muted", text: "Select a node to inspect details." }));
 
     const renderGraph = () => {
       const maxSelectedDepth = Number(depthInput.value || maxDepth) || maxDepth;
@@ -163,7 +163,7 @@ export async function ProductDependencyGraphView(params = {}) {
             el("h3", { text: `${node.name} ${node.version || ""}` }),
             el("div", { class: "muted", text: `${node.ecosystem || "-"} • ${node.component_type || "component"}` }),
             el("div", { class: "muted", text: `Depth: ${depthMap.get(node.id) || 0} • Vulnerabilities: ${node.vulnerability_count || 0}` }),
-            el("div", { class: "row", style: "gap:8px; flex-wrap:wrap; margin-top:8px;" },
+            el("div", { class: "row gap-8 flex-wrap mt-8" },
               el("button", {
                 class: "btn",
                 type: "button",
@@ -171,10 +171,10 @@ export async function ProductDependencyGraphView(params = {}) {
               }, "Open vulnerability list"),
             ),
             (node.vulnerabilities || []).length
-              ? el("div", { style: "margin-top:8px; display:flex; flex-direction:column; gap:6px;" },
+              ? el("div", { class: "flex-col-6 mt-8" },
                   ...(node.vulnerabilities || []).map((vuln) =>
-                    el("div", { style: "border:1px solid #e2e8f0; border-radius:8px; padding:8px;" },
-                      el("div", { style: `font-weight:600; color:${severityColor(vuln.severity)};`, text: vuln.title || `Vulnerability ${vuln.id}` }),
+                    el("div", { class: "detail-border" },
+                      el("div", { class: "font-semibold", style: `color:${severityColor(vuln.severity)};`, text: vuln.title || `Vulnerability ${vuln.id}` }),
                       el("div", { class: "muted", text: `${vuln.severity || "-"} • ${vuln.status || "-"}` }),
                       el("button", { class: "btn", type: "button", onClick: () => navigate(`/vulnerabilities/${vuln.id}`) }, "Open vulnerability detail"),
                     ),

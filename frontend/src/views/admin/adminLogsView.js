@@ -11,17 +11,17 @@ function logCard(log) {
   if (log.old_values?.password_reset || log.action === "RESET_PASSWORD") detail.push("Password reset");
   if (log.action === "TOGGLE_ACTIVE") detail.push(`Active: ${log.new_values?.is_active}`);
 
-  return el("div", { class: "card", style: "padding: 12px; display:flex; flex-direction:column; gap:6px;" },
-    el("div", { class: "row", style: "align-items:center; gap:8px;" },
-      el("div", { style: "font-weight:700;", text: log.action || "(unknown)" }),
+  return el("div", { class: "card p-12 flex-col-6" },
+    el("div", { class: "row items-center gap-8" },
+      el("div", { class: "font-bold", text: log.action || "(unknown)" }),
       el("div", { class: "pill muted", text: log.table_name || "n/a" }),
       el("div", { class: "muted", text: timestamp || "" }),
       el("div", { class: "muted", text: `Actor: ${actor}` }),
     ),
     el("div", { class: "muted", text: `Record ID: ${log.record_id ?? "-"}` }),
-    detail.length ? el("div", { text: detail.join(" • "), style: "font-weight:600;" }) : null,
-    log.old_values ? el("pre", { style: "white-space: pre-wrap; background:#f8fafc; padding:8px; border-radius:6px;", text: JSON.stringify(log.old_values, null, 2) }) : null,
-    log.new_values ? el("pre", { style: "white-space: pre-wrap; background:#f8fafc; padding:8px; border-radius:6px;", text: JSON.stringify(log.new_values, null, 2) }) : null,
+    detail.length ? el("div", { text: detail.join(" • "), class: "font-semibold" }) : null,
+    log.old_values ? el("pre", { class: "text-pre-wrap code-block", text: JSON.stringify(log.old_values, null, 2) }) : null,
+    log.new_values ? el("pre", { class: "text-pre-wrap code-block", text: JSON.stringify(log.new_values, null, 2) }) : null,
   );
 }
 
@@ -30,7 +30,7 @@ export async function AdminLogsView() {
   const actionInput = el("input", { class: "input", placeholder: "Action (optional)", "aria-label": "Filter by action" });
   const tableInput = el("input", { class: "input", placeholder: "Table (optional)", "aria-label": "Filter by table" });
   const refreshBtn = el("button", { class: "btn" }, "Refresh logs");
-  const list = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const list = el("div", { class: "flex-col-8" });
   const pageInfo = el("div", { class: "muted", text: "Page 1" });
   const prevBtn = el("button", { class: "btn" }, "Previous");
   const nextBtn = el("button", { class: "btn" }, "Next");
@@ -96,14 +96,14 @@ export async function AdminLogsView() {
 
   await load();
 
-  return el("div", { style: "display:flex; flex-direction:column; gap:12px;" },
+  return el("div", { class: "flex-col-12" },
     el("div", { class: "card" },
       el("h1", { class: "page-title", text: "Admin: Logs" }),
       el("p", { class: "muted", text: "Review sensitive admin actions including impersonation, access changes, and password resets." }),
     ),
     el("div", { class: "card" },
-      el("div", { class: "row", style: "align-items:center; gap:8px; flex-wrap:wrap;" },
-        el("div", { style: "font-weight:700;", text: "Audit log feed" }),
+      el("div", { class: "row items-center gap-8 flex-wrap" },
+        el("div", { class: "font-bold", text: "Audit log feed" }),
         el("div", { class: "muted", text: "Latest entries from audit_logs" }),
         el("div", { class: "spacer" }),
         actionInput,
@@ -113,7 +113,7 @@ export async function AdminLogsView() {
         refreshBtn,
       ),
       list,
-      el("div", { class: "row", style: "gap:8px; align-items:center; margin-top:12px;" },
+      el("div", { class: "row gap-8 items-center mt-12" },
         pageInfo,
         el("div", { class: "spacer" }),
         prevBtn,

@@ -12,7 +12,7 @@ function renderAttackVectorRow(mapping, vulnId, reloadDetails, canEdit) {
     el("option", { value: "", text: "No specific version" }),
   );
   const saveBtn = el("button", { class: "btn primary", type: "button" }, "Save");
-  const deleteBtn = el("button", { class: "btn", type: "button", style: "color: #b91c1c;" }, "Remove");
+  const deleteBtn = el("button", { class: "btn text-danger", type: "button" }, "Remove");
 
   const fillProductOptions = async () => {
     const options = await ensureProductVersions();
@@ -68,21 +68,21 @@ function renderAttackVectorRow(mapping, vulnId, reloadDetails, canEdit) {
 
   return el(
     "div",
-    { class: "card", style: "padding: 10px; display: flex; flex-direction: column; gap: 8px;" },
+    { class: "card p-10 flex-col-8" },
     el(
       "div",
-      { class: "row", style: "justify-content: space-between; gap: 8px;" },
+      { class: "row flex-between gap-8" },
       el(
         "div",
         {},
-        el("div", { style: "font-weight: 600;", text: mapping.attack_vector_name || "Attack vector" }),
+        el("div", { class: "font-semibold", text: mapping.attack_vector_name || "Attack vector" }),
         mapping.attack_vector_description ? el("div", { class: "muted", text: mapping.attack_vector_description }) : null,
       ),
-      canEdit ? el("div", { class: "row", style: "gap: 6px; align-items: center;" }, deleteBtn, saveBtn) : null,
+      canEdit ? el("div", { class: "row flex-row-6" }, deleteBtn, saveBtn) : null,
     ),
     el(
       "div",
-      { style: "flex: 1; min-width: 200px;" },
+      { class: "flex-1", style: "min-width: 200px;" },
       el("div", { class: "muted", text: "Product version" }),
       productSelect,
     ),
@@ -91,7 +91,7 @@ function renderAttackVectorRow(mapping, vulnId, reloadDetails, canEdit) {
 
 export function renderAttackVectorsSection(detailData, vulnId, reloadDetails, canEdit) {
   const container = el("div", {});
-  const list = el("div", { style: "display: flex; flex-direction: column; gap: 8px;" });
+  const list = el("div", { class: "flex-col-8" });
 
   if (!detailData.attack_vectors?.length) {
     list.appendChild(el("div", { class: "muted", text: "No attack vectors linked." }));
@@ -161,12 +161,12 @@ export function renderAttackVectorsSection(detailData, vulnId, reloadDetails, ca
     container.appendChild(
       el(
         "div",
-        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        { class: "flex-col-8" },
         el("div", { class: "muted", text: "Link an attack vector" }),
         vectorSelect,
         el("div", { class: "muted", text: "Map to a product version (optional)" }),
         versionSelect,
-        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+        el("div", { class: "row flex-end" }, addBtn),
       )
     );
   }

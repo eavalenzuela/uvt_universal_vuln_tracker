@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.3.4
+
+### Added
+- **V5: Loading & empty states** — Added `loadingBlock()`, `skeletonRows()`, and `emptyState()` helper functions in `frontend/src/ui/components/loading.js`. CSS includes `@keyframes spin` spinner, `@keyframes shimmer` skeleton animation, and `.empty-state` centered message with icon. Ready for drop-in use across all async views.
+
+## v2.3.3
+
+### Added
+- **V4: Consistent spacing system** — Replaced hardcoded pixel spacing with CSS custom property references (`var(--spacing-sm)`, `var(--spacing-md)`, etc.) across all four stylesheets. Added layout utility classes (`.flex-col-*`, `.flex-row-*`, `.gap-*`, `.mt-*`, `.mb-*`, `.p-*`) and form field wrappers (`.form-field`, `.form-field-sm`) for consistent spacing throughout the frontend.
+
+## v2.3.2
+
+### Added
+- **V3: Responsive / mobile layout** — Rewrote `layout.css` with three responsive breakpoints (≤1024px collapsed sidebar, ≤768px hidden sidebar with hamburger toggle, ≤480px stacked widget grids). Added `.sidebar-toggle` hamburger button in header, sidebar overlay with `.open` class for mobile, and responsive grid adjustments for dashboard widgets.
+
+## v2.3.1
+
+### Changed
+- **V1: Extract inline styles from JS to CSS** — Extracted ~170 inline `style:` attributes from 24+ JS view files into reusable CSS classes. Added widget component classes (`.widget-surface`, `.widget-card`, `.widget-row`, `.widget-kpi-grid`, `.widget-grid`), widget table grids, modal classes (`.modal-backdrop`, `.modal-panel`, `.modal-sm/md/lg`), max-width utilities, badge/divider patterns, and notification dropdown styles. Remaining ~60 inline styles are truly dynamic (computed values, display toggles).
+
 ## v2.2.4
 
 ### Security

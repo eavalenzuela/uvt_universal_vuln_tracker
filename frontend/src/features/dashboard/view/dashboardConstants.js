@@ -92,27 +92,16 @@ export function renderSparkline(values) {
 }
 
 export function severityBadge(severity) {
-  const colors = {
-    Critical: "#7f1d1d",
-    High: "#b45309",
-    Medium: "#92400e",
-    Low: "#365314",
-    None: "#334155",
+  const cls = {
+    Critical: "badge-critical",
+    High: "badge-high",
+    Medium: "badge-medium",
+    Low: "badge-low",
+    None: "badge-none",
   };
-  const bg = {
-    Critical: "#fef2f2",
-    High: "#fffbeb",
-    Medium: "#fffbeb",
-    Low: "#f0fdf4",
-    None: "#f8fafc",
-  };
-  const color = colors[severity] || "#0f172a";
   return el(
     "span",
-    {
-      class: "badge",
-      style: `background: ${bg[severity] || "#f8fafc"}; color: ${color}; border: 1px solid ${WIDGET_BORDER};`,
-    },
+    { class: `badge ${cls[severity] || "badge-none"}` },
     severity || "Unknown",
   );
 }

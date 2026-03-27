@@ -5,7 +5,7 @@ import {
   listAttackVectors,
   listTerminalImpacts,
 } from "../../../api/vulnerabilities.js";
-import { severityPalette, slaPalette } from "../selectors/formatters.js";
+
 
 export const STATUS_OPTIONS = ["Open", "In Progress", "Resolved", "Closed"];
 export const SEVERITY_OPTIONS = ["Critical", "High", "Medium", "Low", "None"];
@@ -22,24 +22,18 @@ let cachedTerminalImpacts = null;
 let cachedTerminalImpactsAt = 0;
 
 export function severityBadge(severity) {
-  const palette = severityPalette(severity);
-  return el("span", { class: "badge", style: `background: ${palette.bg}; color: ${palette.color}; border: 1px solid #e2e8f0;` }, severity || "Unknown");
+  const cls = { Critical: "badge-critical", High: "badge-high", Medium: "badge-medium", Low: "badge-low", None: "badge-none" };
+  return el("span", { class: `badge ${cls[severity] || "badge-none"}` }, severity || "Unknown");
 }
 
 export function slaBadge(state) {
-  const cfg = slaPalette(state);
-  return el("span", { class: "badge", style: `background:${cfg.bg}; color:${cfg.color}; border:1px solid ${cfg.border};` }, cfg.label);
+  const cls = { breached: "badge-sla-breached", due_soon: "badge-sla-due-soon", on_track: "badge-sla-on-track" };
+  return el("span", { class: `badge ${cls[state] || "badge-sla-on-track"}` }, { breached: "SLA breached", due_soon: "Due soon", on_track: "On track" }[state] || "On track");
 }
 
 export function statusPill(status) {
-  return el(
-    "span",
-    {
-      class: "badge",
-      style: "background: #eef2ff; color: #312e81; border: 1px solid #c7d2fe;",
-    },
-    status || "-",
-  );
+  const cls = { Open: "pill-open", "In Progress": "pill-in-progress", Resolved: "pill-resolved", Closed: "pill-closed" };
+  return el("span", { class: `badge ${cls[status] || "pill-open"}` }, status || "-");
 }
 
 export async function ensureProductVersions() {

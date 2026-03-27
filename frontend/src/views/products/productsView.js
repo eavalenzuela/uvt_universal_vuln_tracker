@@ -9,7 +9,7 @@ export async function ProductsView() {
   const state = getState();
   const editable = canWrite(state);
   const adminUser = isAdmin(state);
-  const list = el("div", { style: "display: flex; flex-direction: column; gap: 12px; margin-top: 8px;" },
+  const list = el("div", { class: "flex-col-12 mt-8" },
     el("div", { class: "muted", text: "Loading products..." }),
   );
 
@@ -38,12 +38,12 @@ export async function ProductsView() {
 
   const form = el(
     "form",
-    { style: "display: flex; flex-direction: column; gap: 10px;" },
+    { class: "flex-col" },
     el("div", {}, el("div", { class: "muted", text: "Name" }), nameInput),
     el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
     el(
       "div",
-      { class: "row", style: "justify-content: flex-end; gap: 8px;" },
+      { class: "row flex-end gap-8" },
       cancelBtn,
       submitBtn,
     ),
@@ -52,7 +52,7 @@ export async function ProductsView() {
   const formCard = el(
     "div",
     { class: "card", style: "margin: 12px 0; display: none;" },
-    el("h3", { style: "margin-top: 0;", text: "Add product" }),
+    el("h3", { class: "mt-0", text: "Add product" }),
     el("p", { class: "muted", text: "Create a catalog entry for a product." }),
     form,
   );
@@ -97,7 +97,7 @@ export async function ProductsView() {
 
   const controls = el(
     "div",
-    { class: "row", style: "gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap;" },
+    { class: "row flex-row-8 flex-wrap", style: "margin: 12px 0;" },
     el("div", { class: "muted", text: "Product catalog" }),
     el("div", { class: "spacer" }),
     editable

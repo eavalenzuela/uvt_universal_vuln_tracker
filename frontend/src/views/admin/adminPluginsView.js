@@ -105,36 +105,36 @@ function pluginCard(plugin, { onToggle, onConfigure }) {
   const configBtn = el("button", { class: "btn" }, "Configure");
   configBtn.addEventListener("click", () => onConfigure(plugin));
 
-  return el("div", { class: "card", style: "padding: 12px; display:flex; flex-direction:column; gap:10px;" },
-    el("div", { class: "row", style: "align-items:flex-start; gap:12px; flex-wrap:wrap;" },
-      el("div", { style: "flex:1; min-width: 220px;" },
-        el("div", { class: "row", style: "align-items:center; gap:8px; flex-wrap:wrap;" },
-          el("div", { style: "font-weight:700;", text: plugin.display_name || plugin.plugin_id }),
+  return el("div", { class: "card flex-col-10 p-12" },
+    el("div", { class: "row items-start gap-12 flex-wrap" },
+      el("div", { class: "flex-1", style: "min-width: 220px;" },
+        el("div", { class: "row flex-wrap gap-8" },
+          el("div", { class: "font-bold", text: plugin.display_name || plugin.plugin_id }),
           pill(statusLabel, statusColor, true),
           pill(healthState, healthStateColor, true),
         ),
-        el("div", { class: "row", style: "gap: 8px; margin-top: 8px; flex-wrap:wrap;" },
+        el("div", { class: "row gap-8 mt-8 flex-wrap" },
           plugin.version ? el("div", { class: "muted", text: `Version ${plugin.version}` }) : null,
           el("div", { class: "muted", text: `ID: ${plugin.plugin_id}` }),
           el("div", { class: "muted", text: formatLastRun(plugin.last_run) }),
         ),
       ),
-      el("div", { class: "row", style: "gap: 6px; flex-wrap:wrap;" },
+      el("div", { class: "row gap-6 flex-wrap" },
         configBtn,
         toggleBtn,
       ),
     ),
     plugin.capabilities?.length
-      ? el("div", { class: "row", style: "gap: 6px; flex-wrap:wrap;" },
+      ? el("div", { class: "row gap-6 flex-wrap" },
         el("div", { class: "muted", text: "Capabilities:" }),
         ...plugin.capabilities.map((scope) => pill(scope, "#2563eb", true)),
       )
       : null,
     configFields.length
-      ? el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+      ? el("div", { class: "flex-col-6" },
         el("div", { class: "muted", text: "Configuration:" }),
-        ...configFields.map((field) => el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
-          el("div", { style: "min-width: 140px; font-weight:600;", text: field.label }),
+        ...configFields.map((field) => el("div", { class: "row gap-8 flex-wrap" },
+          el("div", { class: "font-semibold", style: "min-width: 140px;", text: field.label }),
           el("div", { class: "muted", text: formatFieldValue(field, plugin.config?.[field.name]) }),
         )),
       )
@@ -149,7 +149,7 @@ export async function AdminPluginsView() {
   let plugins = [];
   let isLoading = true;
 
-  const list = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
+  const list = el("div", { class: "flex-col-10" });
   const addBtn = el("button", { class: "btn primary" }, "Add plugin");
 
   function renderList() {
@@ -207,16 +207,14 @@ export async function AdminPluginsView() {
 
   function openImportWizard() {
     const overlay = el("div", {
-      style:
-        "position:fixed; inset:0; background:rgba(15, 23, 42, 0.55); display:flex; align-items:center; justify-content:center; z-index:40;",
+      class: "modal-backdrop",
       onClick: (event) => {
         if (event.target === overlay) closeModal();
       },
     });
 
     const modal = el("div", {
-      style:
-        "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(640px, 96vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
+      class: "modal-panel modal-lg",
       role: "dialog",
       "aria-modal": "true",
       "aria-label": "Import plugin",
@@ -224,7 +222,7 @@ export async function AdminPluginsView() {
 
     const title = el("h2", { text: "Import plugin" });
     const stepHint = el("div", { class: "muted", text: "Step 1 of 3 · Select plugin source/type" });
-    const body = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
+    const body = el("div", { class: "flex-col-10" });
     const statusRow = el("div", { class: "muted" });
 
     const sourceSelect = el("select", { class: "input" });
@@ -256,15 +254,15 @@ export async function AdminPluginsView() {
         backBtn.style.display = "none";
         body.append(
           el("div", { class: "muted", text: "Choose an allowed import path and provide the module/class for the plugin." }),
-          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+          el("div", { class: "flex-col-6" },
             el("label", { text: "Plugin source root" }),
             sourceSelect,
           ),
-          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+          el("div", { class: "flex-col-6" },
             el("label", { text: "Module path" }),
             moduleInput,
           ),
-          el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+          el("div", { class: "flex-col-6" },
             el("label", { text: "Class name" }),
             classInput,
           ),
@@ -275,7 +273,7 @@ export async function AdminPluginsView() {
         backBtn.style.display = "";
         body.append(
           el("div", { class: "muted", text: introspection?.already_registered ? "Plugin already registered. Continuing will update initial config." : "Plugin validated and ready to import." }),
-          el("div", { class: "row", style: "gap:8px; flex-wrap:wrap;" },
+          el("div", { class: "row gap-8 flex-wrap" },
             pill(introspection.plugin_id, "#1d4ed8", true),
             pill(introspection.version || "0.0.0", "#475569", true),
             ...(introspection.capabilities || []).map((cap) => pill(cap, "#2563eb", true)),
@@ -289,7 +287,7 @@ export async function AdminPluginsView() {
         backBtn.style.display = "";
 
         const fields = normalizeFields(introspection?.config_schema);
-        body.append(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+        body.append(el("label", { class: "label-row" },
           enabledInput,
           el("span", { text: "Enable plugin after import" }),
         ));
@@ -301,7 +299,7 @@ export async function AdminPluginsView() {
             if (field.type === "boolean") {
               const checkbox = el("input", { type: "checkbox", checked: Boolean(field.defaultValue) });
               configInputs.set(field.name, { type: "boolean", input: checkbox, required: field.required });
-              body.append(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+              body.append(el("label", { class: "label-row" },
                 checkbox,
                 el("span", { text: `${field.label}${field.required ? " *" : ""}` }),
               ));
@@ -314,7 +312,7 @@ export async function AdminPluginsView() {
               placeholder: field.required ? "Required" : "Optional",
             });
             configInputs.set(field.name, { type: "string", input, required: field.required });
-            body.append(el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+            body.append(el("div", { class: "flex-col-6" },
               el("label", { text: `${field.label}${field.required ? " *" : ""}` }),
               input,
             ));
@@ -422,7 +420,7 @@ export async function AdminPluginsView() {
       stepHint,
       body,
       statusRow,
-      el("div", { style: "display:flex; justify-content:flex-end; gap:8px;" },
+      el("div", { class: "flex-end gap-8" },
         backBtn,
         cancelBtn,
         nextBtn,
@@ -442,8 +440,7 @@ export async function AdminPluginsView() {
   function openConfigModal(plugin) {
     const fields = normalizeFields(plugin.config_schema);
     const overlay = el("div", {
-      style:
-        "position:fixed; inset:0; background:rgba(15, 23, 42, 0.55); display:flex; align-items:center; justify-content:center; z-index:40;",
+      class: "modal-backdrop",
       onClick: (event) => {
         if (event.target === overlay) closeModal();
       },
@@ -452,8 +449,7 @@ export async function AdminPluginsView() {
     const modal = el(
       "div",
       {
-        style:
-          "background:#0f172a; color:#e6e8ee; border-radius:12px; width:min(560px, 92vw); padding:20px; display:flex; flex-direction:column; gap:16px; border:1px solid rgba(148, 163, 184, 0.25); box-shadow:0 20px 40px rgba(2,6,23,0.6);",
+        class: "modal-panel modal-md",
         role: "dialog",
         "aria-modal": "true",
         "aria-label": `Configure ${plugin.display_name || plugin.plugin_id}`,
@@ -462,7 +458,7 @@ export async function AdminPluginsView() {
     );
 
     const fieldInputs = new Map();
-    const form = el("div", { style: "display:flex; flex-direction:column; gap:12px;" });
+    const form = el("div", { class: "flex-col-12" });
 
     if (!fields.length) {
       form.appendChild(el("div", { class: "muted", text: "This plugin does not expose configurable fields." }));
@@ -475,7 +471,7 @@ export async function AdminPluginsView() {
             checked: currentValue !== undefined ? Boolean(currentValue) : Boolean(field.defaultValue),
           });
           fieldInputs.set(field.name, { type: "boolean", input: checkbox, masked: false, secret: field.secret });
-          form.appendChild(el("label", { style: "display:flex; align-items:center; gap:8px;" },
+          form.appendChild(el("label", { class: "label-row" },
             checkbox,
             el("span", { text: field.label }),
           ));
@@ -490,7 +486,7 @@ export async function AdminPluginsView() {
           placeholder: isMasked ? "Configured" : "",
         });
         fieldInputs.set(field.name, { type: "string", input, masked: isMasked, secret: field.secret });
-        form.appendChild(el("div", { style: "display:flex; flex-direction:column; gap:6px;" },
+        form.appendChild(el("div", { class: "flex-col-6" },
           el("label", { text: field.label }),
           input,
         ));
@@ -544,7 +540,7 @@ export async function AdminPluginsView() {
     modal.append(
       form,
       statusRow,
-      el("div", { style: "display:flex; justify-content:flex-end; gap:8px;" },
+      el("div", { class: "flex-end gap-8" },
         cancelBtn,
         saveBtn,
       ),
@@ -560,14 +556,14 @@ export async function AdminPluginsView() {
 
   await loadPlugins();
 
-  return el("div", { style: "display:flex; flex-direction:column; gap:12px;" },
+  return el("div", { class: "flex-col-12" },
     el("div", { class: "card" },
       el("h1", { class: "page-title", text: "Admin: Plugins" }),
       el("p", { class: "muted", text: "Enable integrations, set up automation, and manage plugin health checks." }),
     ),
     el("div", { class: "card" },
-      el("div", { class: "row", style: "align-items:center; gap:8px; flex-wrap:wrap;" },
-        el("div", { style: "font-weight:700;", text: "Configured plugins" }),
+      el("div", { class: "row flex-wrap gap-8" },
+        el("div", { class: "font-bold", text: "Configured plugins" }),
         el("div", { class: "muted", text: "Admin-only integrations" }),
         el("div", { class: "spacer" }),
         addBtn,

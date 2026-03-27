@@ -18,10 +18,10 @@ function pill(label, color, subtle = false) {
 
 function statCard(title, value, hint) {
   const valueNode = (typeof value === "string" || typeof value === "number")
-    ? el("div", { style: "font-size: 24px; font-weight: 700;", text: value })
+    ? el("div", { class: "kpi-value-lg", text: value })
     : value;
 
-  return el("div", { class: "card", style: "flex:1; min-width: 180px; padding: 12px;" },
+  return el("div", { class: "card flex-1 p-12", style: "min-width: 180px;" },
     el("div", { class: "muted", text: title }),
     valueNode,
     hint ? el("div", { class: "muted", style: "font-size: 12px;", text: hint }) : null,
@@ -40,18 +40,18 @@ function userCard(user, { onImpersonate, onToggle }) {
   const toggleBtn = el("button", { class: "btn" }, user.is_active ? "Disable" : "Enable");
   toggleBtn.addEventListener("click", () => onToggle(user));
 
-  return el("div", { class: "card", style: "padding: 12px;" },
-    el("div", { class: "row", style: "justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;" },
-      el("div", { style: "flex:1; min-width: 220px;" },
-        el("div", { class: "row", style: "align-items: center; gap: 8px; flex-wrap: wrap;" },
+  return el("div", { class: "card p-12" },
+    el("div", { class: "row flex-between items-start gap-12 flex-wrap" },
+      el("div", { class: "flex-1", style: "min-width: 220px;" },
+        el("div", { class: "row flex-wrap gap-8" },
           el("div", { class: "muted", text: user.username }),
           pill(user.role, "#2563eb"),
           pill(statusLabel, statusColor, true),
         ),
-        el("div", { style: "font-weight: 700; margin-top: 4px;", text: name }),
+        el("div", { class: "font-bold mt-4", text: name }),
         el("div", { class: "muted", style: "margin-top: 2px;", text: `${user.email} \u2022 Updated ${lastSeen}` }),
       ),
-      el("div", { class: "row", style: "gap: 6px; flex-wrap: wrap;" },
+      el("div", { class: "row gap-6 flex-wrap" },
         impersonateBtn,
         toggleBtn,
       ),
@@ -60,10 +60,10 @@ function userCard(user, { onImpersonate, onToggle }) {
 }
 
 export async function AdminUsersView() {
-  const totalEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
-  const activeEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
-  const pendingEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
-  const disabledEl = el("div", { style: "font-size: 24px; font-weight: 700;", text: "0" });
+  const totalEl = el("div", { class: "kpi-value-lg", text: "0" });
+  const activeEl = el("div", { class: "kpi-value-lg", text: "0" });
+  const pendingEl = el("div", { class: "kpi-value-lg", text: "0" });
+  const disabledEl = el("div", { class: "kpi-value-lg", text: "0" });
 
   const searchInput = el("input", { class: "input", type: "search", placeholder: "Search by name, email, or username", "aria-label": "Search users" });
   const statusSelect = el("select", { class: "input" },
@@ -94,7 +94,7 @@ export async function AdminUsersView() {
   });
   controls.style.margin = "12px 0";
 
-  const statsRow = el("div", { class: "row", style: "gap: 12px; flex-wrap: wrap;" },
+  const statsRow = el("div", { class: "row gap-12 flex-wrap" },
     statCard("Total users", totalEl, "Across current filters"),
     statCard("Active (page)", activeEl, "Shown on this page"),
     statCard("Pending", pendingEl, "Awaiting activation"),
@@ -115,29 +115,29 @@ export async function AdminUsersView() {
 
   const inviteForm = el(
     "form",
-    { style: "display: flex; flex-direction: column; gap: 8px;" },
+    { class: "flex-col-8" },
     el("div", {}, el("div", { class: "muted", text: "Username" }), inviteUsername),
     el("div", {}, el("div", { class: "muted", text: "Email" }), inviteEmail),
     el("div", {}, el("div", { class: "muted", text: "Role" }), inviteRole),
     el("div", {}, el("div", { class: "muted", text: "First name" }), inviteFirstName),
     el("div", {}, el("div", { class: "muted", text: "Last name" }), inviteLastName),
-    el("div", { class: "row", style: "justify-content: flex-end; gap: 8px;" }, inviteCancel, inviteSubmit),
+    el("div", { class: "row flex-end gap-8" }, inviteCancel, inviteSubmit),
   );
 
   const inviteCard = el(
     "div",
-    { class: "card", style: "margin-top: 12px; display: none;" },
+    { class: "card mt-12", style: "display: none;" },
     el("h3", { style: "margin-top: 0;", text: "Invite user" }),
     el("p", { class: "muted", text: "Create a new user and assign their role." }),
     inviteForm,
   );
 
-  const userList = el("div", { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 4px;" });
+  const userList = el("div", { class: "flex-col-10 mt-4" });
   const pageInfo = el("div", { class: "muted", text: "Page 1" });
   const prevBtn = el("button", { class: "btn" }, "Previous");
   const nextBtn = el("button", { class: "btn" }, "Next");
 
-  const pagination = el("div", { class: "row", style: "gap:8px; align-items:center; margin-top:12px;" },
+  const pagination = el("div", { class: "row gap-8 mt-12" },
     pageInfo,
     el("div", { class: "spacer" }),
     prevBtn,
@@ -309,14 +309,14 @@ export async function AdminUsersView() {
 
   loadUsersList();
 
-  return el("div", { style: "display: flex; flex-direction: column; gap: 12px;" },
+  return el("div", { class: "flex-col-12" },
     el("div", { class: "card" },
       el("h1", { class: "page-title", text: "Admin: Users" }),
       el("p", { class: "muted", text: "Manage account access, MFA posture, and onboarding from a single control plane." }),
     ),
     el("div", { class: "card" },
-      el("div", { class: "row", style: "align-items: center; gap: 8px;" },
-        el("div", { style: "font-weight: 700;", text: "User overview" }),
+      el("div", { class: "row gap-8" },
+        el("div", { class: "font-bold", text: "User overview" }),
         pill("Real-time", "#059669", true),
       ),
       statsRow,

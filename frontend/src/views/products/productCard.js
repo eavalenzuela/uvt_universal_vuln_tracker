@@ -16,8 +16,7 @@ function renderOwnerChip(owner) {
   return el(
     "span",
     {
-      class: "badge",
-      style: "background: #eef2ff; color: #1e3a8a; border: 1px solid #c7d2fe;",
+      class: "badge badge-owner",
     },
     label,
   );
@@ -25,7 +24,7 @@ function renderOwnerChip(owner) {
 
 export function renderProductCard(product, reloadList, { canEdit, isAdminUser }) {
   const detailContent = el("div", {});
-  const detailCard = el("div", { class: "card", style: "padding: 12px; margin-top: 8px; display: none;" }, detailContent);
+  const detailCard = el("div", { class: "card p-12 mt-8", style: "display: none;" }, detailContent);
 
   let detailData = null;
   let isEditing = false;
@@ -39,32 +38,32 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
   const header = el(
     "div",
-    { class: "card", style: "padding: 12px;" },
+    { class: "card p-12" },
     el(
       "div",
-      { class: "row", style: "justify-content: space-between; align-items: baseline; gap: 8px;" },
+      { class: "row flex-between items-baseline gap-8" },
       el(
         "div",
         {},
         el("div", { class: "muted", text: product.vendor || "" }),
-        el("div", { style: "font-weight: 600;", text: product.name }),
+        el("div", { class: "font-semibold", text: product.name }),
       ),
       el(
         "div",
-        { class: "row", style: "gap: 6px;" },
+        { class: "row gap-6" },
         viewBtn,
         canEdit ? editBtn : null,
       ),
     ),
     el(
       "div",
-      { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-top: 6px; align-items: center;" },
+      { class: "row gap-12 flex-wrap items-center", style: "margin-top: 6px;" },
       el("div", {}, el("div", { class: "muted", text: "Created" }), el("div", { text: product.created_at ? product.created_at.slice(0, 10) : "-" })),
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: product.updated_at ? product.updated_at.slice(0, 10) : "-" })),
       el("div", {}, el("div", { class: "muted", text: "Versions" }), el("div", { text: product.version_count ?? "-" })),
       el("div", {}, el("div", { class: "muted", text: "Components" }), el("div", { text: product.component_count ?? "-" })),
     ),
-    product.description ? el("p", { class: "muted", style: "margin-top: 8px;", text: product.description }) : null,
+    product.description ? el("p", { class: "muted mt-8", text: product.description }) : null,
   );
 
   async function loadDetails(force = false) {
@@ -103,7 +102,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
   }
 
   function renderVersionsSection() {
-    const versionList = el("div", { style: "display: flex; flex-direction: column; gap: 8px;" });
+    const versionList = el("div", { class: "flex-col-8" });
     if (!detailData.versions?.length) {
       versionList.appendChild(el("div", { class: "muted", text: "No versions recorded yet." }));
     } else {
@@ -141,19 +140,19 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
         versionList.appendChild(
           el(
             "div",
-            { class: "row", style: "justify-content: space-between; align-items: center; gap: 10px;" },
+            { class: "row flex-between items-center gap-10" },
             el(
               "div",
               {},
-              el("div", { style: "font-weight: 600;", text: v.version }),
+              el("div", { class: "font-semibold", text: v.version }),
               el(
                 "div",
-                { class: "muted", style: "display: flex; gap: 12px; flex-wrap: wrap;" },
+                { class: "muted flex-row-12 flex-wrap" },
                 el("span", { text: v.is_active ? "Active" : "Inactive" }),
                 el("span", { text: v.release_date ? `Released ${v.release_date}` : "Release date not set" }),
               ),
             ),
-            canEdit ? el("div", { class: "row", style: "gap: 6px;" }, toggleBtn, deleteBtn) : null,
+            canEdit ? el("div", { class: "row gap-6" }, toggleBtn, deleteBtn) : null,
           ),
         );
       });
@@ -168,16 +167,16 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
       addForm = el(
         "form",
-        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        { class: "flex-col-8" },
         el("div", {}, el("div", { class: "muted", text: "Version" }), versionInput),
         el("div", {}, el("div", { class: "muted", text: "Release date" }), releaseInput),
         el(
           "label",
-          { class: "row", style: "gap: 8px; align-items: center;" },
+          { class: "row gap-8 items-center" },
           activeInput,
           el("span", { text: "Active" }),
         ),
-        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+        el("div", { class: "row flex-end" }, addBtn),
       );
 
       addForm.addEventListener("submit", async (e) => {
@@ -215,7 +214,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
       {},
       el("h4", { text: "Versions" }),
       versionList,
-      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
+      canEdit ? el("div", { class: "divider" }) : null,
       addForm,
     );
   }
@@ -229,7 +228,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
     const mappings = Array.isArray(detailData.controls) ? detailData.controls : [];
 
-    const list = el("div", { style: "display: flex; flex-direction: column; gap: 10px;" });
+    const list = el("div", { class: "flex-col-10" });
     if (!mappings.length) {
       list.appendChild(el("div", { class: "muted", text: "No controls mapped yet." }));
     } else {
@@ -273,7 +272,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
           notesInput.disabled = true;
         }
 
-        const removeBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Remove");
+        const removeBtn = el("button", { class: "btn text-danger" }, "Remove");
         if (canEdit) {
           removeBtn.addEventListener("click", async () => {
             if (!confirm(`Remove ${mapping.name} from this product?`)) return;
@@ -296,14 +295,14 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
         list.appendChild(
           el(
             "div",
-            { style: "border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px;" },
-            el("div", { style: "font-weight: 600;", text: mapping.name }),
+            { class: "detail-border p-10" },
+            el("div", { class: "font-semibold", text: mapping.name }),
             el("div", { class: "muted", text: mapping.framework ? `${mapping.framework}` : "No framework specified" }),
             mapping.description ? el("div", { class: "muted", text: mapping.description }) : null,
-            el("div", { style: "margin-top: 8px;" }, el("div", { class: "muted", text: "Implementation status" }), statusSelect),
-            el("div", { style: "margin-top: 8px;" }, el("div", { class: "muted", text: "Notes" }), notesInput),
+            el("div", { class: "mt-8" }, el("div", { class: "muted", text: "Implementation status" }), statusSelect),
+            el("div", { class: "mt-8" }, el("div", { class: "muted", text: "Notes" }), notesInput),
             canEdit
-              ? el("div", { class: "row", style: "gap: 8px; justify-content: flex-end; margin-top: 8px;" }, saveBtn, removeBtn)
+              ? el("div", { class: "row gap-8 flex-end mt-8" }, saveBtn, removeBtn)
               : null,
           ),
         );
@@ -340,11 +339,11 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
       addForm = el(
         "form",
-        { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
+        { class: "flex-col-8 mt-12" },
         el("div", {}, el("div", { class: "muted", text: "Control" }), addSelect),
         el("div", {}, el("div", { class: "muted", text: "Implementation status" }), addStatus),
         el("div", {}, el("div", { class: "muted", text: "Notes" }), addNotes),
-        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+        el("div", { class: "row flex-end" }, addBtn),
       );
 
       addForm.addEventListener("submit", async (e) => {
@@ -387,11 +386,11 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
       createForm = el(
         "form",
-        { style: "display: flex; flex-direction: column; gap: 8px; margin-top: 12px;" },
+        { class: "flex-col-8 mt-12" },
         el("div", {}, el("div", { class: "muted", text: "New control" }), createName),
         el("div", {}, el("div", { class: "muted", text: "Framework" }), createFramework),
         el("div", {}, el("div", { class: "muted", text: "Description" }), createDescription),
-        el("div", { class: "row", style: "justify-content: flex-end;" }, createBtn),
+        el("div", { class: "row flex-end" }, createBtn),
       );
 
       createForm.addEventListener("submit", async (e) => {
@@ -425,9 +424,9 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
     content.append(
       list,
-      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
+      canEdit ? el("div", { class: "divider" }) : null,
       addForm,
-      canEdit ? el("div", { class: "divider", style: "margin: 8px 0; height: 1px; background: #eee;" }) : null,
+      canEdit ? el("div", { class: "divider" }) : null,
       createForm,
     );
 
@@ -462,7 +461,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
 
     const form = el(
       "form",
-      { style: "display: flex; flex-direction: column; gap: 10px; margin-top: 8px;" },
+      { class: "flex-col-10 mt-8" },
       el("div", {}, el("div", { class: "muted", text: "Name" }), nameInput),
       el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
       isAdminUser
@@ -470,7 +469,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
         : el("div", { class: "muted", text: "Owner assignment is restricted to Admins." }),
       el(
         "div",
-        { class: "row", style: "justify-content: flex-end; gap: 8px;" },
+        { class: "row flex-end gap-8" },
         cancelBtn,
         saveBtn,
       ),
@@ -524,13 +523,13 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
       {},
       el("h4", { text: "Owners" }),
       detailData.owners?.length
-        ? el("div", { class: "row", style: "gap: 6px; flex-wrap: wrap;" }, ...(detailData.owners.map(renderOwnerChip)))
+        ? el("div", { class: "row gap-6 flex-wrap" }, ...(detailData.owners.map(renderOwnerChip)))
         : el("div", { class: "muted", text: "No owners assigned." }),
     );
 
     const meta = el(
       "div",
-      { class: "row", style: "gap: 12px; flex-wrap: wrap; margin-bottom: 8px;" },
+      { class: "row gap-12 flex-wrap mb-8" },
       detailData.created_by ? el("div", {}, el("div", { class: "muted", text: "Created by" }), el("div", { text: detailData.created_by.full_name || detailData.created_by.username })) : null,
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: detailData.updated_at ? detailData.updated_at.slice(0, 10) : "-" })),
     );
@@ -539,16 +538,16 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
       ? el("p", { text: detailData.description })
       : el("p", { class: "muted", text: "No description provided." });
 
-    const deleteBtn = el("button", { class: "btn", style: "color: #b91c1c;" }, "Delete product");
+    const deleteBtn = el("button", { class: "btn text-danger" }, "Delete product");
     const componentSection = el(
       "div",
       {},
       el("h4", { text: "Software components" }),
       detailData.components?.length
-        ? el("div", { style: "display:flex; flex-direction:column; gap:8px;" },
+        ? el("div", { class: "flex-col-8" },
             ...detailData.components.map((c) =>
-              el("div", { class: "card", style: "padding:8px;" },
-                el("div", { style: "font-weight:600;", text: `${c.ecosystem || "pkg"} • ${c.name} ${c.version || ""}` }),
+              el("div", { class: "card p-8" },
+                el("div", { class: "font-semibold", text: `${c.ecosystem || "pkg"} • ${c.name} ${c.version || ""}` }),
                 el("div", { class: "muted", text: `Product version: ${c.version_label || "-"}` }),
                 c.dependency_path ? el("div", { class: "muted", text: c.dependency_path }) : null,
               )
@@ -574,7 +573,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
     const actionRow = canEdit
       ? el(
           "div",
-          { class: "row", style: "gap: 8px; justify-content: flex-end; flex-wrap: wrap;" },
+          { class: "row gap-8 flex-end flex-wrap" },
           el("button", { class: "btn", type: "button", onclick: async () => { isEditing = !isEditing; await loadDetails(); renderDetails(); } }, isEditing ? "Close editor" : "Edit product"),
           isAdminUser ? deleteBtn : null,
         )

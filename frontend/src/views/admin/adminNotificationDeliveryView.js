@@ -42,7 +42,7 @@ function attemptRow(attempt, { onRetry, onReplay }) {
     el("td", {}, `${attempt.retry_count ?? 0}`),
     el("td", {}, formatDate(attempt.next_retry_at)),
     el("td", {}, formatDate(attempt.created_at)),
-    el("td", {}, el("div", { class: "row", style: "gap:6px;" }, retryBtn, replayBtn)),
+    el("td", {}, el("div", { class: "row gap-6" }, retryBtn, replayBtn)),
   );
 }
 
@@ -53,7 +53,7 @@ export async function AdminNotificationDeliveryView() {
   const tbody = el("tbody", {});
   const table = el(
     "table",
-    { class: "card", style: "width:100%; border-collapse:collapse;" },
+    { class: "card w-full", style: "border-collapse:collapse;" },
     el(
       "thead",
       {},
@@ -127,7 +127,7 @@ export async function AdminNotificationDeliveryView() {
     { class: "stack" },
     el("h1", { text: "Admin · Notification Delivery" }),
     el("p", { class: "muted", text: "Monitor recent notification attempts and trigger guarded retry/replay actions." }),
-    el("div", { class: "row", style: "gap:8px; align-items:center;" }, failedOnlyToggle, el("span", {}, "Show failed only"), refreshBtn),
+    el("div", { class: "row flex-row-8" }, failedOnlyToggle, el("span", {}, "Show failed only"), refreshBtn),
     table,
   );
 }

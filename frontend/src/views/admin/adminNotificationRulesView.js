@@ -74,7 +74,7 @@ function ruleCard(rule, products, { onSave, onDelete, onTestSend }) {
   const testBtn = el("button", { class: "btn" }, "Test send");
   testBtn.addEventListener("click", () => onTestSend(rule.id));
 
-  return el("div", { class: "card", style: "padding:12px; display:flex; flex-direction:column; gap:8px;" },
+  return el("div", { class: "card p-12 flex-col-8" },
     el("h3", { text: `Rule #${rule.id}` }),
     el("label", {}, "Name", nameInput),
     el("label", {}, "Delivery adapter", adapterSelect),
@@ -88,7 +88,7 @@ function ruleCard(rule, products, { onSave, onDelete, onTestSend }) {
     el("label", {}, "Recipients (comma-separated)", recipientsInput),
     el("label", {}, "Delivery config (JSON)", configInput),
     el("label", {}, "Product scope", scopeSelect),
-    el("div", { class: "row", style: "gap:8px;" }, saveBtn, testBtn, deleteBtn),
+    el("div", { class: "row gap-8" }, saveBtn, testBtn, deleteBtn),
   );
 }
 
@@ -97,8 +97,8 @@ export async function AdminNotificationRulesView() {
   let products = [];
   let logs = [];
 
-  const list = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
-  const logList = el("div", { style: "display:flex; flex-direction:column; gap:6px;" });
+  const list = el("div", { class: "flex-col" });
+  const logList = el("div", { class: "flex-col-6" });
 
   async function refresh() {
     [rules, products, logs] = await Promise.all([
@@ -161,7 +161,7 @@ export async function AdminNotificationRulesView() {
       logList.appendChild(el("div", { class: "muted", text: "No delivery logs yet." }));
     } else {
       logs.forEach((log) => {
-        logList.appendChild(el("div", { class: "card", style: "padding:8px;" },
+        logList.appendChild(el("div", { class: "card p-8" },
           el("div", { text: `Rule ${log.rule_id} · Vuln ${log.vulnerability_id} · ${log.event_type}` }),
           el("div", { class: "muted", text: `${log.delivery_adapter} · ${log.success ? "success" : "failed"}` }),
           log.error_message ? el("div", { class: "muted", text: log.error_message }) : null,

@@ -26,23 +26,21 @@ export function promptModal({
 } = {}) {
   return new Promise((resolve) => {
     const backdrop = el("div", {
-      style:
-        "position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;",
+      class: "modal-backdrop",
       role: "dialog",
       "aria-modal": "true",
       "aria-label": title,
     });
 
     const input = el("input", {
-      class: "input",
-      style: "width:100%;box-sizing:border-box;",
+      class: "input w-full",
       value: defaultValue,
       placeholder,
       "aria-label": inputLabel || title,
     });
 
     const errorEl = el("div", {
-      style: "color:#dc2626;font-size:13px;min-height:18px;margin-top:2px;",
+      class: "text-error modal-error",
     });
 
     const confirmBtn = el("button", { class: "btn primary", type: "submit" }, confirmText);
@@ -66,9 +64,8 @@ export function promptModal({
     const form = el(
       "form",
       {
-        class: "card",
-        style:
-          "min-width:340px;max-width:480px;width:90%;padding:20px;display:flex;flex-direction:column;gap:10px;",
+        class: "modal-panel modal-sm",
+        style: "min-width:340px;max-width:480px;",
         onsubmit: (e) => {
           e.preventDefault();
           const val = input.value;
@@ -80,12 +77,13 @@ export function promptModal({
           close(val);
         },
       },
-      el("h3", { style: "margin:0;" }, title),
-      message ? el("p", { class: "muted", style: "margin:0;" }, message) : null,
+      el("h3", { class: "m-0" }, title),
+      message ? el("p", { class: "muted m-0" }, message) : null,
+
       inputLabel
         ? el(
             "label",
-            { style: "display:flex;flex-direction:column;gap:4px;" },
+            { class: "flex-col" },
             el("span", {}, inputLabel),
             input,
           )
@@ -93,7 +91,7 @@ export function promptModal({
       errorEl,
       el(
         "div",
-        { class: "row", style: "justify-content:flex-end;gap:8px;" },
+        { class: "row flex-end gap-8" },
         cancelBtn,
         confirmBtn,
       ),

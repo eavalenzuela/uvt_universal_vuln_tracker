@@ -19,7 +19,7 @@ function renderVersionRow(mapping, vulnId, reloadDetails, canEdit) {
   const notesInput = el("textarea", { class: "input", value: mapping.notes || "", placeholder: "Notes" });
 
   const saveBtn = el("button", { class: "btn primary", type: "button" }, "Save");
-  const deleteBtn = el("button", { class: "btn", type: "button", style: "color: #b91c1c;" }, "Remove");
+  const deleteBtn = el("button", { class: "btn text-danger", type: "button" }, "Remove");
 
   if (canEdit) {
     saveBtn.addEventListener("click", async () => {
@@ -68,32 +68,32 @@ function renderVersionRow(mapping, vulnId, reloadDetails, canEdit) {
 
   return el(
     "div",
-    { class: "card", style: "padding: 10px; display: flex; flex-direction: column; gap: 8px;" },
+    { class: "card p-10 flex-col-8" },
     el(
       "div",
-      { class: "row", style: "justify-content: space-between; gap: 8px;" },
+      { class: "row flex-between gap-8" },
       el(
         "div",
         {},
         el("div", { class: "muted", text: mapping.product_name || "Product" }),
-        el("div", { style: "font-weight: 600;", text: mapping.version || "Version" }),
+        el("div", { class: "font-semibold", text: mapping.version || "Version" }),
         mapping.release_date ? el("div", { class: "muted", text: `Released ${formatDate(mapping.release_date)}` }) : null,
       ),
       canEdit
-        ? el("div", { class: "row", style: "gap: 6px; align-items: center;" }, deleteBtn, saveBtn)
+        ? el("div", { class: "row gap-6 items-center" }, deleteBtn, saveBtn)
         : null,
     ),
     el(
       "div",
-      { class: "row", style: "gap: 8px; flex-wrap: wrap; align-items: center;" },
+      { class: "row gap-8 flex-wrap items-center" },
       el(
         "label",
-        { class: "row", style: "gap: 6px; align-items: center;" },
+        { class: "row gap-6 items-center" },
         affectedToggle,
         el("span", { text: "Affected" }),
       ),
-      el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Fixed in" }), fixedInput),
-      el("div", { style: "flex: 1; min-width: 180px;" }, el("div", { class: "muted", text: "Mitigation" }), mitigationSelect),
+      el("div", { class: "flex-1", style: "min-width: 180px;" }, el("div", { class: "muted", text: "Fixed in" }), fixedInput),
+      el("div", { class: "flex-1", style: "min-width: 180px;" }, el("div", { class: "muted", text: "Mitigation" }), mitigationSelect),
     ),
     el("div", {}, el("div", { class: "muted", text: "Notes" }), notesInput),
   );
@@ -101,7 +101,7 @@ function renderVersionRow(mapping, vulnId, reloadDetails, canEdit) {
 
 export function renderVersionsSection(detailData, vulnId, reloadDetails, canEdit) {
   const container = el("div", {});
-  const list = el("div", { style: "display: flex; flex-direction: column; gap: 8px;" });
+  const list = el("div", { class: "flex-col-8" });
 
   if (!detailData.affected_versions?.length) {
     list.appendChild(el("div", { class: "muted", text: "No affected product versions linked." }));
@@ -159,10 +159,10 @@ export function renderVersionsSection(detailData, vulnId, reloadDetails, canEdit
     container.appendChild(
       el(
         "div",
-        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        { class: "flex-col-8" },
         el("div", { class: "muted", text: "Link additional product versions" }),
         select,
-        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+        el("div", { class: "row flex-end" }, addBtn),
       )
     );
   }

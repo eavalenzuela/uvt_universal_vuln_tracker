@@ -11,9 +11,6 @@ import { listVulnerabilitiesWithFilters, loadHighRiskVulnerabilityDetails, loadR
 import {
   STATUS_OPTIONS,
   SEVERITY_OPTIONS,
-  WIDGET_BORDER,
-  WIDGET_SURFACE,
-  WIDGET_SUBTLE,
   DASHBOARD_SUMMARY_POLL_MS,
   renderSparkline,
   severityBadge,
@@ -22,7 +19,7 @@ import {
 
 export function renderHighRiskWidget(ctx) {
   const { writable } = ctx;
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const list = el("div", { class: "muted", text: "Loading high-risk vulnerabilities..." });
   container.append(list);
 
@@ -43,8 +40,7 @@ export function renderHighRiskWidget(ctx) {
       const headerRow = el(
         "div",
         {
-          style:
-            "display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:#64748b;",
+          class: "widget-grid-high-risk text-label",
         },
         el("div", { text: "ID" }),
         el("div", { text: "Title" }),
@@ -72,7 +68,7 @@ export function renderHighRiskWidget(ctx) {
 
         const actionRow = el(
           "div",
-          { style: "display:flex; gap:6px; flex-wrap:wrap; align-items:center;" },
+          { class: "flex-row-6 flex-wrap" },
           el("button", {
             class: "btn",
             text: "Open",
@@ -83,12 +79,12 @@ export function renderHighRiskWidget(ctx) {
         if (writable) {
           const statusSelect = el(
             "select",
-            { class: "input", style: "padding:4px 6px; font-size:12px;" },
+            { class: "input input-sm" },
             ...STATUS_OPTIONS.map((status) =>
               el("option", { value: status, text: status, selected: status === item.status }),
             ),
           );
-          const assigneeSelect = el("select", { class: "input", style: "padding:4px 6px; font-size:12px; min-width:120px;" },
+          const assigneeSelect = el("select", { class: "input input-sm", style: "min-width:120px;" },
             el("option", { value: "", text: "Unassigned" }),
             ...(users || []).map((u) => {
               const label = u.full_name || u.username || u.email || `User ${u.id}`;
@@ -122,11 +118,10 @@ export function renderHighRiskWidget(ctx) {
         return el(
           "div",
           {
-            style:
-              `display:grid; grid-template-columns: 72px 1.6fr 1.1fr 70px 110px 70px 140px auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
+            class: "widget-grid-high-risk widget-row",
           },
-          el("div", { style: "font-weight:600; color:#e2e8f0;", text: vulnId }),
-          el("div", { style: "font-weight:600;", text: item.title }),
+          el("div", { class: "font-semibold text-subtle", text: vulnId }),
+          el("div", { class: "font-semibold", text: item.title }),
           el("div", { class: "muted", text: assetLabel }),
           el("div", { text: item.cvss_score ?? "-" }),
           severityBadge(item.severity || "Unknown"),
@@ -150,7 +145,7 @@ export function renderHighRiskWidget(ctx) {
 }
 
 export function renderRiskOverviewWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:10px;" });
+  const container = el("div", { class: "flex-col-10" });
   const content = el("div", { class: "muted", text: "Loading risk overview..." });
   container.append(content);
 
@@ -166,27 +161,27 @@ export function renderRiskOverviewWidget(widgetSettings) {
     content.innerHTML = "";
     const kpiRow = el(
       "div",
-      { style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px;" },
-      el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+      { class: "widget-kpi-grid" },
+      el("div", { class: "widget-surface" },
         el("div", { class: "muted", text: "Total" }),
-        el("div", { style: "font-size:20px; font-weight:600;", text: summaryState.total ?? 0 }),
+        el("div", { class: "kpi-value", text: summaryState.total ?? 0 }),
       ),
-      el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+      el("div", { class: "widget-surface" },
         el("div", { class: "muted", text: "Critical" }),
-        el("div", { style: "font-size:20px; font-weight:600; color:#b91c1c;", text: summaryState.by_severity?.Critical ?? 0 }),
+        el("div", { class: "kpi-value-critical", text: summaryState.by_severity?.Critical ?? 0 }),
       ),
-      el("div", { style: `padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
+      el("div", { class: "widget-surface" },
         el("div", { class: "muted", text: "High" }),
-        el("div", { style: "font-size:20px; font-weight:600; color:#b45309;", text: summaryState.by_severity?.High ?? 0 }),
+        el("div", { class: "kpi-value-high", text: summaryState.by_severity?.High ?? 0 }),
       ),
     );
 
     const trendBlock = el(
       "div",
-      { style: `display:flex; align-items:center; gap:12px; padding:8px; border-radius:8px; background:${WIDGET_SURFACE}; border:1px solid ${WIDGET_BORDER};` },
-      el("div", { style: "display:flex; flex-direction:column; gap:4px;" },
+      { class: "widget-surface flex-row-12" },
+      el("div", { class: "flex-col-4" },
         el("div", { class: "muted", text: `Updates (${widgetSettings.range})` }),
-        el("div", { style: "font-size:16px; font-weight:600;", text: `${totalUpdates} updates` }),
+        el("div", { class: "font-semibold", style: "font-size:16px;", text: `${totalUpdates} updates` }),
       ),
       renderSparkline(counts),
     );
@@ -237,7 +232,7 @@ export function renderRiskOverviewWidget(widgetSettings) {
 }
 
 export function renderRecentlyUpdatedWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const list = el("div", { class: "muted", text: "Loading updates..." });
   container.append(list);
 
@@ -266,14 +261,13 @@ export function renderRecentlyUpdatedWidget(widgetSettings) {
           el(
             "div",
             {
-              style:
-                `display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
+              class: "flex-between gap-8 widget-row",
             },
-            el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
-              el("span", { style: "font-weight:600;", text: item.title }),
+            el("div", { class: "flex-col-2" },
+              el("span", { class: "font-semibold", text: item.title }),
               el("span", { class: "muted", text: `Updated ${formatAge(item.updated_at)} ago` }),
             ),
-            el("div", { style: "display:flex; align-items:center; gap:6px;" },
+            el("div", { class: "flex-row-6" },
               severityBadge(item.severity),
               el("button", { class: "btn", text: "Open", onClick: () => navigate(`/vulnerabilities/${item.id}`) }),
             ),
@@ -292,7 +286,7 @@ export function renderRecentlyUpdatedWidget(widgetSettings) {
 }
 
 export function renderSlaWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const list = el("div", { class: "muted", text: "Loading SLA items..." });
   container.append(list);
 
@@ -337,16 +331,16 @@ export function renderSlaWidget(widgetSettings) {
       }, {});
 
       list.innerHTML = "";
-      const rollup = el("div", { style: `display:grid; grid-template-columns: 1fr 1fr; gap:10px; padding:8px; border:1px solid ${WIDGET_BORDER}; border-radius:8px; background:${WIDGET_SURFACE};` });
+      const rollup = el("div", { class: "widget-surface widget-rollup" });
       rollup.append(
         el("div", {},
-          el("div", { style: "font-weight:600;", text: "Breaches by severity" }),
+          el("div", { class: "font-semibold", text: "Breaches by severity" }),
           ...(Object.entries(bySeverity).length
             ? Object.entries(bySeverity).sort((a, b) => b[1] - a[1]).map(([severity, count]) => el("div", { class: "muted", text: `${severity}: ${count}` }))
             : [el("div", { class: "muted", text: "No breaches." })]),
         ),
         el("div", {},
-          el("div", { style: "font-weight:600;", text: "Breaches by owner" }),
+          el("div", { class: "font-semibold", text: "Breaches by owner" }),
           ...(Object.entries(byOwner).length
             ? Object.entries(byOwner).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([owner, count]) => el("div", { class: "muted", text: `${owner}: ${count}` }))
             : [el("div", { class: "muted", text: "No breaches." })]),
@@ -365,11 +359,10 @@ export function renderSlaWidget(widgetSettings) {
           el(
             "div",
             {
-              style:
-                `display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
+              class: "widget-grid-sla widget-row",
             },
-            el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
-              el("span", { style: "font-weight:600;", text: item.title }),
+            el("div", { class: "flex-col-2" },
+              el("span", { class: "font-semibold", text: item.title }),
               el("span", { class: "muted", text: `Due ${formatDate(item.dueDate)}` }),
             ),
             severityBadge(item.severity),
@@ -390,7 +383,7 @@ export function renderSlaWidget(widgetSettings) {
 }
 
 export function renderTopAssetsWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const list = el("div", { class: "muted", text: "Loading affected assets..." });
   container.append(list);
 
@@ -450,14 +443,15 @@ export function renderTopAssetsWidget(widgetSettings) {
         list.append(
           el(
             "div",
-            { style: `display:flex; flex-direction:column; gap:4px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};` },
-            el("div", { style: "display:flex; justify-content:space-between; align-items:center; gap:8px;" },
-              el("span", { style: "font-weight:600;", text: entry.label }),
+            { class: "flex-col-4 widget-row" },
+            el("div", { class: "flex-between gap-8" },
+              el("span", { class: "font-semibold", text: entry.label }),
               el("span", { class: "muted", text: `${entry.count} vulns` }),
             ),
-            el("div", { style: `height:6px; border-radius:999px; background:${WIDGET_SUBTLE}; overflow:hidden;` },
+            el("div", { class: "progress-track" },
               el("div", {
-                style: `height:100%; width:${(entry.count / max) * 100}%; background:#2563eb;`,
+                class: "progress-fill",
+                style: `width:${(entry.count / max) * 100}%;`,
               }),
             ),
           ),
@@ -475,7 +469,7 @@ export function renderTopAssetsWidget(widgetSettings) {
 }
 
 export function renderRiskTrendsWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const body = el("div", { class: "muted", text: "Loading risk trend data..." });
   container.append(body);
 
@@ -504,8 +498,8 @@ export function renderRiskTrendsWidget(widgetSettings) {
       topSeries.forEach((series) => {
         const spark = renderSparkline(series.items.map((row) => row.weighted_risk_score || 0));
         body.append(
-          el("div", { style: `padding:8px; border:1px solid ${WIDGET_BORDER}; border-radius:8px; background:${WIDGET_SURFACE};` },
-            el("div", { style: "font-weight:600;", text: series.name }),
+          el("div", { class: "widget-surface" },
+            el("div", { class: "font-semibold", text: series.name }),
             el("div", { class: "muted", text: `Buckets: ${series.items.length} • Total score: ${series.score}` }),
             spark,
           ),
@@ -521,7 +515,7 @@ export function renderRiskTrendsWidget(widgetSettings) {
 }
 
 export function renderTopRiskProductsWidget(widgetSettings) {
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const body = el("div", { class: "muted", text: "Loading top-risk products..." });
   container.append(body);
 
@@ -537,12 +531,12 @@ export function renderTopRiskProductsWidget(widgetSettings) {
       rows.forEach((item, idx) => {
         const label = `${item.product_name || "Unknown"} ${item.product_version || ""}`.trim();
         body.append(
-          el("div", { style: `display:grid; grid-template-columns:32px 1.4fr 0.8fr 0.8fr 1fr; gap:8px; padding:6px 0; border-top:1px solid ${WIDGET_BORDER}; align-items:center;` },
+          el("div", { class: "widget-grid-top-risk widget-row" },
             el("div", { text: `${idx + 1}.` }),
             el("div", { text: label }),
             el("div", { class: "muted", text: `Critical: ${item.open_critical_count}` }),
             el("div", { class: "muted", text: `Overdue: ${item.overdue_sla_count}` }),
-            el("div", { style: "font-weight:600;", text: `Score: ${item.weighted_risk_score}` }),
+            el("div", { class: "font-semibold", text: `Score: ${item.weighted_risk_score}` }),
           ),
         );
       });
@@ -557,7 +551,7 @@ export function renderTopRiskProductsWidget(widgetSettings) {
 
 export function renderMyWorkWidget(widgetSettings, ctx) {
   const { user } = ctx;
-  const container = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+  const container = el("div", { class: "flex-col-8" });
   const list = el("div", { class: "muted", text: "Loading assigned work..." });
   container.append(list);
 
@@ -590,11 +584,10 @@ export function renderMyWorkWidget(widgetSettings, ctx) {
           el(
             "div",
             {
-              style:
-                `display:grid; grid-template-columns: 1.6fr 0.8fr 0.8fr auto; gap:8px; align-items:center; padding:6px 0; border-top:1px solid ${WIDGET_BORDER};`,
+              class: "widget-grid-sla widget-row",
             },
-            el("div", { style: "display:flex; flex-direction:column; gap:2px;" },
-              el("span", { style: "font-weight:600;", text: item.title }),
+            el("div", { class: "flex-col-2" },
+              el("span", { class: "font-semibold", text: item.title }),
               el("span", { class: "muted", text: `Updated ${formatAge(item.updated_at)} ago` }),
             ),
             severityBadge(item.severity),

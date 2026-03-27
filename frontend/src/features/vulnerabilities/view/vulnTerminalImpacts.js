@@ -10,7 +10,7 @@ import { ensureTerminalImpacts } from "./vulnShared.js";
 function renderTerminalImpactRow(mapping, vulnId, reloadDetails, canEdit) {
   const impactSelect = el("select", { class: "input" });
   const saveBtn = el("button", { class: "btn primary", type: "button" }, "Save");
-  const deleteBtn = el("button", { class: "btn", type: "button", style: "color: #b91c1c;" }, "Remove");
+  const deleteBtn = el("button", { class: "btn text-danger", type: "button" }, "Remove");
 
   const fillImpactOptions = async () => {
     const impacts = await ensureTerminalImpacts();
@@ -68,25 +68,25 @@ function renderTerminalImpactRow(mapping, vulnId, reloadDetails, canEdit) {
 
   return el(
     "div",
-    { class: "card", style: "padding: 10px; display: flex; flex-direction: column; gap: 8px;" },
+    { class: "card p-10 flex-col-8" },
     el(
       "div",
-      { class: "row", style: "justify-content: space-between; gap: 8px;" },
+      { class: "row flex-between gap-8" },
       el(
         "div",
         {},
-        el("div", { style: "font-weight: 600;", text: mapping.terminal_impact_name || "Terminal impact" }),
+        el("div", { class: "font-semibold", text: mapping.terminal_impact_name || "Terminal impact" }),
         mapping.terminal_impact_description ? el("div", { class: "muted", text: mapping.terminal_impact_description }) : null,
       ),
-      canEdit ? el("div", { class: "row", style: "gap: 6px; align-items: center;" }, deleteBtn, saveBtn) : null,
+      canEdit ? el("div", { class: "row flex-row-6" }, deleteBtn, saveBtn) : null,
     ),
-    el("div", { style: "flex: 1; min-width: 200px;" }, el("div", { class: "muted", text: "Terminal impact" }), impactSelect),
+    el("div", { class: "flex-1", style: "min-width: 200px;" }, el("div", { class: "muted", text: "Terminal impact" }), impactSelect),
   );
 }
 
 export function renderTerminalImpactsSection(detailData, vulnId, reloadDetails, canEdit) {
   const container = el("div", {});
-  const list = el("div", { style: "display: flex; flex-direction: column; gap: 8px;" });
+  const list = el("div", { class: "flex-col-8" });
 
   if (!detailData.terminal_impacts?.length) {
     list.appendChild(el("div", { class: "muted", text: "No terminal impacts linked." }));
@@ -141,10 +141,10 @@ export function renderTerminalImpactsSection(detailData, vulnId, reloadDetails, 
     container.appendChild(
       el(
         "div",
-        { style: "display: flex; flex-direction: column; gap: 8px;" },
+        { class: "flex-col-8" },
         el("div", { class: "muted", text: "Link terminal impacts" }),
         impactSelect,
-        el("div", { class: "row", style: "justify-content: flex-end;" }, addBtn),
+        el("div", { class: "row flex-end" }, addBtn),
       )
     );
   }

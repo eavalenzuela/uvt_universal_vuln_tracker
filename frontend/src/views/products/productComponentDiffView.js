@@ -20,7 +20,7 @@ function versionLabel(v) {
 }
 
 function renderSimpleTable(title, rows, columns) {
-  const table = el("table", { class: "table", style: "width: 100%;" });
+  const table = el("table", { class: "table w-full" });
   const thead = el("thead", {});
   const trh = el("tr", {});
   columns.forEach((col) => trh.appendChild(el("th", { text: col.label })));
@@ -38,7 +38,7 @@ function renderSimpleTable(title, rows, columns) {
   }
 
   table.append(thead, tbody);
-  return el("div", { class: "card", style: "padding: 12px;" }, el("h4", { text: title }), table);
+  return el("div", { class: "card p-12" }, el("h4", { text: title }), table);
 }
 
 export function ProductComponentDiffView() {
@@ -165,14 +165,14 @@ export function ProductComponentDiffView() {
 
   const controls = el(
     "div",
-    { class: "card", style: "padding: 12px;" },
+    { class: "card p-12" },
     el("h3", { text: "Select Versions" }),
-    el("div", { class: "row", style: "gap: 8px; align-items: end; flex-wrap: wrap;" },
+    el("div", { class: "row gap-8 items-end flex-wrap" },
       el("div", {}, el("div", { class: "muted", text: "From version" }), fromSelect),
       el("div", {}, el("div", { class: "muted", text: "To version" }), toSelect),
       compareBtn,
     ),
-    el("div", { class: "muted", style: "margin-top: 8px;" }, summary),
+    el("div", { class: "muted mt-8" }, summary),
   );
 
   root.append(header, controls, results);
