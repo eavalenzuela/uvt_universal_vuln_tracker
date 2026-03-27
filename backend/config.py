@@ -104,6 +104,10 @@ class AppConfig:
     # Runtime environment
     runtime_env: str = ""
 
+    # Logging
+    log_level: str = "INFO"
+    log_format: str = "json"
+
     # Secrets
     secret_key: str = "dev-secret"
     jwt_secret: str = "dev-jwt-secret"
@@ -131,6 +135,10 @@ class AppConfig:
 
     # Database
     database_url: str = "sqlite:///uvt.db"
+    db_pool_size: int = 5
+    db_pool_max_overflow: int = 10
+    db_pool_recycle: int = 1800
+    db_pool_pre_ping: bool = True
 
     # Rate limiting
     rate_limit_enabled: bool = True
@@ -148,6 +156,9 @@ class AppConfig:
     rate_limit_sensitive_window_seconds: int = 60
     rate_limit_health_limit: int = 120
     rate_limit_health_window_seconds: int = 60
+
+    # Frontend
+    frontend_url: str = "http://127.0.0.1:5173"
 
     # Plugins
     plugin_import_paths: list[str] = field(default_factory=list)
@@ -190,6 +201,10 @@ def load_config() -> AppConfig:
         oidc_role_mapping=_str("OIDC_ROLE_MAPPING"),
         cors_origins=_parse_cors_origins(),
         database_url=_str("DATABASE_URL", "sqlite:///uvt.db"),
+        db_pool_size=_int("DB_POOL_SIZE", 5),
+        db_pool_max_overflow=_int("DB_POOL_MAX_OVERFLOW", 10),
+        db_pool_recycle=_int("DB_POOL_RECYCLE", 1800),
+        db_pool_pre_ping=_bool("DB_POOL_PRE_PING", True),
         rate_limit_enabled=_bool("RATE_LIMIT_ENABLED", True),
         rate_limit_backend=_str("RATE_LIMIT_BACKEND", "memory"),
         redis_url=_str("REDIS_URL", "redis://localhost:6379/0"),
@@ -205,6 +220,7 @@ def load_config() -> AppConfig:
         rate_limit_sensitive_window_seconds=_int("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", 60),
         rate_limit_health_limit=_int("RATE_LIMIT_HEALTH_LIMIT", 120),
         rate_limit_health_window_seconds=_int("RATE_LIMIT_HEALTH_WINDOW_SECONDS", 60),
+        frontend_url=_str("FRONTEND_URL", "http://127.0.0.1:5173"),
         plugin_import_paths=_parse_plugin_paths(),
     )
 
@@ -262,6 +278,17 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["RATE_LIMIT_HEALTH_LIMIT"] = cfg.rate_limit_health_limit
     app.config["RATE_LIMIT_HEALTH_WINDOW_SECONDS"] = cfg.rate_limit_health_window_seconds
 
+    app.config["FRONTEND_URL"] = cfg.frontend_url
+
     app.config["SQLALCHEMY_DATABASE_URI"] = cfg.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    # Connection pool tuning (applies to PostgreSQL; SQLite ignores pool settings)
+    if not cfg.database_url.startswith("sqlite"):
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_size": cfg.db_pool_size,
+            "max_overflow": cfg.db_pool_max_overflow,
+            "pool_recycle": cfg.db_pool_recycle,
+            "pool_pre_ping": cfg.db_pool_pre_ping,
+        }
     app.config["PLUGIN_IMPORT_PATHS"] = cfg.plugin_import_paths

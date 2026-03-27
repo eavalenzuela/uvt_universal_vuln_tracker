@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.2.4
+
+### Security
+- **S7: Add `pip-audit` to CI** — New `dependency-audit` job in `repo-hygiene.yml` runs `pip-audit` on every push and PR to detect known vulnerabilities in Python dependencies.
+
+## v2.2.3
+
+### Added
+- **F11: Database connection pool tuning** — Added `DB_POOL_SIZE` (default: 5), `DB_POOL_MAX_OVERFLOW` (default: 10), `DB_POOL_RECYCLE` (default: 1800s), and `DB_POOL_PRE_PING` (default: true) env vars. Pool settings apply to PostgreSQL deployments; SQLite is unaffected. `pool_pre_ping` is enabled by default to handle stale connections.
+
+## v2.2.2
+
+### Added
+- **F5: Structured JSON logging with request ID correlation** — Replaced `logging.basicConfig()` with structured JSON formatter (`python-json-logger`). Each request gets a unique ID (from `X-Request-ID` header or auto-generated), injected into all log records and returned in `X-Request-ID` response header. Access log records method, path, status, duration, and user ID. Configurable via `LOG_LEVEL` (default: `INFO`) and `LOG_FORMAT` (`json` or `text`) env vars.
+
+## v2.2.1
+
+### Security
+- **S2: Remove temp password from API response** — `POST /api/users/invite` no longer returns the plaintext password. Instead, a time-limited password-reset email is sent to the invited user.
+
+### Added
+- **F2: Self-service password reset** — New `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` endpoints with single-use, 60-minute tokens (SHA-256 hashed in DB). Frontend forgot-password and reset-password pages linked from login. Rate-limited with `RATE_LIMIT_SENSITIVE_LIMIT`. New `PasswordResetToken` model, `FRONTEND_URL` config var, and 9 backend tests.
+
 ## v2.1.4
 
 ### Added

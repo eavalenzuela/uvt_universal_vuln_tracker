@@ -186,13 +186,13 @@ Set the stage for frontend improvements and close remaining security gaps.
 - ~~V7: Hover & interactive states~~ (v2.1.3)
 - ~~V8 + V9: Badge/pill CSS system + typography scale~~ (v2.1.4)
 
-### Phase 3 — Backend Features
+### Phase 3 — Backend Features ✅
 Password reset flow, logging, and infrastructure hardening.
 
-- S2 + F2: Self-service password reset (replaces temp password in API response)
-- F5: Structured JSON logging with request ID correlation
-- F11: Database connection pool tuning
-- S7: Add `pip-audit` to CI
+- ~~S2 + F2: Self-service password reset (replaces temp password in API response)~~ (v2.2.1)
+- ~~F5: Structured JSON logging with request ID correlation~~ (v2.2.2)
+- ~~F11: Database connection pool tuning~~ (v2.2.3)
+- ~~S7: Add `pip-audit` to CI~~ (v2.2.4)
 
 ### Phase 4 — Frontend Visual Overhaul
 Bulk visual improvements, building on the Phase 2 CSS foundation.

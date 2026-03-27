@@ -263,7 +263,7 @@ def test_user_management_endpoints(app, client):
     )
     assert invite_resp.status_code == 201
     invited = invite_resp.get_json()
-    assert invited["temp_password"]
+    assert invited["reset_email_sent"] is True
 
     list_resp = client.get("/api/users?search=analyst&role=Analyst&status=active", headers=headers)
     assert list_resp.status_code == 200

@@ -49,6 +49,10 @@ from .plugins import (
     ExternalSourceState,
 )
 
+from .password_reset import (
+    PasswordResetToken,
+)
+
 from .reports import (
     ReportSchedule,
     ReportTemplate,
@@ -90,6 +94,7 @@ __all__ = [
     "PluginRunArtifact",
     "PluginRunArtifactLink",
     "ExternalSourceState",
+    "PasswordResetToken",
     "ReportSchedule",
     "ReportTemplate",
     "ReportArtifact",

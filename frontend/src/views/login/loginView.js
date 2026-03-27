@@ -72,6 +72,9 @@ export async function LoginView() {
       passwordInput,
       el("div", { class: "form-actions" }, btn)
     ),
+    el("div", { style: "margin-top: 12px; text-align: center;" },
+      el("a", { href: "#/forgot-password", class: "link", text: "Forgot password?" })
+    ),
     ssoButton ? el("div", { class: "form-actions", style: "margin-top: 16px;" }, ssoButton) : null
   );
 

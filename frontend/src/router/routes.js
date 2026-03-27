@@ -1,5 +1,7 @@
 import { requireAuth, requireRole } from "./guards.js";
 import { LoginView } from "../views/login/loginView.js";
+import { ForgotPasswordView } from "../views/login/forgotPasswordView.js";
+import { ResetPasswordView } from "../views/login/resetPasswordView.js";
 import { DashboardView } from "../views/dashboard/dashboardView.js";
 import { VulnListView } from "../views/vulnerabilities/vulnListView.js";
 import { VulnDetailView } from "../views/vulnerabilities/vulnDetailView.js";
@@ -19,6 +21,8 @@ import { NotificationsView } from "../views/notifications/notificationsView.js";
 
 export const ROUTES = [
   { path: "/login", view: LoginView, public: true },
+  { path: "/forgot-password", view: ForgotPasswordView, public: true },
+  { path: "/reset-password/:token", view: ResetPasswordView, public: true },
 
   { path: "/", view: DashboardView, guard: () => requireAuth() },
 

@@ -5,6 +5,7 @@ from flask_cors import CORS
 
 from .config import load_config, apply_config
 from .database import init_database
+from .logging_config import configure_logging
 from .api import register_api
 from . import models  # ensures all models are registered before create_all()
 from .cli import run_notification_scan_cli, run_plugins_cli, seed_admin
@@ -33,9 +34,8 @@ def create_app():
     app.cli.add_command(run_plugins_cli)
     app.cli.add_command(run_notification_scan_cli)
 
-    # Logging
-    logging.basicConfig(level=logging.INFO)
-    app.logger.setLevel(logging.INFO)
+    # Structured logging with request ID correlation
+    configure_logging(app)
 
     # DB
     init_database(app)

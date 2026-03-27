@@ -12,6 +12,9 @@ Flask-CORS>=6.0.2
 # Auth
 PyJWT>=2.8,<3.0
 
+# Logging
+python-json-logger>=3.0,<5.0
+
 # Production WSGI server
 gunicorn>=22.0,<24.0
 

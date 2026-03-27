@@ -14,6 +14,7 @@ from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
 from ..services.audit import record_audit
+from ..services.password_reset import create_reset_token, send_reset_email
 
 bp = Blueprint("users_api", __name__, url_prefix="/api")
 
@@ -198,10 +199,15 @@ def invite_user():
         last_name=data.get("last_name"),
     )
     db.session.add(u)
+    db.session.flush()
+
+    raw_token = create_reset_token(u)
     db.session.commit()
 
+    send_reset_email(u, raw_token)
+
     payload = _user_json(u)
-    payload["temp_password"] = password
+    payload["reset_email_sent"] = True
     return jsonify(payload), 201
 
 

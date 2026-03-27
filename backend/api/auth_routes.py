@@ -9,14 +9,24 @@ from ..auth import (
     create_refresh_token,
     create_user,
     generate_token,
+    hash_password,
     login_required,
     revoke_tokens,
     revoke_all_refresh_tokens,
     revoke_refresh_token,
     rotate_refresh_token,
+    validate_password,
+    PasswordTooWeakError,
 )
 from ..rate_limiter import rate_limit
+from ..services.audit import record_audit
 from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled, validate_next_path
+from ..services.password_reset import (
+    create_reset_token,
+    validate_reset_token,
+    consume_reset_token,
+    send_reset_email,
+)
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
@@ -231,6 +241,58 @@ def register():
     refresh_token, _ = create_refresh_token(user)
     db.session.commit()
     return jsonify(_auth_response(user, token, refresh_token)), 201
+
+
+@bp.post("/forgot-password")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="forgot_password")
+def forgot_password():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return error_response("Email is required", field="email", status_code=400)
+
+    # Always return 200 to prevent email enumeration
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    if user and user.is_active:
+        raw_token = create_reset_token(user)
+        db.session.commit()
+        send_reset_email(user, raw_token)
+
+    return jsonify({"ok": True, "message": "If an account with that email exists, a reset link has been sent."})
+
+
+@bp.post("/reset-password")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="reset_password")
+def reset_password():
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    password = data.get("password") or ""
+
+    if not token:
+        return error_response("Reset token is required", field="token", status_code=400)
+    if not password:
+        return error_response("Password is required", field="password", status_code=400)
+
+    try:
+        validate_password(password)
+    except PasswordTooWeakError as exc:
+        return error_response(str(exc), field="password", status_code=400)
+
+    record = validate_reset_token(token)
+    if not record:
+        return error_response("Invalid or expired reset token", status_code=400)
+
+    user = User.query.get(record.user_id)
+    if not user or not user.is_active:
+        return error_response("Invalid or expired reset token", status_code=400)
+
+    user.password_hash = hash_password(password)
+    revoke_tokens(user)
+    consume_reset_token(record)
+    record_audit("RESET_PASSWORD", "users", user.id, old_values={"self_service": True})
+    db.session.commit()
+
+    return jsonify({"ok": True, "message": "Password has been reset. You can now log in."})
 
 
 @bp.get("/csrf")

@@ -269,7 +269,7 @@ export async function AdminUsersView() {
         first_name: inviteFirstName.value.trim() || undefined,
         last_name: inviteLastName.value.trim() || undefined,
       });
-      toast({ title: "User invited", message: `Temp password: ${res.temp_password}` });
+      toast({ title: "User invited", message: "A password reset link has been sent to their email." });
       inviteUsername.value = "";
       inviteEmail.value = "";
       inviteRole.value = "Analyst";

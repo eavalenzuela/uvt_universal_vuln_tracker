@@ -32,3 +32,17 @@ export async function me() {
 export async function authProviders() {
   return apiFetch("/api/auth/providers", { method: "GET" });
 }
+
+export async function forgotPassword(email) {
+  return apiFetch("/api/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export async function resetPassword(token, password) {
+  return apiFetch("/api/auth/reset-password", {
+    method: "POST",
+    body: { token, password },
+  });
+}
