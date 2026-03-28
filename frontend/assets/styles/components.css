@@ -378,6 +378,91 @@ textarea.input {
   opacity: 0.5;
 }
 
+/* ── Data Table ─────────────────────────────────────────── */
+.data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.data-table thead { position: sticky; top: 0; z-index: 2; }
+
+.data-table th {
+  background: rgba(255,255,255,0.06);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 10px var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.data-table th.sortable { cursor: pointer; }
+.data-table th.sortable:hover { color: var(--color-text); }
+
+.data-table th .sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  opacity: 0.4;
+  font-size: 10px;
+}
+.data-table th.sort-asc .sort-indicator,
+.data-table th.sort-desc .sort-indicator { opacity: 1; color: var(--color-accent); }
+
+.data-table td {
+  padding: 10px var(--spacing-md);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--color-text);
+  vertical-align: middle;
+}
+
+.data-table tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+.data-table tbody tr:hover td { background: rgba(255,255,255,0.06); }
+
+/* Density variants */
+.data-table.compact th { padding: 6px var(--spacing-sm); font-size: 10px; }
+.data-table.compact td { padding: 6px var(--spacing-sm); font-size: var(--text-xs); }
+
+/* Density toggle */
+.density-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.density-toggle button {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.density-toggle button:hover { background: rgba(255,255,255,0.06); }
+.density-toggle button.active {
+  background: var(--color-accent-subtle);
+  color: var(--color-text);
+}
+
+/* Table empty & loading states */
+.data-table-empty {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-muted);
+}
+
 .inbox { margin-top: var(--spacing-md); }
 .inbox-list { margin-top: var(--spacing-sm); display: grid; gap: var(--spacing-sm); }
 .inbox-item {

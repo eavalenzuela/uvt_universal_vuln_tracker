@@ -120,19 +120,8 @@ When data is loading or absent, most views show nothing or a brief "No records" 
 
 ---
 
-## V6. Table / Data Grid Component
-**Priority:** Medium | **Effort:** Medium
-
-Data is displayed exclusively as cards. For dense data (audit logs, user lists, vulnerability lists with many columns), a proper table or data grid would be more efficient.
-
-**What to do:**
-- Create a reusable `DataTable` component with:
-  - Sortable column headers
-  - Row striping for readability
-  - Sticky header on scroll
-  - Compact/comfortable density toggle
-- Use tables for admin views (users, logs, delivery attempts) where density matters
-- Keep cards for product catalog and dashboard widgets where visual hierarchy helps
+## ~~V6. Table / Data Grid Component~~ ✅ Done (v5.0.0)
+Created reusable `DataTable` component (`frontend/src/ui/components/dataTable.js`) with sortable column headers, row striping, sticky header, compact/comfortable density toggle, loading/empty states, and pagination helper. Refactored admin views (users, audit logs, notification delivery) from cards/manual tables to DataTable. Kept cards for vulnerability list and dashboard where visual hierarchy helps.
 
 ---
 
@@ -223,7 +212,7 @@ V2 should be done first since V1, V8, V9, and V10 all depend on having design to
 | V3 | High | Medium | Responsive / mobile layout |
 | V4 | Medium | Medium | Consistent spacing system |
 | V5 | Medium | Medium | Loading & empty states |
-| V6 | Medium | Medium | Table / data grid component |
+| ~~V6~~ | ~~Medium~~ | ~~Medium~~ | ~~Table / data grid component~~ ✅ |
 | V7 | Medium | Small | Hover & interactive states |
 | V8 | Low | Small | Badge & status pill CSS classes |
 | V9 | Low | Small | Typography scale |

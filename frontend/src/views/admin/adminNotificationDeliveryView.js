@@ -5,6 +5,7 @@ import {
 } from "../../api/notificationDelivery.js";
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { createDataTable, createDensityToggle } from "../../ui/components/dataTable.js";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -13,65 +14,12 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
-function attemptRow(attempt, { onRetry, onReplay }) {
-  const retryBtn = el(
-    "button",
-    {
-      class: "btn",
-      disabled: attempt.status !== "failed",
-      onclick: () => onRetry(attempt),
-    },
-    "Retry",
-  );
-  const replayBtn = el(
-    "button",
-    {
-      class: "btn",
-      onclick: () => onReplay(attempt),
-    },
-    "Replay",
-  );
-
-  return el(
-    "tr",
-    {},
-    el("td", {}, `${attempt.id}`),
-    el("td", {}, attempt.status || "—"),
-    el("td", {}, attempt.channel || "—"),
-    el("td", {}, attempt.error || "—"),
-    el("td", {}, `${attempt.retry_count ?? 0}`),
-    el("td", {}, formatDate(attempt.next_retry_at)),
-    el("td", {}, formatDate(attempt.created_at)),
-    el("td", {}, el("div", { class: "row gap-6" }, retryBtn, replayBtn)),
-  );
-}
-
 export async function AdminNotificationDeliveryView() {
   let failedOnly = true;
   let attempts = [];
+  let density = "comfortable";
 
-  const tbody = el("tbody", {});
-  const table = el(
-    "table",
-    { class: "card w-full", style: "border-collapse:collapse;" },
-    el(
-      "thead",
-      {},
-      el(
-        "tr",
-        {},
-        el("th", {}, "ID"),
-        el("th", {}, "Status"),
-        el("th", {}, "Channel"),
-        el("th", {}, "Error"),
-        el("th", {}, "Retry Count"),
-        el("th", {}, "Next Retry"),
-        el("th", {}, "Created"),
-        el("th", {}, "Actions"),
-      ),
-    ),
-    tbody,
-  );
+  const tableContainer = el("div", {});
 
   async function refresh() {
     attempts = await listNotificationDeliveryAttempts({ limit: 100, failedOnly });
@@ -97,12 +45,48 @@ export async function AdminNotificationDeliveryView() {
   }
 
   function render() {
-    tbody.innerHTML = "";
-    if (!attempts.length) {
-      tbody.appendChild(el("tr", {}, el("td", { colSpan: "8", class: "muted" }, "No delivery attempts found.")));
-      return;
-    }
-    attempts.forEach((attempt) => tbody.appendChild(attemptRow(attempt, { onRetry, onReplay })));
+    tableContainer.innerHTML = "";
+
+    const columns = [
+      { key: "id", label: "ID" },
+      { key: "status", label: "Status", render: (row) => row.status || "—" },
+      { key: "channel", label: "Channel", render: (row) => row.channel || "—" },
+      { key: "error", label: "Error", render: (row) => row.error || "—" },
+      { key: "retry_count", label: "Retry Count", render: (row) => `${row.retry_count ?? 0}` },
+      { key: "next_retry_at", label: "Next Retry", render: (row) => formatDate(row.next_retry_at) },
+      { key: "created_at", label: "Created", render: (row) => formatDate(row.created_at) },
+    ];
+
+    const dataTable = createDataTable({
+      columns,
+      rows: attempts,
+      emptyText: "No delivery attempts found.",
+      density,
+      rowActions: (attempt) =>
+        el(
+          "div",
+          { class: "row gap-6" },
+          el(
+            "button",
+            {
+              class: "btn",
+              disabled: attempt.status !== "failed",
+              onclick: () => onRetry(attempt),
+            },
+            "Retry",
+          ),
+          el(
+            "button",
+            {
+              class: "btn",
+              onclick: () => onReplay(attempt),
+            },
+            "Replay",
+          ),
+        ),
+    });
+
+    tableContainer.appendChild(dataTable);
   }
 
   const failedOnlyToggle = el("input", {
@@ -112,6 +96,11 @@ export async function AdminNotificationDeliveryView() {
       failedOnly = !!e.target.checked;
       await refresh();
     },
+  });
+
+  const densityToggle = createDensityToggle(density, (newDensity) => {
+    density = newDensity;
+    render();
   });
 
   const refreshBtn = el("button", { class: "btn", onclick: refresh }, "Refresh");
@@ -127,7 +116,7 @@ export async function AdminNotificationDeliveryView() {
     { class: "stack" },
     el("h1", { text: "Admin · Notification Delivery" }),
     el("p", { class: "muted", text: "Monitor recent notification attempts and trigger guarded retry/replay actions." }),
-    el("div", { class: "row flex-row-8" }, failedOnlyToggle, el("span", {}, "Show failed only"), refreshBtn),
-    table,
+    el("div", { class: "row flex-row-8" }, failedOnlyToggle, el("span", {}, "Show failed only"), densityToggle, refreshBtn),
+    tableContainer,
   );
 }

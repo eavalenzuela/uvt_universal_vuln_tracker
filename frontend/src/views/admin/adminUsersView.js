@@ -4,7 +4,7 @@ import { promptModal } from "../../ui/components/modal.js";
 import { getState, setSession } from "../../state/store.js";
 import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
 import { createFilterRow } from "../../ui/primitives/filters.js";
-import { createEmptyState } from "../../ui/primitives/table.js";
+import { createDataTable, createDensityToggle, createTablePagination } from "../../ui/components/dataTable.js";
 
 function pill(label, color, subtle = false) {
   const baseColor = color || "#1f2937";
@@ -25,37 +25,6 @@ function statCard(title, value, hint) {
     el("div", { class: "muted", text: title }),
     valueNode,
     hint ? el("div", { class: "muted", style: "font-size: 12px;", text: hint }) : null,
-  );
-}
-
-function userCard(user, { onImpersonate, onToggle }) {
-  const statusLabel = user.is_active ? "Active" : "Disabled";
-  const statusColor = user.is_active ? "#16a34a" : "#dc2626";
-  const name = user.full_name || user.username;
-  const lastSeen = (user.updated_at || user.created_at || "").slice(0, 10) || "Unknown";
-
-  const impersonateBtn = el("button", { class: "btn" }, "Impersonate");
-  impersonateBtn.addEventListener("click", () => onImpersonate(user));
-
-  const toggleBtn = el("button", { class: "btn" }, user.is_active ? "Disable" : "Enable");
-  toggleBtn.addEventListener("click", () => onToggle(user));
-
-  return el("div", { class: "card p-12" },
-    el("div", { class: "row flex-between items-start gap-12 flex-wrap" },
-      el("div", { class: "flex-1", style: "min-width: 220px;" },
-        el("div", { class: "row flex-wrap gap-8" },
-          el("div", { class: "muted", text: user.username }),
-          pill(user.role, "#2563eb"),
-          pill(statusLabel, statusColor, true),
-        ),
-        el("div", { class: "font-bold mt-4", text: name }),
-        el("div", { class: "muted", style: "margin-top: 2px;", text: `${user.email} \u2022 Updated ${lastSeen}` }),
-      ),
-      el("div", { class: "row gap-6 flex-wrap" },
-        impersonateBtn,
-        toggleBtn,
-      ),
-    ),
   );
 }
 
@@ -132,20 +101,62 @@ export async function AdminUsersView() {
     inviteForm,
   );
 
-  const userList = el("div", { class: "flex-col-10 mt-4" });
-  const pageInfo = el("div", { class: "muted", text: "Page 1" });
-  const prevBtn = el("button", { class: "btn" }, "Previous");
-  const nextBtn = el("button", { class: "btn" }, "Next");
-
-  const pagination = el("div", { class: "row gap-8 mt-12" },
-    pageInfo,
-    el("div", { class: "spacer" }),
-    prevBtn,
-    nextBtn,
-  );
+  const tableContainer = el("div", { class: "mt-4" });
+  const paginationContainer = el("div");
 
   let currentPage = 1;
   let lastTotal = 0;
+  let density = "comfortable";
+
+  const tableColumns = [
+    { key: "username", label: "Username" },
+    { key: "full_name", label: "Full Name", render: (user) => user.full_name || user.username },
+    { key: "email", label: "Email" },
+    { key: "role", label: "Role", render: (user) => pill(user.role, "#2563eb") },
+    {
+      key: "status",
+      label: "Status",
+      render: (user) => {
+        const statusLabel = user.is_active ? "Active" : "Disabled";
+        const statusColor = user.is_active ? "#16a34a" : "#dc2626";
+        return pill(statusLabel, statusColor, true);
+      },
+    },
+    {
+      key: "updated_at",
+      label: "Updated",
+      render: (user) => (user.updated_at || user.created_at || "").slice(0, 10) || "\u2014",
+    },
+  ];
+
+  function onImpersonate(user) {
+    (async () => {
+      try {
+        const reason = await promptModal({ title: "Impersonation reason", message: `Why are you impersonating ${user.username}?`, inputLabel: "Reason", required: true });
+        if (!reason) {
+          toast({ title: "Impersonation cancelled", message: "A reason is required" });
+          return;
+        }
+        const resp = await impersonateUser(user.id, { reason });
+        setSession({ token: resp.token, refreshToken: resp.refresh_token || getState()?.session?.refreshToken || null, user: resp.user });
+        toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
+      } catch (e) {
+        toast({ title: "Impersonation failed", message: e?.message || "Unable to impersonate user" });
+      }
+    })();
+  }
+
+  function onToggle(user) {
+    (async () => {
+      try {
+        const updated = await toggleUserActive(user.id);
+        toast({ title: updated.is_active ? "User enabled" : "User disabled", message: `${user.username} is now ${updated.is_active ? "active" : "disabled"}.` });
+        loadUsersList();
+      } catch (e) {
+        toast({ title: "Action failed", message: e?.message || "Unable to update user" });
+      }
+    })();
+  }
 
   function applyStats(items, total) {
     const active = items.filter((u) => u.is_active).length;
@@ -156,9 +167,41 @@ export async function AdminUsersView() {
     pendingEl.textContent = "0";
   }
 
+  function renderTable(items, loading) {
+    tableContainer.innerHTML = "";
+    tableContainer.appendChild(createDataTable({
+      columns: tableColumns,
+      rows: items,
+      loading,
+      density,
+      emptyText: "No users found.",
+      rowActions: (user) => {
+        const impersonateBtn = el("button", { class: "btn" }, "Impersonate");
+        impersonateBtn.addEventListener("click", () => onImpersonate(user));
+
+        const toggleBtn = el("button", { class: "btn" }, user.is_active ? "Disable" : "Enable");
+        toggleBtn.addEventListener("click", () => onToggle(user));
+
+        return el("div", { class: "row gap-6" }, impersonateBtn, toggleBtn);
+      },
+    }));
+  }
+
+  function renderPagination(page, totalPages, total) {
+    paginationContainer.innerHTML = "";
+    paginationContainer.appendChild(createTablePagination({
+      page,
+      totalPages,
+      total,
+      onPage: (newPage) => {
+        currentPage = newPage;
+        loadUsersList();
+      },
+    }));
+  }
+
   async function loadUsersList() {
-    userList.innerHTML = "";
-    userList.appendChild(el("div", { class: "muted", text: "Loading users..." }));
+    renderTable([], true);
     try {
       const pageSize = parseInt(pageSizeSelect.value || "25", 10) || 25;
       const res = await listUsers({
@@ -173,48 +216,17 @@ export async function AdminUsersView() {
       const page = res?.page || currentPage;
       const effectiveSize = res?.page_size || pageSize;
 
-      userList.innerHTML = "";
-      if (!items.length) {
-        userList.appendChild(createEmptyState("No users found."));
-      }
-
       applyStats(items, total);
-      items.forEach((u) => userList.appendChild(userCard(u, {
-        onImpersonate: async (user) => {
-          try {
-            const reason = await promptModal({ title: "Impersonation reason", message: `Why are you impersonating ${user.username}?`, inputLabel: "Reason", required: true });
-            if (!reason) {
-              toast({ title: "Impersonation cancelled", message: "A reason is required" });
-              return;
-            }
-            const resp = await impersonateUser(user.id, { reason });
-            setSession({ token: resp.token, refreshToken: resp.refresh_token || getState()?.session?.refreshToken || null, user: resp.user });
-            toast({ title: "Impersonation started", message: `Acting as ${user.username}` });
-          } catch (e) {
-            toast({ title: "Impersonation failed", message: e?.message || "Unable to impersonate user" });
-          }
-        },
-        onToggle: async (user) => {
-          try {
-            const updated = await toggleUserActive(user.id);
-            toast({ title: updated.is_active ? "User enabled" : "User disabled", message: `${user.username} is now ${updated.is_active ? "active" : "disabled"}.` });
-            loadUsersList();
-          } catch (e) {
-            toast({ title: "Action failed", message: e?.message || "Unable to update user" });
-          }
-        },
-      })));
+      renderTable(items, false);
 
       lastTotal = total;
       currentPage = page;
       const totalPages = Math.max(1, Math.ceil(total / effectiveSize));
-      pageInfo.textContent = `Page ${page} of ${totalPages} • ${total} total`;
-      prevBtn.disabled = page <= 1;
-      nextBtn.disabled = page >= totalPages;
+      renderPagination(page, totalPages, total);
     } catch (e) {
-      userList.innerHTML = "";
+      tableContainer.innerHTML = "";
       toast({ title: "Failed to load users", message: e?.message || "Unable to fetch users" });
-      userList.appendChild(el("div", { class: "muted", text: "Unable to load users." }));
+      tableContainer.appendChild(el("div", { class: "muted", text: "Unable to load users." }));
     }
   }
 
@@ -225,20 +237,6 @@ export async function AdminUsersView() {
   pageSizeSelect.addEventListener("change", () => {
     currentPage = 1;
     loadUsersList();
-  });
-  prevBtn.addEventListener("click", () => {
-    if (currentPage > 1) {
-      currentPage -= 1;
-      loadUsersList();
-    }
-  });
-  nextBtn.addEventListener("click", () => {
-    const pageSize = parseInt(pageSizeSelect.value || "25", 10) || 25;
-    const totalPages = Math.max(1, Math.ceil(lastTotal / pageSize));
-    if (currentPage < totalPages) {
-      currentPage += 1;
-      loadUsersList();
-    }
   });
 
   inviteBtn.addEventListener("click", () => {
@@ -307,6 +305,19 @@ export async function AdminUsersView() {
     }
   });
 
+  const densityToggleContainer = el("div");
+
+  function renderDensityToggle() {
+    densityToggleContainer.innerHTML = "";
+    densityToggleContainer.appendChild(createDensityToggle(density, (newDensity) => {
+      density = newDensity;
+      renderDensityToggle();
+      loadUsersList();
+    }));
+  }
+
+  renderDensityToggle();
+
   loadUsersList();
 
   return el("div", { class: "flex-col-12" },
@@ -315,15 +326,18 @@ export async function AdminUsersView() {
       el("p", { class: "muted", text: "Manage account access, MFA posture, and onboarding from a single control plane." }),
     ),
     el("div", { class: "card" },
-      el("div", { class: "row gap-8" },
-        el("div", { class: "font-bold", text: "User overview" }),
-        pill("Real-time", "#059669", true),
+      el("div", { class: "row gap-8 flex-between" },
+        el("div", { class: "row gap-8" },
+          el("div", { class: "font-bold", text: "User overview" }),
+          pill("Real-time", "#059669", true),
+        ),
+        densityToggleContainer,
       ),
       statsRow,
       controls,
       inviteCard,
-      userList,
-      pagination,
+      tableContainer,
+      paginationContainer,
     ),
   );
 }
