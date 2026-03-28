@@ -23,7 +23,7 @@ No forgot-password flow exists. Admins must manually reset passwords (and the te
 ### F3. Email Verification on Registration
 This feature requires too much additional configuration (and relies on the external email service), and will not be implemented.
 
-### ~~F4. OpenAPI / Swagger Documentation~~ ✅ Done (v3.0.0)
+### ~~F4. OpenAPI / Swagger Documentation~~ ✅ Done (v2.4.0)
 Added `apispec` with Flask plugin for OpenAPI 3.0.3 spec generation, Swagger UI at `/api/docs`, spec at `/api/openapi.json`. All 100 paths (140 operations) documented with YAML docstrings, 32 component schemas, and security schemes.
 
 ### F5. Structured Logging
@@ -37,20 +37,20 @@ Currently uses `logging.basicConfig(level=INFO)` with no structured output. Prod
 - Configurable log level via env var
 - Access log with timing, status, user ID
 
-### ~~F6. Production Deployment Guide~~ ✅ Done (v4.0.0)
+### ~~F6. Production Deployment Guide~~ ✅ Done (v2.5.0)
 Added `docs/DEPLOYMENT.md` covering all env vars with production recommendations, Docker Compose / standalone / Kubernetes deployment options, Gunicorn tuning, database backup/restore, logging and monitoring, operational runbook, and security checklist.
 
 ---
 
 ## P1 — Important for Production Use
 
-### ~~F7. Background Job Queue~~ ✅ Done (v7.0.0)
+### ~~F7. Background Job Queue~~ ✅ Done (v2.8.0)
 Added Celery with Redis broker. Plugin execution, notification scans, and report generation run as background tasks when `CELERY_ENABLED=true`. Task status endpoint at `GET /api/tasks/{id}`. Celery worker and beat services in docker-compose. Falls back to ThreadPoolExecutor when Celery is disabled. Config: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_ENABLED`, `CELERY_WORKER_CONCURRENCY`, `CELERY_TASK_TIMEOUT`.
 
-### ~~F8. Application Metrics & Monitoring~~ ✅ Done (v8.0.0)
+### ~~F8. Application Metrics & Monitoring~~ ✅ Done (v2.9.0)
 Added `prometheus_client` with custom metrics: HTTP request count/latency/in-progress, vulnerability counts by severity, active users, plugin run count/duration. Metrics exported at `GET /metrics` in Prometheus text format. Health endpoint expanded to include DB connectivity and Redis status checks (returns 503 when degraded).
 
-### ~~F9. Full-Text Search~~ ✅ Done (v9.0.0)
+### ~~F9. Full-Text Search~~ ✅ Done (v2.10.0)
 Added `GET /api/search?q=...` endpoint searching across vulnerabilities (title, cve_id, description), products (name, description), and comments (body). Results grouped by entity type with max 10 per type. Frontend global search bar in header with debounced typeahead dropdown and keyboard navigation. Works with both SQLite and PostgreSQL.
 
 ### F10. Security Response Headers
@@ -68,10 +68,10 @@ SQLAlchemy pool settings (`pool_size`, `pool_recycle`, `pool_pre_ping`) use defa
 - Set `pool_pre_ping=True` to handle stale connections
 - Document recommended settings for different deployment sizes
 
-### ~~F12. Caching Layer~~ ✅ Done (v10.0.0)
+### ~~F12. Caching Layer~~ ✅ Done (v2.11.0)
 Added Redis-backed cache module (`backend/cache.py`) with JSON serialization, TTL, and automatic fallback when Redis is unavailable. Dashboard summary cached with configurable TTL (`CACHE_DASHBOARD_TTL`, default 30s). Product list cached (`CACHE_PRODUCTS_TTL`, default 60s) with invalidation on create/update/delete. Config: `CACHE_ENABLED`, `CACHE_DASHBOARD_TTL`, `CACHE_PRODUCTS_TTL`.
 
-### ~~F13. Data Retention & Archival~~ ✅ Done (v10.0.0)
+### ~~F13. Data Retention & Archival~~ ✅ Done (v2.11.0)
 Added retention policy configuration and `flask purge-old-data` CLI command with `--dry-run` option. Purges audit logs, notification delivery logs, plugin runs, and report artifacts (including files on disk) based on configurable retention periods. Also available as Celery task (`uvt.purge_old_data`) for scheduled execution. Config: `RETENTION_AUDIT_LOG_DAYS` (365), `RETENTION_NOTIFICATION_LOG_DAYS` (90), `RETENTION_PLUGIN_RUN_DAYS` (90), `RETENTION_REPORT_ARTIFACT_DAYS` (180).
 
 ---

@@ -120,7 +120,7 @@ When data is loading or absent, most views show nothing or a brief "No records" 
 
 ---
 
-## ~~V6. Table / Data Grid Component~~ ✅ Done (v5.0.0)
+## ~~V6. Table / Data Grid Component~~ ✅ Done (v2.6.0)
 Created reusable `DataTable` component (`frontend/src/ui/components/dataTable.js`) with sortable column headers, row striping, sticky header, compact/comfortable density toggle, loading/empty states, and pagination helper. Refactored admin views (users, audit logs, notification delivery) from cards/manual tables to DataTable. Kept cards for vulnerability list and dashboard where visual hierarchy helps.
 
 ---
@@ -173,7 +173,7 @@ Font sizes are inconsistent — `18px` page titles, `12px` inbox items, default 
 
 ---
 
-## ~~V10. Light Theme Option~~ ✅ Done (v6.0.0)
+## ~~V10. Light Theme Option~~ ✅ Done (v2.7.0)
 Added `[data-theme="light"]` overrides for all CSS custom properties in `base.css`. Converted all remaining hardcoded colors in `components.css`, `layout.css`, and inline JS styles to CSS variables. Theme toggle button (sun/moon) in header, preference persisted in localStorage (`uvt.theme.v1`), defaults to OS `prefers-color-scheme`. Theme state module at `frontend/src/state/theme.js`, initialized before first render in `main.js`.
 
 ---

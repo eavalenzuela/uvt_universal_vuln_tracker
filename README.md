@@ -205,14 +205,14 @@ Bulk visual improvements, building on the Phase 2 CSS foundation.
 ### Phase 5 — Larger Features
 Production-readiness and platform capabilities.
 
-- ~~F4: OpenAPI / Swagger documentation~~ (v3.0.0)
-- ~~F6: Production deployment guide~~ (v4.0.0)
-- ~~V6: Table / data grid component~~ (v5.0.0)
-- ~~V10: Light theme option~~ (v6.0.0)
-- ~~F7: Background job queue (Celery)~~ (v7.0.0)
-- ~~F8: Application metrics & monitoring~~ (v8.0.0)
-- ~~F9: Full-text search~~ (v9.0.0)
-- ~~F12+F13: Caching layer + data retention~~ (v10.0.0)
+- ~~F4: OpenAPI / Swagger documentation~~ (v2.4.0)
+- ~~F6: Production deployment guide~~ (v2.5.0)
+- ~~V6: Table / data grid component~~ (v2.6.0)
+- ~~V10: Light theme option~~ (v2.7.0)
+- ~~F7: Background job queue (Celery)~~ (v2.8.0)
+- ~~F8: Application metrics & monitoring~~ (v2.9.0)
+- ~~F9: Full-text search~~ (v2.10.0)
+- ~~F12+F13: Caching layer + data retention~~ (v2.11.0)
 
 See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md), and [VISUAL_REWORK.md](VISUAL_REWORK.md) for full details on each item.
 
