@@ -745,13 +745,19 @@ def dashboard_summary():
               schema:
                 $ref: '#/components/schemas/Error'
     """
+    from ..cache import cache_get, cache_set
     filters = request.args
     group_by = request.args.get("group_by") or "Severity"
     range_value = request.args.get("range") or "Last 14 days"
+    cache_params = {"group_by": group_by, "range": range_value, **dict(filters)}
+    cached = cache_get("dashboard_summary", cache_params)
+    if cached is not None:
+        return jsonify(cached)
     try:
         payload = _dashboard_aggregate(filters, group_by=group_by, range_value=range_value)
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
+    cache_set("dashboard_summary", cache_params, payload, ttl=current_app.config.get("CACHE_DASHBOARD_TTL", 30))
     return jsonify(payload)
 
 

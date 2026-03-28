@@ -7,6 +7,7 @@ from .models import User
 from .auth import hash_password
 from .plugins.runner import run_plugins
 from .services.notification_rules import run_scheduled_notification_scan
+from .services.data_retention import purge_old_records
 
 def _celery_enabled():
     return current_app.config.get("CELERY_ENABLED", False)
@@ -93,3 +94,20 @@ def run_notification_scan_cli(dry_run):
     logs = run_scheduled_notification_scan(dry_run=dry_run)
     db.session.commit()
     click.echo(f"Completed scheduled notification scan with {len(logs)} delivery attempt(s).")
+
+
+@click.command("purge-old-data")
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without actually deleting.")
+@with_appcontext
+def purge_old_data_cli(dry_run):
+    """
+    Purge old records based on retention policy configuration.
+    Deletes audit logs, notification delivery logs, plugin runs,
+    and report artifacts older than their configured retention periods.
+    """
+    results = purge_old_records(dry_run=dry_run)
+    prefix = "[DRY RUN] Would delete" if dry_run else "Deleted"
+    for table, count in results.items():
+        click.echo(f"  {prefix} {count} row(s) from {table}")
+    total = sum(results.values())
+    click.echo(f"\n{prefix} {total} total row(s).")

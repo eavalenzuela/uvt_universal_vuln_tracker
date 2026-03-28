@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from ..auth import login_required, role_required
+from ..cache import cache_get, cache_set, cache_invalidate
 from ..services.product_service import (
     create_product as svc_create_product,
     create_version as svc_create_version,
@@ -65,12 +66,18 @@ def list_products():
               schema:
                 $ref: '#/components/schemas/Error'
     """
+    cache_params = {"page": request.args.get("page", "1"), "per_page": request.args.get("per_page", "25")}
+    cached = cache_get("products_list", cache_params)
+    if cached is not None:
+        return jsonify(cached)
     query = svc_list_products()
     try:
         products, meta = paginate_query(query)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
-    return jsonify({"items": [_product_json(p) for p in products], **meta})
+    payload = {"items": [_product_json(p) for p in products], **meta}
+    cache_set("products_list", cache_params, payload, ttl=current_app.config.get("CACHE_PRODUCTS_TTL", 60))
+    return jsonify(payload)
 
 
 @bp.post("/products")
@@ -125,6 +132,7 @@ def create_product():
         )
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
+    cache_invalidate("products_list")
     return jsonify({"id": p.id, "name": p.name, "description": p.description}), 201
 
 
@@ -212,6 +220,7 @@ def update_product(product_id: int):
         p = svc_update_product(product_id, data)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
+    cache_invalidate("products_list")
     return jsonify(_product_json(p, include_details=True))
 
 
@@ -245,6 +254,7 @@ def delete_product(product_id: int):
                 $ref: '#/components/schemas/Error'
     """
     svc_delete_product(product_id)
+    cache_invalidate("products_list")
     return jsonify({"ok": True})
 
 

@@ -68,25 +68,11 @@ SQLAlchemy pool settings (`pool_size`, `pool_recycle`, `pool_pre_ping`) use defa
 - Set `pool_pre_ping=True` to handle stale connections
 - Document recommended settings for different deployment sizes
 
-### F12. Caching Layer
-**Effort:** Medium
+### ~~F12. Caching Layer~~ ✅ Done (v10.0.0)
+Added Redis-backed cache module (`backend/cache.py`) with JSON serialization, TTL, and automatic fallback when Redis is unavailable. Dashboard summary cached with configurable TTL (`CACHE_DASHBOARD_TTL`, default 30s). Product list cached (`CACHE_PRODUCTS_TTL`, default 60s) with invalidation on create/update/delete. Config: `CACHE_ENABLED`, `CACHE_DASHBOARD_TTL`, `CACHE_PRODUCTS_TTL`.
 
-Every request hits the database. Dashboard summary, product lists, and other slow queries could benefit from caching.
-
-**What to do:**
-- Redis cache for dashboard summary (30s TTL, already polled at that interval)
-- Cache product/version lists (invalidate on write)
-- ETag support for list endpoints
-
-### F13. Data Retention & Archival
-**Effort:** Medium
-
-No automatic purging of old audit logs, notification delivery logs, plugin run records, or report artifacts. Database grows unbounded.
-
-**What to do:**
-- Add retention policy config (e.g., `AUDIT_LOG_RETENTION_DAYS=365`)
-- CLI command or scheduled task to purge old records
-- Archive to cold storage before deletion (optional)
+### ~~F13. Data Retention & Archival~~ ✅ Done (v10.0.0)
+Added retention policy configuration and `flask purge-old-data` CLI command with `--dry-run` option. Purges audit logs, notification delivery logs, plugin runs, and report artifacts (including files on disk) based on configurable retention periods. Also available as Celery task (`uvt.purge_old_data`) for scheduled execution. Config: `RETENTION_AUDIT_LOG_DAYS` (365), `RETENTION_NOTIFICATION_LOG_DAYS` (90), `RETENTION_PLUGIN_RUN_DAYS` (90), `RETENTION_REPORT_ARTIFACT_DAYS` (180).
 
 ---
 
@@ -184,8 +170,8 @@ No hotkeys for power users navigating large vulnerability sets.
 | ~~F9~~ | ~~P1~~ | ~~Medium~~ | ~~Full-text search~~ ✅ |
 | F10 | P1 | Small | Security response headers |
 | F11 | P1 | Small | Database connection tuning |
-| F12 | P1 | Medium | Caching layer |
-| F13 | P1 | Medium | Data retention & archival |
+| ~~F12~~ | ~~P1~~ | ~~Medium~~ | ~~Caching layer~~ ✅ |
+| ~~F13~~ | ~~P1~~ | ~~Medium~~ | ~~Data retention & archival~~ ✅ |
 | F14 | P2 | Large | Inbound webhook / scanner integration |
 | F15 | P2 | Large | Team / project-level access control |
 | F16 | P2 | Medium | User preferences page |

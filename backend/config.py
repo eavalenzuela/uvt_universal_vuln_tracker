@@ -157,6 +157,17 @@ class AppConfig:
     rate_limit_health_limit: int = 120
     rate_limit_health_window_seconds: int = 60
 
+    # Caching
+    cache_enabled: bool = False
+    cache_dashboard_ttl: int = 30
+    cache_products_ttl: int = 60
+
+    # Data retention (days, 0 = keep forever)
+    retention_audit_log_days: int = 365
+    retention_notification_log_days: int = 90
+    retention_plugin_run_days: int = 90
+    retention_report_artifact_days: int = 180
+
     # Celery / background tasks
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://localhost:6379/2"
@@ -228,6 +239,13 @@ def load_config() -> AppConfig:
         rate_limit_sensitive_window_seconds=_int("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", 60),
         rate_limit_health_limit=_int("RATE_LIMIT_HEALTH_LIMIT", 120),
         rate_limit_health_window_seconds=_int("RATE_LIMIT_HEALTH_WINDOW_SECONDS", 60),
+        retention_audit_log_days=_int("RETENTION_AUDIT_LOG_DAYS", 365),
+        retention_notification_log_days=_int("RETENTION_NOTIFICATION_LOG_DAYS", 90),
+        retention_plugin_run_days=_int("RETENTION_PLUGIN_RUN_DAYS", 90),
+        retention_report_artifact_days=_int("RETENTION_REPORT_ARTIFACT_DAYS", 180),
+        cache_enabled=_bool("CACHE_ENABLED", False),
+        cache_dashboard_ttl=_int("CACHE_DASHBOARD_TTL", 30),
+        cache_products_ttl=_int("CACHE_PRODUCTS_TTL", 60),
         celery_broker_url=_str("CELERY_BROKER_URL", "redis://localhost:6379/1"),
         celery_result_backend=_str("CELERY_RESULT_BACKEND", "redis://localhost:6379/2"),
         celery_enabled=_bool("CELERY_ENABLED", False),
@@ -291,6 +309,15 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["RATE_LIMIT_SENSITIVE_WINDOW_SECONDS"] = cfg.rate_limit_sensitive_window_seconds
     app.config["RATE_LIMIT_HEALTH_LIMIT"] = cfg.rate_limit_health_limit
     app.config["RATE_LIMIT_HEALTH_WINDOW_SECONDS"] = cfg.rate_limit_health_window_seconds
+
+    app.config["RETENTION_AUDIT_LOG_DAYS"] = cfg.retention_audit_log_days
+    app.config["RETENTION_NOTIFICATION_LOG_DAYS"] = cfg.retention_notification_log_days
+    app.config["RETENTION_PLUGIN_RUN_DAYS"] = cfg.retention_plugin_run_days
+    app.config["RETENTION_REPORT_ARTIFACT_DAYS"] = cfg.retention_report_artifact_days
+
+    app.config["CACHE_ENABLED"] = cfg.cache_enabled
+    app.config["CACHE_DASHBOARD_TTL"] = cfg.cache_dashboard_ttl
+    app.config["CACHE_PRODUCTS_TTL"] = cfg.cache_products_ttl
 
     app.config["CELERY_BROKER_URL"] = cfg.celery_broker_url
     app.config["CELERY_RESULT_BACKEND"] = cfg.celery_result_backend

@@ -212,7 +212,7 @@ Production-readiness and platform capabilities.
 - ~~F7: Background job queue (Celery)~~ (v7.0.0)
 - ~~F8: Application metrics & monitoring~~ (v8.0.0)
 - ~~F9: Full-text search~~ (v9.0.0)
-- F12+: Caching, data retention
+- ~~F12+F13: Caching layer + data retention~~ (v10.0.0)
 
 See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md), and [VISUAL_REWORK.md](VISUAL_REWORK.md) for full details on each item.
 

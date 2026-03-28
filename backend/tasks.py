@@ -120,3 +120,18 @@ def generate_report_task(
     except Exception as exc:
         logger.exception("Report generation failed")
         return {"status": "failed", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Data retention
+# ---------------------------------------------------------------------------
+
+@celery.task(bind=True, name="uvt.purge_old_data", max_retries=0)
+def purge_old_data_task(self):
+    """Purge old records based on configured retention policies."""
+    from .services.data_retention import purge_old_records
+
+    results = purge_old_records(dry_run=False)
+    total = sum(results.values())
+    logger.info("Data retention purge complete: %d total rows deleted (%s)", total, results)
+    return {"status": "success", "purged": results, "total": total}
