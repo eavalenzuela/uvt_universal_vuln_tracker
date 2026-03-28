@@ -261,7 +261,7 @@ def _report_dir():
     return root
 
 
-def _build_export_artifact(*, report_type, export_format, filters, payload, filename_prefix):
+def _build_export_artifact(*, report_type, export_format, filters, payload, filename_prefix, created_by_user_id=None):
     if export_format == "csv":
         if report_type == "dashboard_summary":
             content_bytes = _csv_content_bytes(["metric", "group", "value"], _summary_rows(payload))
@@ -292,7 +292,7 @@ def _build_export_artifact(*, report_type, export_format, filters, payload, file
         size=len(content_bytes),
         content_type=content_type,
         filters_json=dict(filters or {}),
-        created_by=request.user.id,
+        created_by=created_by_user_id or request.user.id,
     )
     db.session.add(artifact)
     db.session.commit()
@@ -355,6 +355,24 @@ def _summary_rows(summary):
     rows.extend({"metric": "severity", "group": k, "value": v} for k, v in sorted(summary["by_severity"].items()))
     rows.extend({"metric": "status", "group": k, "value": v} for k, v in sorted(summary["by_status"].items()))
     return rows
+
+
+def _build_export_artifact_async(*, report_type, export_format, filters, user_id):
+    """Build a report artifact from a background task (no request context)."""
+    if report_type == "dashboard_summary":
+        payload = _dashboard_summary(filters)
+    else:
+        q, _ = build_vulnerability_query(filters or {}, base_query=Vulnerability.query)
+        payload = [_vuln_row(v) for v in q.all()]
+
+    return _build_export_artifact(
+        report_type=report_type,
+        export_format=export_format,
+        filters=filters,
+        payload=payload,
+        filename_prefix="report",
+        created_by_user_id=user_id,
+    )
 
 
 def _deliver_report(schedule, content):

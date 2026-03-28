@@ -209,7 +209,8 @@ Production-readiness and platform capabilities.
 - ~~F6: Production deployment guide~~ (v4.0.0)
 - ~~V6: Table / data grid component~~ (v5.0.0)
 - ~~V10: Light theme option~~ (v6.0.0)
-- F7+: Background job queue, metrics, full-text search, caching, data retention
+- ~~F7: Background job queue (Celery)~~ (v7.0.0)
+- F8+: Metrics, full-text search, caching, data retention
 
 See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md), and [VISUAL_REWORK.md](VISUAL_REWORK.md) for full details on each item.
 

@@ -22,6 +22,7 @@ class PluginRun(db.Model):
     status = db.Column(db.String(30), nullable=False)
     error = db.Column(db.Text)
     stats_json = db.Column(db.JSON)
+    celery_task_id = db.Column(db.String(255), index=True)
 
     artifacts = db.relationship("PluginRunArtifact", back_populates="plugin_run", cascade="all, delete-orphan")
 

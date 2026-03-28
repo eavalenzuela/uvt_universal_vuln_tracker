@@ -44,16 +44,8 @@ Added `docs/DEPLOYMENT.md` covering all env vars with production recommendations
 
 ## P1 — Important for Production Use
 
-### F7. Background Job Queue
-**Effort:** Large
-
-Heavy operations (plugin runs, report generation, notification scans, CVE enrichment) block request threads. Currently uses `ThreadPoolExecutor` for plugins but no proper task queue.
-
-**What to do:**
-- Add Celery + Redis (Redis already in docker-compose for rate limiting)
-- Move plugin execution, report generation, bulk operations to async tasks
-- Add task status endpoint (`GET /api/tasks/{id}`)
-- Frontend: show progress indicators for long-running operations
+### ~~F7. Background Job Queue~~ ✅ Done (v7.0.0)
+Added Celery with Redis broker. Plugin execution, notification scans, and report generation run as background tasks when `CELERY_ENABLED=true`. Task status endpoint at `GET /api/tasks/{id}`. Celery worker and beat services in docker-compose. Falls back to ThreadPoolExecutor when Celery is disabled. Config: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_ENABLED`, `CELERY_WORKER_CONCURRENCY`, `CELERY_TASK_TIMEOUT`.
 
 ### F8. Application Metrics & Monitoring
 **Effort:** Medium
@@ -202,7 +194,7 @@ No hotkeys for power users navigating large vulnerability sets.
 | ~~F4~~ | ~~P0~~ | ~~Medium~~ | ~~OpenAPI / Swagger documentation~~ ✅ |
 | F5 | P0 | Small | Structured logging |
 | ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
-| F7 | P1 | Large | Background job queue (Celery) |
+| ~~F7~~ | ~~P1~~ | ~~Large~~ | ~~Background job queue (Celery)~~ ✅ |
 | F8 | P1 | Medium | Application metrics & monitoring |
 | F9 | P1 | Medium | Full-text search |
 | F10 | P1 | Small | Security response headers |

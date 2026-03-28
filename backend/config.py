@@ -157,6 +157,14 @@ class AppConfig:
     rate_limit_health_limit: int = 120
     rate_limit_health_window_seconds: int = 60
 
+    # Celery / background tasks
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
+    celery_enabled: bool = False
+    celery_worker_concurrency: int = 4
+    celery_task_timeout: int = 3600
+    celery_task_soft_timeout: int = 3300
+
     # Frontend
     frontend_url: str = "http://127.0.0.1:5173"
 
@@ -220,6 +228,12 @@ def load_config() -> AppConfig:
         rate_limit_sensitive_window_seconds=_int("RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", 60),
         rate_limit_health_limit=_int("RATE_LIMIT_HEALTH_LIMIT", 120),
         rate_limit_health_window_seconds=_int("RATE_LIMIT_HEALTH_WINDOW_SECONDS", 60),
+        celery_broker_url=_str("CELERY_BROKER_URL", "redis://localhost:6379/1"),
+        celery_result_backend=_str("CELERY_RESULT_BACKEND", "redis://localhost:6379/2"),
+        celery_enabled=_bool("CELERY_ENABLED", False),
+        celery_worker_concurrency=_int("CELERY_WORKER_CONCURRENCY", 4),
+        celery_task_timeout=_int("CELERY_TASK_TIMEOUT", 3600),
+        celery_task_soft_timeout=_int("CELERY_TASK_SOFT_TIMEOUT", 3300),
         frontend_url=_str("FRONTEND_URL", "http://127.0.0.1:5173"),
         plugin_import_paths=_parse_plugin_paths(),
     )
@@ -277,6 +291,13 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["RATE_LIMIT_SENSITIVE_WINDOW_SECONDS"] = cfg.rate_limit_sensitive_window_seconds
     app.config["RATE_LIMIT_HEALTH_LIMIT"] = cfg.rate_limit_health_limit
     app.config["RATE_LIMIT_HEALTH_WINDOW_SECONDS"] = cfg.rate_limit_health_window_seconds
+
+    app.config["CELERY_BROKER_URL"] = cfg.celery_broker_url
+    app.config["CELERY_RESULT_BACKEND"] = cfg.celery_result_backend
+    app.config["CELERY_ENABLED"] = cfg.celery_enabled
+    app.config["CELERY_WORKER_CONCURRENCY"] = cfg.celery_worker_concurrency
+    app.config["CELERY_TASK_TIMEOUT"] = cfg.celery_task_timeout
+    app.config["CELERY_TASK_SOFT_TIMEOUT"] = cfg.celery_task_soft_timeout
 
     app.config["FRONTEND_URL"] = cfg.frontend_url
 

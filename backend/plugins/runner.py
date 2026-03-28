@@ -122,14 +122,25 @@ def enqueue_plugin_run(
     config: dict[str, Any] | None = None,
 ) -> PluginRun:
     run = create_plugin_run(plugin_id, status="running")
-    get_plugin_run_executor().submit(
-        _execute_plugin_run,
-        app,
-        registry,
-        run_id=run.id,
-        plugin_id=plugin_id,
-        config=config,
-    )
+
+    # Use Celery when enabled; fall back to ThreadPoolExecutor
+    if app.config.get("CELERY_ENABLED"):
+        from ..tasks import run_plugin_task
+        result = run_plugin_task.apply_async(
+            kwargs={"run_id": run.id, "plugin_id": plugin_id, "config": config},
+        )
+        run.celery_task_id = result.id
+        from ..database import db
+        db.session.commit()
+    else:
+        get_plugin_run_executor().submit(
+            _execute_plugin_run,
+            app,
+            registry,
+            run_id=run.id,
+            plugin_id=plugin_id,
+            config=config,
+        )
     return run
 
 

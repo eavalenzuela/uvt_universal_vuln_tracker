@@ -14,6 +14,7 @@ from .plugins import init_plugin_registry
 from .api.validation import ValidationError, error_response
 from .openapi import init_openapi
 from .rate_limiter import rate_limit
+from .celery_app import init_celery
 
 
 def create_app():
@@ -40,6 +41,9 @@ def create_app():
 
     # DB
     init_database(app)
+
+    # Celery background task queue
+    init_celery(app)
 
     # Plugin registry
     init_plugin_registry(app)

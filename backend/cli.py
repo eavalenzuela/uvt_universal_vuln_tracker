@@ -8,6 +8,9 @@ from .auth import hash_password
 from .plugins.runner import run_plugins
 from .services.notification_rules import run_scheduled_notification_scan
 
+def _celery_enabled():
+    return current_app.config.get("CELERY_ENABLED", False)
+
 @click.command("seed-admin")
 @click.option("--username", required=True, help="Admin username")
 @click.option("--email", required=True, help="Admin email")
