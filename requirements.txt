@@ -27,6 +27,9 @@ apispec>=6.0,<7.0
 apispec-webframeworks>=1.0,<2.0
 flask-swagger-ui>=4.0,<5.0
 
+# Monitoring
+prometheus-client>=0.20,<1.0
+
 # Background task queue
 celery[redis]>=5.3,<6.0
 

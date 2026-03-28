@@ -9,6 +9,7 @@ from typing import Any
 from .registry import PluginRegistry
 from .state import create_plugin_run, get_plugin_config, save_plugin_run_result
 from ..models import PluginRun
+from ..metrics import PLUGIN_RUN_COUNT, PLUGIN_RUN_DURATION
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def run_plugin(
     config: dict[str, Any] | None = None,
 ) -> PluginRun:
     run = create_plugin_run(plugin_id, status="running")
+    start = datetime.now(timezone.utc)
     try:
         plugin = registry.create(plugin_id, config=config)
         result = plugin.run()
@@ -62,15 +64,21 @@ def run_plugin(
             artifacts = result.get("artifacts")
         elif getattr(plugin, "artifact_descriptors", None):
             artifacts = [vars(item) for item in plugin.artifact_descriptors]
-        save_plugin_run_result(run, status="success", finished_at=datetime.now(timezone.utc), stats=stats, artifact_descriptors=artifacts)
+        finished = datetime.now(timezone.utc)
+        save_plugin_run_result(run, status="success", finished_at=finished, stats=stats, artifact_descriptors=artifacts)
+        PLUGIN_RUN_COUNT.labels(plugin_id=plugin_id, status="success").inc()
+        PLUGIN_RUN_DURATION.labels(plugin_id=plugin_id).observe((finished - start).total_seconds())
     except Exception as exc:  # noqa: BLE001 - record plugin errors and continue
         logger.exception("Plugin run failed for %s", plugin_id)
+        finished = datetime.now(timezone.utc)
         save_plugin_run_result(
             run,
             status="failed",
-            finished_at=datetime.now(timezone.utc),
+            finished_at=finished,
             error=str(exc),
         )
+        PLUGIN_RUN_COUNT.labels(plugin_id=plugin_id, status="failed").inc()
+        PLUGIN_RUN_DURATION.labels(plugin_id=plugin_id).observe((finished - start).total_seconds())
     return run
 
 

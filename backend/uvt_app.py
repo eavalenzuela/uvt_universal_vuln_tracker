@@ -15,6 +15,7 @@ from .api.validation import ValidationError, error_response
 from .openapi import init_openapi
 from .rate_limiter import rate_limit
 from .celery_app import init_celery
+from .metrics import init_metrics
 
 
 def create_app():
@@ -54,6 +55,9 @@ def create_app():
     # Auth scope enforcement
     enforce_scopes(app)
 
+    # Prometheus metrics
+    init_metrics(app)
+
     # Security response headers
     @app.after_request
     def set_security_headers(response):
@@ -69,7 +73,7 @@ def create_app():
             )
         return response
 
-    # Simple health endpoint
+    # Health endpoint with DB and Redis connectivity checks
     @app.get("/api/health")
     @rate_limit("RATE_LIMIT_HEALTH_LIMIT", "RATE_LIMIT_HEALTH_WINDOW_SECONDS", identifier="health")
     def health():
@@ -83,9 +87,53 @@ def create_app():
               content:
                 application/json:
                   schema:
-                    $ref: '#/components/schemas/Ok'
+                    type: object
+                    properties:
+                      ok:
+                        type: boolean
+                      checks:
+                        type: object
+                        properties:
+                          database:
+                            type: string
+                            enum: [ok, error]
+                          redis:
+                            type: string
+                            enum: [ok, error, disabled]
+            503:
+              description: Service is degraded
+              content:
+                application/json:
+                  schema:
+                    type: object
         """
-        return jsonify({"ok": True})
+        checks = {}
+        healthy = True
+
+        # Database connectivity
+        try:
+            from .database import db
+            db.session.execute(db.text("SELECT 1"))
+            checks["database"] = "ok"
+        except Exception:
+            checks["database"] = "error"
+            healthy = False
+
+        # Redis connectivity
+        if cfg.rate_limit_backend == "redis" or cfg.celery_enabled:
+            try:
+                import redis as redis_lib
+                r = redis_lib.from_url(cfg.redis_url, socket_timeout=2)
+                r.ping()
+                checks["redis"] = "ok"
+            except Exception:
+                checks["redis"] = "error"
+                healthy = False
+        else:
+            checks["redis"] = "disabled"
+
+        status_code = 200 if healthy else 503
+        return jsonify({"ok": healthy, "checks": checks}), status_code
 
     # Error handlers
     @app.errorhandler(ValidationError)

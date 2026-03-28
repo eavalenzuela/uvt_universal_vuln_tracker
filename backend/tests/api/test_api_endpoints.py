@@ -75,7 +75,10 @@ def _latest_audit(app, *, action, table_name):
 def test_health_endpoint(client):
     resp = client.get("/api/health")
     assert resp.status_code == 200
-    assert resp.get_json() == {"ok": True}
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert "checks" in data
+    assert data["checks"]["database"] == "ok"
 
 
 def test_security_response_headers(client):

@@ -47,16 +47,8 @@ Added `docs/DEPLOYMENT.md` covering all env vars with production recommendations
 ### ~~F7. Background Job Queue~~ ✅ Done (v7.0.0)
 Added Celery with Redis broker. Plugin execution, notification scans, and report generation run as background tasks when `CELERY_ENABLED=true`. Task status endpoint at `GET /api/tasks/{id}`. Celery worker and beat services in docker-compose. Falls back to ThreadPoolExecutor when Celery is disabled. Config: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `CELERY_ENABLED`, `CELERY_WORKER_CONCURRENCY`, `CELERY_TASK_TIMEOUT`.
 
-### F8. Application Metrics & Monitoring
-**Effort:** Medium
-
-No Prometheus, StatsD, or application metrics. Health check returns only `{"ok": true}`.
-
-**What to do:**
-- Add `prometheus-flask-instrumentator` or similar
-- Track: request latency, error rates, active users, vulnerability counts, plugin run durations
-- Expand health check to include DB connectivity, Redis status
-- Export metrics at `/metrics`
+### ~~F8. Application Metrics & Monitoring~~ ✅ Done (v8.0.0)
+Added `prometheus_client` with custom metrics: HTTP request count/latency/in-progress, vulnerability counts by severity, active users, plugin run count/duration. Metrics exported at `GET /metrics` in Prometheus text format. Health endpoint expanded to include DB connectivity and Redis status checks (returns 503 when degraded).
 
 ### F9. Full-Text Search
 **Effort:** Medium
@@ -195,7 +187,7 @@ No hotkeys for power users navigating large vulnerability sets.
 | F5 | P0 | Small | Structured logging |
 | ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
 | ~~F7~~ | ~~P1~~ | ~~Large~~ | ~~Background job queue (Celery)~~ ✅ |
-| F8 | P1 | Medium | Application metrics & monitoring |
+| ~~F8~~ | ~~P1~~ | ~~Medium~~ | ~~Application metrics & monitoring~~ ✅ |
 | F9 | P1 | Medium | Full-text search |
 | F10 | P1 | Small | Security response headers |
 | F11 | P1 | Small | Database connection tuning |
