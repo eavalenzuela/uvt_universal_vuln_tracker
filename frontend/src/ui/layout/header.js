@@ -5,8 +5,11 @@ import { getState, logoutSession, markAllNotificationsReadLocal, setNotification
 import { isAuthed } from "../../state/permissions.js";
 import { navigate } from "../../router/router.js";
 import { toggleTheme } from "../../state/theme.js";
+import { globalSearch } from "../../api/search.js";
 
 let dropdownOpen = false;
+let searchTimer = null;
+let searchDropdownOpen = false;
 
 export function closeNotificationDropdown() {
   dropdownOpen = false;
@@ -180,5 +183,97 @@ export function renderHeader() {
     right.appendChild(el("button", { class: "btn", onclick: () => navigate("/login") }, "Login"));
   }
 
-  root.appendChild(el("div", { class: "row" }, left, el("div", { class: "spacer" }), right));
+  const center = el("div", { class: "spacer" });
+
+  if (authed) {
+    const searchWrap = el("div", { class: "header-search" });
+    const searchInput = el("input", {
+      class: "input header-search-input",
+      type: "search",
+      placeholder: "Search vulnerabilities, products\u2026",
+      "aria-label": "Global search",
+    });
+
+    const resultsPanel = el("div", { class: "card search-results-dropdown hidden" });
+
+    let currentQuery = "";
+
+    function closeSearchDropdown() {
+      searchDropdownOpen = false;
+      resultsPanel.classList.add("hidden");
+    }
+
+    function renderResults(data) {
+      resultsPanel.innerHTML = "";
+      const total = data.vulnerabilities.length + data.products.length + data.comments.length;
+      if (!total) {
+        resultsPanel.appendChild(el("div", { class: "muted p-10" }, "No results found."));
+        return;
+      }
+
+      if (data.vulnerabilities.length) {
+        resultsPanel.appendChild(el("div", { class: "text-label p-8" }, "Vulnerabilities"));
+        data.vulnerabilities.forEach((v) => {
+          resultsPanel.appendChild(el("button", {
+            class: "btn w-full text-left",
+            style: "border-radius:0; display:block;",
+            onclick: () => { closeSearchDropdown(); navigate(`/vulnerabilities/${v.id}`); },
+          }, `${v.cve_id || `#${v.id}`} — ${v.title}`));
+        });
+      }
+
+      if (data.products.length) {
+        resultsPanel.appendChild(el("div", { class: "text-label p-8" }, "Products"));
+        data.products.forEach((p) => {
+          resultsPanel.appendChild(el("button", {
+            class: "btn w-full text-left",
+            style: "border-radius:0; display:block;",
+            onclick: () => { closeSearchDropdown(); navigate(`/products/${p.id}`); },
+          }, p.name));
+        });
+      }
+
+      if (data.comments.length) {
+        resultsPanel.appendChild(el("div", { class: "text-label p-8" }, "Comments"));
+        data.comments.forEach((c) => {
+          resultsPanel.appendChild(el("button", {
+            class: "btn w-full text-left",
+            style: "border-radius:0; display:block;",
+            onclick: () => { closeSearchDropdown(); navigate(`/vulnerabilities/${c.vulnerability_id}`); },
+          }, `${c.author}: ${c.body}`));
+        });
+      }
+    }
+
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim();
+      if (searchTimer) clearTimeout(searchTimer);
+      if (q.length < 2) { closeSearchDropdown(); return; }
+      searchTimer = setTimeout(async () => {
+        if (q === currentQuery) return;
+        currentQuery = q;
+        try {
+          const data = await globalSearch(q);
+          searchDropdownOpen = true;
+          resultsPanel.classList.remove("hidden");
+          renderResults(data);
+        } catch { /* ignore */ }
+      }, 300);
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeSearchDropdown();
+    });
+
+    // Close search results when clicking outside
+    document.addEventListener("click", (e) => {
+      if (searchDropdownOpen && !searchWrap.contains(e.target)) closeSearchDropdown();
+    }, { once: false });
+
+    searchWrap.appendChild(searchInput);
+    searchWrap.appendChild(resultsPanel);
+    center.appendChild(searchWrap);
+  }
+
+  root.appendChild(el("div", { class: "row" }, left, center, right));
 }

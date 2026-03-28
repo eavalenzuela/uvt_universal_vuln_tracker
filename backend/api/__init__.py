@@ -23,6 +23,7 @@ from .live_notifications import bp as live_notifications_bp
 from .notifications import bp as notifications_bp
 from .dashboard_layout_presets import bp as dashboard_layout_presets_bp
 from .tasks import bp as tasks_bp
+from .search import bp as search_bp
 
 
 def register_api(app):
@@ -51,3 +52,4 @@ def register_api(app):
     app.register_blueprint(notifications_bp)
     app.register_blueprint(dashboard_layout_presets_bp)
     app.register_blueprint(tasks_bp)
+    app.register_blueprint(search_bp)

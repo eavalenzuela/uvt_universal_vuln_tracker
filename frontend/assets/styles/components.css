@@ -466,6 +466,20 @@ textarea.input {
 /* Theme toggle */
 .theme-toggle { font-size: var(--text-lg); line-height: 1; padding: var(--spacing-xs) var(--spacing-sm); }
 
+/* Global search */
+.header-search { position: relative; width: 100%; max-width: 360px; margin: 0 var(--spacing-md); }
+.header-search-input { font-size: var(--text-sm); padding: 6px var(--spacing-md); }
+.search-results-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--spacing-xs);
+  max-height: 400px;
+  overflow: auto;
+  z-index: 40;
+}
+
 .inbox { margin-top: var(--spacing-md); }
 .inbox-list { margin-top: var(--spacing-sm); display: grid; gap: var(--spacing-sm); }
 .inbox-item {

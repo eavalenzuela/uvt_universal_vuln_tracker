@@ -50,15 +50,8 @@ Added Celery with Redis broker. Plugin execution, notification scans, and report
 ### ~~F8. Application Metrics & Monitoring~~ ✅ Done (v8.0.0)
 Added `prometheus_client` with custom metrics: HTTP request count/latency/in-progress, vulnerability counts by severity, active users, plugin run count/duration. Metrics exported at `GET /metrics` in Prometheus text format. Health endpoint expanded to include DB connectivity and Redis status checks (returns 503 when degraded).
 
-### F9. Full-Text Search
-**Effort:** Medium
-
-All search is column-level filtering. No way to search across vulnerability descriptions, comments, or product names simultaneously.
-
-**What to do:**
-- PostgreSQL: use `tsvector` / `GIN` indexes for FTS
-- Add `GET /api/search?q=...` endpoint returning results across entities
-- Frontend: global search bar in header
+### ~~F9. Full-Text Search~~ ✅ Done (v9.0.0)
+Added `GET /api/search?q=...` endpoint searching across vulnerabilities (title, cve_id, description), products (name, description), and comments (body). Results grouped by entity type with max 10 per type. Frontend global search bar in header with debounced typeahead dropdown and keyboard navigation. Works with both SQLite and PostgreSQL.
 
 ### F10. Security Response Headers
 **Effort:** Small
@@ -188,7 +181,7 @@ No hotkeys for power users navigating large vulnerability sets.
 | ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
 | ~~F7~~ | ~~P1~~ | ~~Large~~ | ~~Background job queue (Celery)~~ ✅ |
 | ~~F8~~ | ~~P1~~ | ~~Medium~~ | ~~Application metrics & monitoring~~ ✅ |
-| F9 | P1 | Medium | Full-text search |
+| ~~F9~~ | ~~P1~~ | ~~Medium~~ | ~~Full-text search~~ ✅ |
 | F10 | P1 | Small | Security response headers |
 | F11 | P1 | Small | Database connection tuning |
 | F12 | P1 | Medium | Caching layer |

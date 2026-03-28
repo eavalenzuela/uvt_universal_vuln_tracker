@@ -211,7 +211,8 @@ Production-readiness and platform capabilities.
 - ~~V10: Light theme option~~ (v6.0.0)
 - ~~F7: Background job queue (Celery)~~ (v7.0.0)
 - ~~F8: Application metrics & monitoring~~ (v8.0.0)
-- F9+: Full-text search, caching, data retention
+- ~~F9: Full-text search~~ (v9.0.0)
+- F12+: Caching, data retention
 
 See [SECURITY_FIXES.md](SECURITY_FIXES.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md), and [VISUAL_REWORK.md](VISUAL_REWORK.md) for full details on each item.
 
