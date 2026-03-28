@@ -40,6 +40,16 @@ Smoke tests focus on:
 
 The repository does not currently ship dedicated perf benchmarks by default. If you add them, keep them optional and separate from fast CI checks (for example under `tests/perf/` or behind a marker) so core unit/integration and smoke runs stay fast.
 
+## Repository hygiene
+
+CI runs a script to prevent Python bytecode and build artifacts from being committed:
+
+```bash
+./scripts/check-no-artifacts.sh
+```
+
+This fails if any `.pyc` files or `__pycache__` directories are found in the repo.
+
 ## Notes
 
 - Public registration is enabled during tests to bootstrap the initial admin user.
