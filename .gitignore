@@ -21,5 +21,8 @@ env/
 # Flask instance folder (SQLite DB, runtime data)
 instance/
 
+# Screenshots (dev tool output)
+screenshots/
+
 # Local Docker overrides
 docker-compose.local.yml

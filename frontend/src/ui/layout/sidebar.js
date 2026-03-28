@@ -47,9 +47,10 @@ export function renderSidebar() {
   const admin = isAdmin(state);
 
   if (!authed) {
-    root.appendChild(el("div", { class: "muted" }, "Please log in."));
+    root.style.display = "none";
     return;
   }
+  root.style.display = "";
 
   const nav = el(
     "div",

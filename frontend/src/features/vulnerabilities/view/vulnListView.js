@@ -281,7 +281,8 @@ export async function VulnListView(params = {}) {
 
   let savedFilters = [];
   const refreshSavedFilters = async () => {
-    savedFilters = await listSavedVulnerabilityFilters();
+    const result = await listSavedVulnerabilityFilters();
+    savedFilters = Array.isArray(result) ? result : result?.items || [];
     const selected = savedFiltersSelect.value;
     savedFiltersSelect.innerHTML = "";
     savedFiltersSelect.appendChild(el("option", { value: "", text: "Saved filters" }));

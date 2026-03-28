@@ -49,6 +49,41 @@ node --test frontend/tests/**/*.test.js
 # or: npm run test:smoke
 ```
 
+### Visual Review
+
+Screenshot all frontend pages for visual inspection. Requires the app to be running (e.g. `docker compose up`).
+
+```bash
+# One-time setup
+pip install -r requirements-dev.txt
+playwright install chromium
+
+# Take screenshots of all pages
+python scripts/screenshot-pages.py --user admin --pass changeme
+
+# Custom URL (default: http://localhost:8080)
+python scripts/screenshot-pages.py --url http://localhost:5173 --user admin --pass changeme
+
+# Specific pages only
+python scripts/screenshot-pages.py --pages dashboard,vulnerabilities --user admin --pass changeme
+
+# Persist snapshots for changelog records
+python scripts/screenshot-pages.py --save-as v2.12.0-before --user admin --pass changeme
+```
+
+Screenshots land in `screenshots/` (gitignored). Use `--save-as <label>` to copy them to `docs/images/<label>/` for permanent records.
+
+**Before/after workflow for visual changes:**
+1. Before making changes: `python scripts/screenshot-pages.py --save-as <version>-before --user <u> --pass <p>`
+2. Make the visual changes
+3. After changes: `python scripts/screenshot-pages.py --save-as <version>-after --user <u> --pass <p>`
+4. Add a Before | After table in `docs/CHANGELOG.md` for the version entry:
+   ```markdown
+   | Before | After |
+   |--------|-------|
+   | ![before](images/<version>-before/<page>.png) | ![after](images/<version>-after/<page>.png) |
+   ```
+
 ### Repository Hygiene
 
 ```bash

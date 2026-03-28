@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.12.0
+
+### Added
+- **Visual review screenshot tool** — `scripts/screenshot-pages.py` captures all 13 frontend pages via Playwright for automated visual inspection. Supports `--save-as` to persist before/after snapshots in `docs/images/` for changelog records. Added `requirements-dev.txt` (playwright) and documented workflow in CLAUDE.md.
+
+### Fixed
+- **Auth cookies not sent in Docker/compose** — Frontend `API_BASE` defaulted to `http://127.0.0.1:5000` (cross-origin), causing the browser to reject cookies set by a different origin. Changed default to `""` so requests go same-origin through the nginx proxy. Also added `AUTH_COOKIE_SECURE=false` to docker-compose.yml since the default compose setup uses HTTP.
+- **Nginx 502 with nerdctl** — `nginx.conf` used `resolver 127.0.0.11` (Docker-specific embedded DNS). Removed the explicit resolver so nginx resolves via the container's `/etc/resolv.conf`, which works with both Docker and nerdctl.
+- **Vulnerabilities page blank** — `refreshSavedFilters()` assigned the full paginated response object (`{items:[], page:1, ...}`) to an array variable, then called `.forEach()` on it, crashing the view. Fixed to unwrap `.items` from the paginated response.
+- **Sidebar visible on login page** — Showed "Please log in." text in the sidebar on public pages. Now hides the sidebar entirely when not authenticated, and the main content area spans the full width.
+
+### Screenshots (after fixes)
+
+| Page | Screenshot |
+|------|-----------|
+| Login | ![login](images/v2.12.0-after/01-login.png) |
+| Dashboard | ![dashboard](images/v2.12.0-after/02-dashboard.png) |
+| Vulnerabilities | ![vulns](images/v2.12.0-after/03-vulnerabilities.png) |
+| Products | ![products](images/v2.12.0-after/04-products.png) |
+| Controls | ![controls](images/v2.12.0-after/05-controls.png) |
+| Admin: Users | ![users](images/v2.12.0-after/07-admin-users.png) |
+
 ## v2.3.4
 
 ### Added

@@ -20,6 +20,12 @@
   overflow-y: auto;
 }
 
+/* When sidebar is hidden (e.g. login page), collapse grid to single column */
+#app-sidebar[style*="display: none"] + #app-main,
+#app-sidebar:empty + #app-main {
+  grid-column: 1 / -1;
+}
+
 #app-main {
   padding: var(--spacing-lg);
   min-width: 0;
