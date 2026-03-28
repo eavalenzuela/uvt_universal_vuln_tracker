@@ -71,7 +71,7 @@ export async function ProductDependencyGraphView(params = {}) {
       el("label", { class: "row gap-6" }, vulnOnlyToggle, el("span", { text: "Highlight vulnerable only" })),
     );
 
-    const graphWrap = el("div", { class: "detail-border", style: "overflow:auto; background:#fff;" });
+    const graphWrap = el("div", { class: "detail-border", style: "overflow:auto; background:var(--color-surface);" });
     const detailPane = el("div", { class: "card mt-12" }, el("div", { class: "muted", text: "Select a node to inspect details." }));
 
     const renderGraph = () => {

@@ -157,7 +157,7 @@ export function renderAttackVectorsSection(detailData, vulnId, reloadDetails, ca
 
     refreshOptions();
 
-    container.appendChild(el("div", { class: "divider", style: "margin: 10px 0; height: 1px; background: #e5e7eb;" }));
+    container.appendChild(el("div", { class: "divider", style: "margin: 10px 0;" }));
     container.appendChild(
       el(
         "div",

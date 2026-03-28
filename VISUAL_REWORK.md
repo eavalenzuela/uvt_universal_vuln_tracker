@@ -173,16 +173,8 @@ Font sizes are inconsistent — `18px` page titles, `12px` inbox items, default 
 
 ---
 
-## V10. Light Theme Option
-**Priority:** Low | **Effort:** Medium (after V2)
-
-Once CSS custom properties are in place (V2), adding a light theme is straightforward.
-
-**What to do:**
-- Define `.theme-light` overrides for all `--color-*` variables
-- Add toggle in header (or user preferences, see FEATURE_ROADMAP.md F16)
-- Persist preference in localStorage
-- Respect `prefers-color-scheme` media query as default
+## ~~V10. Light Theme Option~~ ✅ Done (v6.0.0)
+Added `[data-theme="light"]` overrides for all CSS custom properties in `base.css`. Converted all remaining hardcoded colors in `components.css`, `layout.css`, and inline JS styles to CSS variables. Theme toggle button (sun/moon) in header, preference persisted in localStorage (`uvt.theme.v1`), defaults to OS `prefers-color-scheme`. Theme state module at `frontend/src/state/theme.js`, initialized before first render in `main.js`.
 
 ---
 
@@ -216,4 +208,4 @@ V2 should be done first since V1, V8, V9, and V10 all depend on having design to
 | V7 | Medium | Small | Hover & interactive states |
 | V8 | Low | Small | Badge & status pill CSS classes |
 | V9 | Low | Small | Typography scale |
-| V10 | Low | Medium | Light theme option |
+| ~~V10~~ | ~~Low~~ | ~~Medium~~ | ~~Light theme option~~ ✅ |

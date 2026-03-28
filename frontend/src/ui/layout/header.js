@@ -4,6 +4,7 @@ import { listNotifications, markAllNotificationsRead, markNotificationRead } fro
 import { getState, logoutSession, markAllNotificationsReadLocal, setNotifications } from "../../state/store.js";
 import { isAuthed } from "../../state/permissions.js";
 import { navigate } from "../../router/router.js";
+import { toggleTheme } from "../../state/theme.js";
 
 let dropdownOpen = false;
 
@@ -52,6 +53,18 @@ export function renderHeader() {
 
   const left = el("div", { class: "flex-row-8" }, sidebarToggle, el("div", { class: "brand" }, "UVT"));
   const right = el("div", { class: "row gap-8" });
+
+  const isLight = document.documentElement.getAttribute("data-theme") === "light";
+  const themeBtn = el("button", {
+    class: "btn theme-toggle",
+    title: isLight ? "Switch to dark theme" : "Switch to light theme",
+    "aria-label": isLight ? "Switch to dark theme" : "Switch to light theme",
+    onclick: () => {
+      toggleTheme();
+      renderHeader();
+    },
+  }, isLight ? "\u263E" : "\u2600");
+  right.appendChild(themeBtn);
 
   if (authed) {
     const unreadCount = state?.notifications?.unreadCount || 0;

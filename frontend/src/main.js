@@ -6,6 +6,7 @@ import { me } from "./api/auth.js";
 import { listNotifications } from "./api/notifications.js";
 import { toast } from "./ui/components/toast.js";
 import { CONFIG } from "./config.js";
+import { loadTheme, applyTheme } from "./state/theme.js";
 
 let liveStream = null;
 
@@ -83,6 +84,9 @@ async function refreshSessionFromServer() {
 }
 
 function boot() {
+  // Apply saved or OS-preferred theme before first render
+  applyTheme(loadTheme());
+
   // rerender header/sidebar on state changes
   subscribe((state) => {
     renderShell();

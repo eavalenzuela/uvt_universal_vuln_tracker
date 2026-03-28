@@ -30,6 +30,47 @@
   --color-widget-border: rgba(148, 163, 184, 0.25);
   --color-widget-border-highlight: rgba(106, 169, 255, 0.9);
 
+  /* Interactive elements (buttons, inputs, toggles) */
+  --color-interactive: rgba(255,255,255,0.06);
+  --color-interactive-hover: rgba(255,255,255,0.1);
+  --color-interactive-border: rgba(255,255,255,0.18);
+  --color-card-hover-border: rgba(255,255,255,0.15);
+
+  /* Sidebar */
+  --color-sidebar-bg: #0c1020;
+
+  /* Modal & overlays */
+  --color-modal-bg: #0f172a;
+  --color-modal-border: rgba(148, 163, 184, 0.25);
+  --color-modal-shadow: rgba(2, 6, 23, 0.6);
+  --color-backdrop: rgba(15, 23, 42, 0.55);
+
+  /* Toast */
+  --color-toast-bg: rgba(20,24,35,0.95);
+  --color-toast-msg: rgba(230,232,238,0.85);
+
+  /* Navigation */
+  --color-nav-text: rgba(230,232,238,0.9);
+  --color-nav-active-border: rgba(106,169,255,0.25);
+  --color-primary-border: rgba(106,169,255,0.6);
+
+  /* Table */
+  --color-table-header-bg: rgba(255,255,255,0.06);
+  --color-table-divider: rgba(255,255,255,0.04);
+  --color-row-stripe: rgba(255,255,255,0.02);
+  --color-row-hover: rgba(255,255,255,0.06);
+
+  /* Misc */
+  --color-shimmer-highlight: rgba(255,255,255,0.06);
+  --color-tag-border: rgba(255,255,255,0.18);
+  --color-inbox-bg: rgba(255,255,255,0.03);
+  --color-code-bg: rgba(255,255,255,0.06);
+  --color-detail-border: rgba(255,255,255,0.12);
+  --color-danger: #b91c1c;
+  --color-error: #dc2626;
+  --color-text-subtle: #e2e8f0;
+  --color-text-label: #64748b;
+
   /* Radii */
   --radius-sm: 8px;
   --radius-md: 10px;
@@ -49,6 +90,62 @@
   --text-lg: 18px;
   --text-xl: 22px;
   --text-2xl: 28px;
+}
+
+/* ── Light Theme ─────────────────────────────────────────── */
+[data-theme="light"] {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-raised: rgba(0,0,0,0.02);
+  --color-border: rgba(0,0,0,0.1);
+  --color-border-subtle: rgba(0,0,0,0.15);
+
+  --color-text: #1e293b;
+  --color-text-muted: rgba(30,41,59,0.6);
+
+  --color-accent: #2563eb;
+  --color-accent-subtle: rgba(37,99,235,0.1);
+  --color-focus: #2563eb;
+
+  --color-widget-bg: rgba(255,255,255,0.8);
+  --color-widget-surface: rgba(241,245,249,0.8);
+  --color-widget-subtle: rgba(148,163,184,0.15);
+  --color-widget-border: rgba(0,0,0,0.1);
+  --color-widget-border-highlight: rgba(37,99,235,0.6);
+
+  --color-interactive: rgba(0,0,0,0.04);
+  --color-interactive-hover: rgba(0,0,0,0.08);
+  --color-interactive-border: rgba(0,0,0,0.15);
+  --color-card-hover-border: rgba(0,0,0,0.2);
+
+  --color-sidebar-bg: #f1f5f9;
+
+  --color-modal-bg: #ffffff;
+  --color-modal-border: rgba(0,0,0,0.12);
+  --color-modal-shadow: rgba(0,0,0,0.15);
+  --color-backdrop: rgba(15,23,42,0.3);
+
+  --color-toast-bg: rgba(255,255,255,0.97);
+  --color-toast-msg: rgba(30,41,59,0.8);
+
+  --color-nav-text: #334155;
+  --color-nav-active-border: rgba(37,99,235,0.3);
+  --color-primary-border: rgba(37,99,235,0.5);
+
+  --color-table-header-bg: rgba(0,0,0,0.03);
+  --color-table-divider: rgba(0,0,0,0.06);
+  --color-row-stripe: rgba(0,0,0,0.02);
+  --color-row-hover: rgba(0,0,0,0.04);
+
+  --color-shimmer-highlight: rgba(0,0,0,0.04);
+  --color-tag-border: rgba(0,0,0,0.15);
+  --color-inbox-bg: rgba(0,0,0,0.02);
+  --color-code-bg: #f1f5f9;
+  --color-detail-border: #e2e8f0;
+  --color-danger: #b91c1c;
+  --color-error: #dc2626;
+  --color-text-subtle: #475569;
+  --color-text-label: #64748b;
 }
 
 /* ── Reset & Base ────────────────────────────────────────── */

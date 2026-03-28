@@ -15,7 +15,7 @@
 
 #app-sidebar {
   border-right: 1px solid var(--color-border);
-  background: #0c1020;
+  background: var(--color-sidebar-bg);
   padding: var(--spacing-md);
   overflow-y: auto;
 }
@@ -30,7 +30,7 @@
 .sidebar-toggle {
   display: none;
   background: none;
-  border: 1px solid rgba(255,255,255,0.18);
+  border: 1px solid var(--color-interactive-border);
   color: var(--color-text);
   padding: 6px 10px;
   border-radius: var(--radius-sm);

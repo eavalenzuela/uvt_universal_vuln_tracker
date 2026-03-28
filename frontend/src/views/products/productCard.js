@@ -222,7 +222,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
   async function renderControlsSection() {
     await loadControls();
 
-    const container = el("div", { class: "card", style: "background: #fafafa;" });
+    const container = el("div", { class: "card" });
     const content = el("div", {});
     container.append(el("h4", { text: "Controls" }), content);
 
@@ -511,7 +511,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
       renderDetails();
     });
 
-    return el("div", { class: "card", style: "background: #fafafa;" }, el("h4", { text: "Edit product" }), form);
+    return el("div", { class: "card" }, el("h4", { text: "Edit product" }), form);
   }
 
   function renderDetails() {
