@@ -7,6 +7,8 @@ const state = {
     token: null,
     refreshToken: null,
     user: persistedSession.user,
+    teams: persistedSession.teams || [],
+    currentTeamId: persistedSession.currentTeamId || null,
   },
   liveNotifications: [],
   notifications: {
@@ -32,17 +34,64 @@ function emit() {
 }
 
 export function setSession(session) {
+  const teams = Array.isArray(session?.teams) ? session.teams : state.session.teams || [];
+  const teamIds = new Set(teams.map((t) => t.id));
+  let currentTeamId = session?.currentTeamId;
+  if (!Number.isInteger(currentTeamId)) {
+    currentTeamId = state.session.currentTeamId;
+  }
+  if (!teamIds.has(currentTeamId)) {
+    const def = teams.find((t) => t.is_default) || teams[0];
+    currentTeamId = def ? def.id : null;
+  }
   state.session = {
     token: session?.token || null,
     refreshToken: session?.refreshToken || null,
     user: session?.user || null,
+    teams,
+    currentTeamId,
   };
-  saveSession({ user: state.session.user });
+  saveSession({
+    user: state.session.user,
+    teams: state.session.teams,
+    currentTeamId: state.session.currentTeamId,
+  });
+  emit();
+}
+
+export function setCurrentTeam(teamId) {
+  const normalized = Number.isInteger(teamId) ? teamId : null;
+  if (state.session.currentTeamId === normalized) return;
+  const teams = state.session.teams || [];
+  if (normalized !== null && !teams.some((t) => t.id === normalized)) return;
+  state.session = { ...state.session, currentTeamId: normalized };
+  saveSession({
+    user: state.session.user,
+    teams: state.session.teams,
+    currentTeamId: state.session.currentTeamId,
+  });
+  emit();
+}
+
+export function setSessionTeams(teams, currentTeamId) {
+  const list = Array.isArray(teams) ? teams : [];
+  const ids = new Set(list.map((t) => t.id));
+  let current = Number.isInteger(currentTeamId) ? currentTeamId : state.session.currentTeamId;
+  if (!ids.has(current)) {
+    const def = list.find((t) => t.is_default) || list[0];
+    current = def ? def.id : null;
+  }
+  state.session = { ...state.session, teams: list, currentTeamId: current };
+  saveSession({
+    user: state.session.user,
+    teams: state.session.teams,
+    currentTeamId: state.session.currentTeamId,
+  });
   emit();
 }
 
 export function logoutSession() {
-  state.session = { token: null, refreshToken: null, user: null };
+  state.session = { token: null, refreshToken: null, user: null, teams: [], currentTeamId: null };
   state.liveNotifications = [];
   state.notifications = { items: [], unreadCount: 0, pagination: null };
   clearSession();

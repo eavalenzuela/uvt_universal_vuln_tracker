@@ -1,6 +1,7 @@
 import { CONFIG } from "../config.js";
 import { ApiError } from "./errors.js";
 import { tryRefreshToken, parsePayload } from "./authRetry.js";
+import { getState } from "../state/store.js";
 
 export { ApiError } from "./errors.js";
 
@@ -61,6 +62,17 @@ export async function apiFetch(
   if (isWriteMethod(method) && !Object.keys(finalHeaders).some((h) => h.toLowerCase() === "x-csrf-token")) {
     const csrfToken = getCookieValue("uvt_csrf_token");
     if (csrfToken) finalHeaders["X-CSRF-Token"] = csrfToken;
+  }
+
+  if (!Object.keys(finalHeaders).some((h) => h.toLowerCase() === "x-uvt-team-id")) {
+    try {
+      const currentTeamId = getState()?.session?.currentTeamId;
+      if (Number.isInteger(currentTeamId)) {
+        finalHeaders["X-UVT-Team-Id"] = String(currentTeamId);
+      }
+    } catch {
+      // store may not be initialized (e.g. during boot); skip header
+    }
   }
 
   let finalBody = body;

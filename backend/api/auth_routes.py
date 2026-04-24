@@ -644,4 +644,21 @@ def me():
                 $ref: '#/components/schemas/Error'
     """
     u = request.user
-    return jsonify({"id": u.id, "username": u.username, "email": u.email, "role": u.role})
+    from ..models import Team, UserTeam
+    from ..services.team_scope import resolve_current_team_id
+
+    memberships = UserTeam.query.filter_by(user_id=u.id).all()
+    team_ids = [m.team_id for m in memberships]
+    teams = Team.query.filter(Team.id.in_(team_ids)).all() if team_ids else []
+    teams_payload = [
+        {"id": t.id, "slug": t.slug, "name": t.name, "is_default": t.is_default}
+        for t in teams
+    ]
+    return jsonify({
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "role": u.role,
+        "teams": teams_payload,
+        "current_team_id": resolve_current_team_id(u),
+    })

@@ -86,6 +86,7 @@ class Vulnerability(db.Model):
     creator = db.relationship("User", foreign_keys=[created_by])
     assignee = db.relationship("User", foreign_keys=[assigned_to])
     merged_into = db.relationship("Vulnerability", remote_side=[id], foreign_keys=[merged_into_id])
+    team = db.relationship("Team", foreign_keys=[team_id])
 
     versions = db.relationship("VulnerabilityVersion", back_populates="vulnerability", cascade="all, delete-orphan")
     attack_vectors = db.relationship("VulnerabilityAttackVector", back_populates="vulnerability", cascade="all, delete-orphan")

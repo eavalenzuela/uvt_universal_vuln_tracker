@@ -1,7 +1,7 @@
 import { el } from "../dom/el.js";
 import { logout } from "../../api/auth.js";
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from "../../api/notifications.js";
-import { getState, logoutSession, markAllNotificationsReadLocal, setNotifications } from "../../state/store.js";
+import { getState, logoutSession, markAllNotificationsReadLocal, setCurrentTeam, setNotifications } from "../../state/store.js";
 import { isAuthed } from "../../state/permissions.js";
 import { navigate } from "../../router/router.js";
 import { toggleTheme } from "../../state/theme.js";
@@ -70,6 +70,33 @@ export function renderHeader() {
   right.appendChild(themeBtn);
 
   if (authed) {
+    const teams = state?.session?.teams || [];
+    const currentTeamId = state?.session?.currentTeamId;
+    const isAdmin = user?.role === "Admin";
+    if (teams.length >= 2 || (isAdmin && teams.length >= 1)) {
+      const selector = el("select", {
+        class: "input team-selector",
+        "aria-label": "Active team",
+        title: "Active team",
+        onchange: (ev) => {
+          const val = Number(ev.target.value);
+          if (Number.isInteger(val)) {
+            setCurrentTeam(val);
+            // Re-trigger current route so data reloads under the new team.
+            const currentHash = window.location.hash || "#/";
+            const path = currentHash.slice(1) || "/";
+            navigate(path);
+          }
+        },
+      });
+      teams.forEach((t) => {
+        const opt = el("option", { value: String(t.id) }, t.name + (t.is_default ? " (default)" : ""));
+        if (t.id === currentTeamId) opt.selected = true;
+        selector.appendChild(opt);
+      });
+      right.appendChild(selector);
+    }
+
     const unreadCount = state?.notifications?.unreadCount || 0;
     const notificationButton = el(
       "button",

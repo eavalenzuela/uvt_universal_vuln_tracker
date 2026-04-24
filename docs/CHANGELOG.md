@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.16.0 — F15 Phase 2: team admin UI + active-team plumbing
+
+### Added
+- **Teams admin route** (`/admin/teams`, Admin-only) — list / create / rename / delete teams and manage memberships. Added sidebar link and `frontend/src/views/admin/adminTeamsView.js`, backed by the existing `/api/teams` and `/api/me/teams` endpoints.
+- **Top-nav team selector** — shown for users in ≥2 teams (and always for Admins), persists the active team in `localStorage` and re-navigates the current route on change so data reloads under the new scope.
+- **`X-UVT-Team-Id` header** — `apiFetch` reads `session.currentTeamId` from the store and attaches it on every request. CORS already permits the header (`backend/uvt_app.py:32`); backend resolves it in `backend/auth.py:_populate_current_team`.
+- **Session state** — `state.session.teams` and `state.session.currentTeamId` are now part of the persisted session. New `setCurrentTeam()` and `setSessionTeams()` actions on the store.
+- **`GET /api/auth/me` returns `teams` + `current_team_id`** — saves a second round-trip from the frontend on login/refresh.
+- **Team surfaced in UI** — product create form gains a team picker (for admins and multi-team users); product list cards show the owning team; vulnerability detail shows "Team" (or "Shared (global)" for team_id IS NULL).
+
+### Serializer changes
+- `product_json` now includes `team_id` and `team_name`.
+- Vulnerability detail payload (`backend/api/vuln_crud.py` get_vulnerability) includes `team_id` and `team_name`. Added missing `Vulnerability.team` relationship.
+
+### Fixed
+- **Products page rendered "No products found" with a populated catalog** — `productsView.js` treated the paginated `/api/products` response (`{items, page, ...}`) as a flat array. Now unwraps `.items` before rendering.
+
+### Screenshots (after)
+
+| Page | Screenshot |
+|------|-----------|
+| Login | ![login](images/v2.16.0-after/01-login.png) |
+| Dashboard | ![dashboard](images/v2.16.0-after/02-dashboard.png) |
+| Vulnerabilities | ![vulns](images/v2.16.0-after/03-vulnerabilities.png) |
+| Products (with team chip) | ![products](images/v2.16.0-after/04-products.png) |
+| Admin: Users (header team selector) | ![users](images/v2.16.0-after/07-admin-users.png) |
+| Admin: Teams (new) | ![teams](images/v2.16.0-after/14-admin-teams.png) |
+
 ## v2.12.0
 
 ### Added

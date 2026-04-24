@@ -17,9 +17,10 @@ export async function ProductsView() {
     list.innerHTML = "";
     list.appendChild(el("div", { class: "muted", text: "Loading products..." }));
     try {
-      const products = await listProducts();
+      const res = await listProducts();
+      const products = Array.isArray(res) ? res : (res?.items || []);
       list.innerHTML = "";
-      if (!products?.length) {
+      if (!products.length) {
         list.appendChild(el("div", { class: "muted", text: "No products found." }));
         return;
       }
@@ -36,11 +37,24 @@ export async function ProductsView() {
   const cancelBtn = el("button", { class: "btn", type: "button" }, "Cancel");
   const submitBtn = el("button", { class: "btn primary", type: "submit" }, "Save product");
 
+  const teams = state?.session?.teams || [];
+  const currentTeamId = state?.session?.currentTeamId;
+  const showTeamSelect = teams.length >= 2 || adminUser;
+  const teamSelect = showTeamSelect ? el("select", { class: "input", "aria-label": "Team" }) : null;
+  if (teamSelect) {
+    teams.forEach((t) => {
+      const opt = el("option", { value: String(t.id) }, t.name + (t.is_default ? " (default)" : ""));
+      if (t.id === currentTeamId) opt.selected = true;
+      teamSelect.appendChild(opt);
+    });
+  }
+
   const form = el(
     "form",
     { class: "flex-col" },
     el("div", {}, el("div", { class: "muted", text: "Name" }), nameInput),
     el("div", {}, el("div", { class: "muted", text: "Description" }), descInput),
+    teamSelect ? el("div", {}, el("div", { class: "muted", text: "Team" }), teamSelect) : null,
     el(
       "div",
       { class: "row flex-end gap-8" },
@@ -73,7 +87,12 @@ export async function ProductsView() {
     submitBtn.textContent = "Saving...";
 
     try {
-      await createProduct({ name, description: description || undefined });
+      const teamId = teamSelect ? Number(teamSelect.value) : null;
+      await createProduct({
+        name,
+        description: description || undefined,
+        team_id: Number.isInteger(teamId) && teamId ? teamId : undefined,
+      });
       toast({ title: "Product added", message: `${name} has been created.` });
       nameInput.value = "";
       descInput.value = "";

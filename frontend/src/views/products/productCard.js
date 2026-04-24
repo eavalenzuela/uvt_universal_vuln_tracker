@@ -62,6 +62,9 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
       el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: product.updated_at ? product.updated_at.slice(0, 10) : "-" })),
       el("div", {}, el("div", { class: "muted", text: "Versions" }), el("div", { text: product.version_count ?? "-" })),
       el("div", {}, el("div", { class: "muted", text: "Components" }), el("div", { text: product.component_count ?? "-" })),
+      product.team_name
+        ? el("div", {}, el("div", { class: "muted", text: "Team" }), el("span", { class: "badge badge-owner", text: product.team_name }))
+        : null,
     ),
     product.description ? el("p", { class: "muted mt-8", text: product.description }) : null,
   );

@@ -20,6 +20,8 @@ def product_json(p: "Product", include_details: bool = False):
         "id": p.id,
         "name": p.name,
         "description": p.description,
+        "team_id": getattr(p, "team_id", None),
+        "team_name": p.team.name if getattr(p, "team", None) else None,
         "created_at": p.created_at.isoformat(),
         "updated_at": p.updated_at.isoformat(),
         "version_count": len(p.versions or []),

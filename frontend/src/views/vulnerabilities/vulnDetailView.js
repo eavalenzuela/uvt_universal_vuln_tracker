@@ -199,6 +199,10 @@ export async function VulnDetailView(params = {}) {
             field("Last modified", formatDate(vuln.last_modified_date)),
             field("Assigned to", vuln.assigned_to ?? "Unassigned"),
             field("Created by", vuln.created_by ?? "-"),
+            field(
+              "Team",
+              vuln.team_name || (vuln.team_id == null ? "Shared (global)" : `Team ${vuln.team_id}`),
+            ),
           ),
         ),
         el(

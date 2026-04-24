@@ -8,7 +8,13 @@ export async function LoginView() {
   const currentSession = getState()?.session || { token: null, user: null };
   try {
     const fresh = await me();
-    setSession({ token: currentSession.token, refreshToken: currentSession.refreshToken, user: fresh });
+    setSession({
+      token: currentSession.token,
+      refreshToken: currentSession.refreshToken,
+      user: fresh,
+      teams: fresh?.teams || [],
+      currentTeamId: fresh?.current_team_id ?? null,
+    });
     navigate("/");
     return null;
   } catch {
@@ -37,7 +43,13 @@ export async function LoginView() {
 
       try {
         const fresh = await me();
-        setSession({ token: res.token, refreshToken: res.refresh_token || null, user: fresh });
+        setSession({
+          token: res.token,
+          refreshToken: res.refresh_token || null,
+          user: fresh,
+          teams: fresh?.teams || [],
+          currentTeamId: fresh?.current_team_id ?? null,
+        });
       } catch {
         // fine if /me not implemented yet
       }

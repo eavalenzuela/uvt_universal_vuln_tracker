@@ -610,6 +610,8 @@ def get_vulnerability(vuln_id: int):
         "updated_at": v.updated_at.isoformat(),
         "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         "sla_state": compute_sla_state(v),
+        "team_id": getattr(v, "team_id", None),
+        "team_name": v.team.name if getattr(v, "team", None) else None,
         "affected_versions": version_rows,
         "attack_vectors": attack_vector_rows,
         "terminal_impacts": terminal_impact_rows,
