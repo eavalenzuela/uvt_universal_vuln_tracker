@@ -1,4 +1,4 @@
-# Universal Vulnerability Tracker (UVT) — v2.11.0
+# Universal Vulnerability Tracker (UVT) — v2.12.0
 
 A full-stack vulnerability management platform with a Python/Flask API backend and vanilla JavaScript frontend. Track products, software components, vulnerabilities, SLA compliance, and risk trends across your organization.
 

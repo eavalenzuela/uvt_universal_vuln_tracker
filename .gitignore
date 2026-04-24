@@ -26,3 +26,6 @@ screenshots/
 
 # Local Docker overrides
 docker-compose.local.yml
+
+# Local scripts
+build.sh

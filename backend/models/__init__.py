@@ -59,6 +59,11 @@ from .reports import (
     ReportArtifact,
 )
 
+from .webhooks import (
+    WebhookEndpoint,
+    WebhookDeliveryLog,
+)
+
 __all__ = [
     "User",
     "ApiToken",
@@ -98,4 +103,6 @@ __all__ = [
     "ReportSchedule",
     "ReportTemplate",
     "ReportArtifact",
+    "WebhookEndpoint",
+    "WebhookDeliveryLog",
 ]

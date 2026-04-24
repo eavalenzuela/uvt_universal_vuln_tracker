@@ -98,7 +98,7 @@ Screenshots land in `screenshots/` (gitignored). Use `--save-as <label>` to copy
 
 **Three-layer design:** Blueprints → Services → Models
 
-- **`/backend/api/`** — Flask blueprints (17 route modules: auth, products, vulnerabilities, reports, plugins, notifications, users, etc.)
+- **`/backend/api/`** — Flask blueprints (26 route modules: auth, products, vulnerabilities, vuln_comments/versions/bulk, reports (exports/templates/schedules), plugins, notifications (rules/delivery/live), users, users_tokens, audit_logs, controls, components, attack_vectors, terminal_impacts, sla_policy, vulnerability_filters, dashboard_layout_presets, tasks, search) plus `validation.py` (input parsers)
 - **`/backend/services/`** — Business logic (auth, notifications, SBOM ingest, CVE enrichment, deduplication, Jira sync, email, Slack, reporting, SLA tracking)
 - **`/backend/models/`** — SQLAlchemy models organized by bounded context:
   - `auth.py` — User, ApiToken, RefreshToken, AuditLog

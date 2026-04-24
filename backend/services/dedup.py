@@ -209,6 +209,10 @@ def merge_vulnerabilities(*, target: Vulnerability, source: Vulnerability, actor
         raise ValueError("source and target must be different")
     if source.is_merged:
         raise ValueError("source vulnerability is already merged")
+    if target.is_merged:
+        raise ValueError("target vulnerability is already merged into another record")
+    if target.merged_into_id == source.id:
+        raise ValueError("merge would create a cycle: target was previously merged into source")
 
     _merge_vulnerability_versions(target.id, source.id)
     _merge_unique_link_rows(VulnerabilityComponent, target.id, source.id, ["component_id", "source"])

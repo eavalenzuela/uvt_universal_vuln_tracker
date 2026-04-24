@@ -7,6 +7,7 @@ import { listNotifications } from "./api/notifications.js";
 import { toast } from "./ui/components/toast.js";
 import { CONFIG } from "./config.js";
 import { loadTheme, applyTheme } from "./state/theme.js";
+import { installKeybindings } from "./ui/keybindings.js";
 
 let liveStream = null;
 
@@ -90,6 +91,12 @@ function boot() {
   // rerender header/sidebar on state changes
   subscribe((state) => {
     renderShell();
+    const role = state?.session?.user?.role;
+    if (role) {
+      document.body.setAttribute("data-user-role", role);
+    } else {
+      document.body.removeAttribute("data-user-role");
+    }
     if (isAuthed(state)) {
       startLiveNotificationStream();
     } else {
@@ -98,6 +105,7 @@ function boot() {
   });
 
   renderShell();
+  installKeybindings();
   startRouter();
   refreshSessionFromServer();
   if (isAuthed(getState())) {

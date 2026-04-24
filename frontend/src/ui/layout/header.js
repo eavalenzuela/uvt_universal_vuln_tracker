@@ -192,6 +192,7 @@ export function renderHeader() {
       type: "search",
       placeholder: "Search vulnerabilities, products\u2026",
       "aria-label": "Global search",
+      "data-global-search": "true",
     });
 
     const resultsPanel = el("div", { class: "card search-results-dropdown hidden" });

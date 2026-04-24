@@ -24,32 +24,73 @@ from .notifications import bp as notifications_bp
 from .dashboard_layout_presets import bp as dashboard_layout_presets_bp
 from .tasks import bp as tasks_bp
 from .search import bp as search_bp
+from .webhooks import bp as webhooks_bp
+
+
+_BLUEPRINTS = [
+    auth_bp,
+    attack_vectors_bp,
+    controls_bp,
+    products_bp,
+    plugins_bp,
+    terminal_impacts_bp,
+    vulns_bp,
+    vuln_comments_bp,
+    vuln_versions_bp,
+    vuln_bulk_bp,
+    users_bp,
+    users_tokens_bp,
+    audit_logs_bp,
+    notification_rules_bp,
+    notification_delivery_bp,
+    vulnerability_filters_bp,
+    sla_policy_bp,
+    report_exports_bp,
+    report_templates_bp,
+    report_schedules_bp,
+    components_bp,
+    live_notifications_bp,
+    notifications_bp,
+    dashboard_layout_presets_bp,
+    tasks_bp,
+    search_bp,
+    webhooks_bp,
+]
+
+
+class _V1AliasMiddleware:
+    """WSGI middleware that rewrites ``/api/v1/*`` → ``/api/*`` before routing.
+
+    Runs outside the Flask app, which is required because Flask's
+    ``before_request`` hooks fire after URL matching has already happened —
+    too late to redirect a request to a different rule.
+    """
+
+    _PREFIX = "/api/v1/"
+
+    def __init__(self, wsgi_app):
+        self._wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path.startswith(self._PREFIX):
+            environ["PATH_INFO"] = "/api/" + path[len(self._PREFIX):]
+            environ["uvt.api_version"] = "v1"
+        return self._wsgi_app(environ, start_response)
+
+
+def _install_v1_alias(app):
+    """Accept /api/v1/* as an alias for /api/* (F18).
+
+    External callers can pin to the v1 namespace today; future breaking changes
+    land at /api/v2 and leave /api/v1 stable. Implemented as WSGI middleware so
+    the URL map stays single-source-of-truth and OpenAPI docs don't double-
+    register every route.
+    """
+    app.wsgi_app = _V1AliasMiddleware(app.wsgi_app)
 
 
 def register_api(app):
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(attack_vectors_bp)
-    app.register_blueprint(controls_bp)
-    app.register_blueprint(products_bp)
-    app.register_blueprint(plugins_bp)
-    app.register_blueprint(terminal_impacts_bp)
-    app.register_blueprint(vulns_bp)
-    app.register_blueprint(vuln_comments_bp)
-    app.register_blueprint(vuln_versions_bp)
-    app.register_blueprint(vuln_bulk_bp)
-    app.register_blueprint(users_bp)
-    app.register_blueprint(users_tokens_bp)
-    app.register_blueprint(audit_logs_bp)
-    app.register_blueprint(notification_rules_bp)
-    app.register_blueprint(notification_delivery_bp)
-    app.register_blueprint(vulnerability_filters_bp)
-    app.register_blueprint(sla_policy_bp)
-    app.register_blueprint(report_exports_bp)
-    app.register_blueprint(report_templates_bp)
-    app.register_blueprint(report_schedules_bp)
-    app.register_blueprint(components_bp)
-    app.register_blueprint(live_notifications_bp)
-    app.register_blueprint(notifications_bp)
-    app.register_blueprint(dashboard_layout_presets_bp)
-    app.register_blueprint(tasks_bp)
-    app.register_blueprint(search_bp)
+    for bp in _BLUEPRINTS:
+        app.register_blueprint(bp)
+    _install_v1_alias(app)
