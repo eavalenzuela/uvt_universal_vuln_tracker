@@ -64,6 +64,9 @@ class AuditLog(db.Model):
     action = db.Column(db.String(100))
     table_name = db.Column(db.String(100))
     record_id = db.Column(db.Integer)
+    # F15: team context at time of mutation. NULL for cross-cutting actions
+    # (login, user-admin) or records outside any team.
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     old_values = db.Column(db.JSON)
     new_values = db.Column(db.JSON)

@@ -1,5 +1,10 @@
 """Compatibility export layer for SQLAlchemy models."""
 
+from .teams import (
+    Team,
+    UserTeam,
+)
+
 from .auth import (
     User,
     ApiToken,
@@ -69,6 +74,8 @@ from .user_preferences import (
 )
 
 __all__ = [
+    "Team",
+    "UserTeam",
     "User",
     "ApiToken",
     "RefreshToken",

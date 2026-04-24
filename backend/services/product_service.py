@@ -7,10 +7,13 @@ from datetime import datetime
 from sqlalchemy import asc
 from sqlalchemy.exc import IntegrityError
 
+from flask import request
+
 from ..database import db
 from ..models import Product, ProductOwner, ProductVersion, User, Control, ProductControl
 from ..api.validation import ValidationError
 from ..services.audit import model_snapshot, record_audit
+from ..services.team_scope import team_scope, user_can_access_team
 
 
 def _parse_date(date_str):
@@ -27,25 +30,48 @@ def _parse_date(date_str):
 # ---------------------------------------------------------------------------
 
 def list_products():
-    """Return a query of products ordered by name (caller paginates)."""
-    return Product.query.order_by(asc(Product.name))
+    """Return a query of products ordered by name, scoped to the caller's teams."""
+    user = getattr(request, "user", None) if request else None
+    return team_scope(Product.query, Product, user).order_by(asc(Product.name))
 
 
 def get_product(product_id: int):
-    """Fetch a single product or 404."""
-    return Product.query.get_or_404(product_id)
+    """Fetch a single product visible to the caller, else 404.
+
+    404 (not 403) matches the plan's "avoid existence oracle" rule.
+    """
+    user = getattr(request, "user", None) if request else None
+    scoped = team_scope(Product.query, Product, user).filter(Product.id == product_id)
+    product = scoped.first()
+    if product is None:
+        from flask import abort
+        abort(404)
+    return product
 
 
-def create_product(name: str, description: str | None, created_by: int | None):
-    """Create a new product, flush to obtain its id, and return it."""
+def create_product(name: str, description: str | None, created_by: int | None, team_id: int | None = None):
+    """Create a new product, flush to obtain its id, and return it.
+
+    F15: if ``team_id`` is not provided, derive it from the caller's active
+    team (``request.current_team_id``). Non-admins cannot stamp a team they
+    are not a member of.
+    """
     name = (name or "").strip()
     if not name:
         raise ValidationError(error="name is required", field="name")
+
+    user = getattr(request, "user", None) if request else None
+    if team_id is None:
+        team_id = getattr(request, "current_team_id", None) if request else None
+
+    if not user_can_access_team(user, team_id):
+        raise ValidationError(error="you are not a member of this team", field="team_id", status_code=403)
 
     p = Product(
         name=name,
         description=description,
         created_by=created_by,
+        team_id=team_id,
     )
     db.session.add(p)
     db.session.flush()
@@ -60,7 +86,7 @@ def update_product(product_id: int, data: dict):
     Handles name, description, owner_ids, and controls.
     Raises ValidationError for invalid input.
     """
-    p = Product.query.get_or_404(product_id)
+    p = get_product(product_id)
     old_values = model_snapshot(p)
 
     if "name" in data:
@@ -147,7 +173,7 @@ def update_product(product_id: int, data: dict):
 
 def delete_product(product_id: int):
     """Delete a product and return a snapshot of the old record."""
-    p = Product.query.get_or_404(product_id)
+    p = get_product(product_id)
     snapshot = model_snapshot(p)
     record_audit("DELETE", "products", p.id, old_values=snapshot)
     db.session.delete(p)

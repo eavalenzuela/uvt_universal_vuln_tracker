@@ -9,6 +9,9 @@ class Product(db.Model):
     name = db.Column(db.String(255), nullable=False, index=True)
     description = db.Column(db.Text)
 
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    team = db.relationship("Team", foreign_keys=[team_id])
+
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

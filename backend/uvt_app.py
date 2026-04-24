@@ -29,7 +29,7 @@ def create_app():
         app,
         resources={r"/api/*": {"origins": cfg.cors_origins}},
         supports_credentials=True,
-        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-UVT-Team-Id"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
 
@@ -43,6 +43,12 @@ def create_app():
 
     # DB
     init_database(app)
+
+    # F15: ensure the Default team exists and every user is a member.
+    # Idempotent and cheap; runs once per boot.
+    from .services.team_scope import ensure_default_team
+    with app.app_context():
+        ensure_default_team()
 
     # Celery background task queue
     init_celery(app)

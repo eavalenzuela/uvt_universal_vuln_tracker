@@ -129,11 +129,12 @@ def create_product():
             name=data.get("name"),
             description=data.get("description"),
             created_by=getattr(request, "user", None).id if getattr(request, "user", None) else None,
+            team_id=data.get("team_id"),
         )
     except ValidationError as exc:
-        return error_response(exc.error, field=exc.field, details=exc.details)
+        return error_response(exc.error, field=exc.field, details=exc.details, status_code=exc.status_code)
     cache_invalidate("products_list")
-    return jsonify({"id": p.id, "name": p.name, "description": p.description}), 201
+    return jsonify({"id": p.id, "name": p.name, "description": p.description, "team_id": p.team_id}), 201
 
 
 @bp.get("/products/<int:product_id>")

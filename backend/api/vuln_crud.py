@@ -28,6 +28,7 @@ from ..services.cve_enrichment import (
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
+from ..services.team_scope import team_scope
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
 from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
 from ..services.vulnerability_service import (
@@ -48,6 +49,24 @@ from ..serializers.vulnerability_serializers import (
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 MAX_PAGE_SIZE = 100
+
+
+def _get_vuln_or_404(vuln_id: int):
+    """Fetch a vulnerability the caller can see, else abort 404.
+
+    Shared-pool vulns (team_id IS NULL) are visible to every authenticated user.
+    """
+    from flask import abort
+    scoped = team_scope(
+        Vulnerability.query,
+        Vulnerability,
+        getattr(request, "user", None),
+        allow_null_team=True,
+    ).filter(Vulnerability.id == vuln_id)
+    vuln = scoped.first()
+    if vuln is None:
+        abort(404)
+    return vuln
 
 
 def _parse_sla_due_at(value, *, field="sla_due_at"):
@@ -302,10 +321,16 @@ def list_vulnerabilities():
         401:
           description: Unauthorized
     """
+    from ..services.team_scope import team_scope as _team_scope
     try:
         q, query_meta = build_vulnerability_query(
             request.args,
-            base_query=Vulnerability.query,
+            base_query=_team_scope(
+                Vulnerability.query,
+                Vulnerability,
+                getattr(request, "user", None),
+                allow_null_team=True,  # shared-pool vulns visible to all authenticated users
+            ),
             default_page=1,
             default_page_size=25,
             max_page_size=MAX_PAGE_SIZE,
@@ -509,7 +534,7 @@ def get_vulnerability(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = _get_vuln_or_404(vuln_id)
 
     mappings = VulnerabilityVersion.query.filter_by(vulnerability_id=v.id).all()
     version_rows = []
@@ -653,7 +678,7 @@ def list_vulnerability_merge_candidates(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = _get_vuln_or_404(vuln_id)
     try:
         limit = parse_int(request.args.get("limit"), field="limit", minimum=1) or 20
     except ValidationError as exc:
@@ -715,7 +740,7 @@ def merge_vulnerability_into_target(target_vuln_id: int):
         404:
           description: Source or target vulnerability not found
     """
-    target = Vulnerability.query.get_or_404(target_vuln_id)
+    target = _get_vuln_or_404(target_vuln_id)
     data = request.get_json(silent=True) or {}
     try:
         source_vuln_id = parse_int(data.get("source_vulnerability_id"), field="source_vulnerability_id", minimum=1, required=True)
@@ -802,7 +827,7 @@ def get_vulnerability_activity(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    _get_vuln_or_404(vuln_id)
 
     logs = (
         AuditLog.query
@@ -863,7 +888,7 @@ def get_vulnerability_history(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    _get_vuln_or_404(vuln_id)
     logs = (
         AuditLog.query
         .filter(
@@ -964,7 +989,7 @@ def update_vulnerability(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = _get_vuln_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
 
     old = {
@@ -1064,7 +1089,7 @@ def delete_vulnerability(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = _get_vuln_or_404(vuln_id)
     old = model_snapshot(v)
 
     record_audit("DELETE", "vulnerabilities", v.id, old_values=old, new_values=None)
@@ -1173,7 +1198,7 @@ def enrich_vulnerability(vuln_id: int):
         504:
           description: Upstream CVE source timeout
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = _get_vuln_or_404(vuln_id)
     try:
         force = parse_query_bool(request.args.get("force"), field="force") or False
     except ValidationError as exc:

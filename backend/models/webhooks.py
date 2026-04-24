@@ -28,6 +28,12 @@ class WebhookEndpoint(db.Model):
     owner = db.relationship("User", foreign_keys=[owner_id])
     product_version = db.relationship("ProductVersion", foreign_keys=[product_version_id])
 
+    # F15: authoritative stamp on incoming payloads — endpoint declares which
+    # team owns the vulns it ingests. If product_version_id is set, both must
+    # agree (enforced at creation).
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    team = db.relationship("Team", foreign_keys=[team_id])
+
     last_delivery_at = db.Column(TZDateTime)
     delivery_count = db.Column(db.Integer, default=0, nullable=False)
     failure_count = db.Column(db.Integer, default=0, nullable=False)

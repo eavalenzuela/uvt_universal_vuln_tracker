@@ -11,6 +11,9 @@ class PluginConfig(db.Model):
     enabled = db.Column(db.Boolean, default=True, nullable=False)
     schedule_cron = db.Column(db.String(120))
     interval_minutes = db.Column(db.Integer)
+    # F15: if set, vulns produced by this plugin inherit this team_id;
+    # NULL → shared pool (typical for global CVE feeds like NVD).
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
 class PluginRun(db.Model):
     __tablename__ = "plugin_runs"
@@ -23,6 +26,7 @@ class PluginRun(db.Model):
     error = db.Column(db.Text)
     stats_json = db.Column(db.JSON)
     celery_task_id = db.Column(db.String(255), index=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     artifacts = db.relationship("PluginRunArtifact", back_populates="plugin_run", cascade="all, delete-orphan")
 

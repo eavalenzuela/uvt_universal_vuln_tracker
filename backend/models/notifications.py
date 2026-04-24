@@ -38,6 +38,12 @@ class NotificationRule(db.Model):
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
+    # F15: nullable — existing rules migrate to Default team; new rules inherit
+    # the creator's current team. include_shared controls whether shared-pool
+    # vulns (team_id IS NULL) trigger this rule.
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    include_shared = db.Column(db.Boolean, default=True, nullable=False)
+
     creator = db.relationship("User", foreign_keys=[created_by])
 
 class NotificationDeliveryLog(db.Model):

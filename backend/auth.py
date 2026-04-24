@@ -320,6 +320,9 @@ def enforce_scopes(app):
             return csrf_error
         scope = scope_for_request(request.path, request.method)
         if not scope:
+            # Still resolve team context for unscoped endpoints so views can
+            # read request.current_team_id without re-parsing the header.
+            _populate_current_team()
             return None
         if getattr(request, "user", None) is None:
             _, _, error = authenticate_request()
@@ -333,7 +336,25 @@ def enforce_scopes(app):
         api_token = getattr(request, "api_token", None)
         if api_token is not None and scope not in set(api_token.scopes or []):
             return jsonify({"error": "Forbidden"}), 403
+        _populate_current_team()
         return None
+
+
+def _populate_current_team():
+    """Resolve the active team for the current request (F15).
+
+    Reads the ``X-UVT-Team-Id`` header if present; otherwise falls back to the
+    user's default membership. Non-admins requesting a team they don't belong to
+    silently fall back (no 403 — the filter will still deny them any data).
+    Always sets ``request.current_team_id`` so downstream code can read it.
+    """
+    from .services.team_scope import resolve_current_team_id
+
+    user = getattr(request, "user", None)
+    try:
+        request.current_team_id = resolve_current_team_id(user) if user is not None else None
+    except Exception:
+        request.current_team_id = None
 
 
 def get_user_by_id(user_id: int):

@@ -13,6 +13,7 @@ class SavedVulnerabilityFilter(db.Model):
 
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -32,6 +33,7 @@ class DashboardLayoutPreset(db.Model):
 
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -72,6 +74,11 @@ class Vulnerability(db.Model):
     is_merged = db.Column(db.Boolean, default=False, nullable=False, index=True)
     merged_into_id = db.Column(db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="SET NULL"), index=True)
     merge_metadata_json = db.Column(db.JSON, default=dict, nullable=False)
+
+    # F15: NULL = shared/global pool visible to every authenticated user
+    # (typical for CVE enrichment and unattached ingest); populated value
+    # restricts visibility to members of that team. See docs/plans/F15-team-acl.md.
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
     assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)

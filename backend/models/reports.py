@@ -19,6 +19,7 @@ class ReportSchedule(db.Model):
     report_template_id = db.Column(db.Integer, db.ForeignKey("report_templates.id", ondelete="SET NULL"), index=True)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
     last_run_at = db.Column(TZDateTime)
     last_run_status = db.Column(db.String(30), nullable=False, default="never")
     last_failure_reason = db.Column(db.Text)
@@ -52,6 +53,7 @@ class ReportTemplate(db.Model):
 
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     owner = db.relationship("User", foreign_keys=[owner_id])
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -68,6 +70,7 @@ class ReportArtifact(db.Model):
     content_type = db.Column(db.String(255))
     filters_json = db.Column(db.JSON)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     creator = db.relationship("User", foreign_keys=[created_by])
