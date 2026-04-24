@@ -61,6 +61,7 @@ export function renderSidebar() {
     navLink("Products", "/products"),
     navLink("Component Diff", "/products/component-diff"),
     navLink("Notifications", "/notifications"),
+    navLink("Settings", "/settings"),
     navLink("API Tokens", "/admin/api-tokens"),
   );
 

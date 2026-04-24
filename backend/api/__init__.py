@@ -25,6 +25,8 @@ from .dashboard_layout_presets import bp as dashboard_layout_presets_bp
 from .tasks import bp as tasks_bp
 from .search import bp as search_bp
 from .webhooks import bp as webhooks_bp
+from .user_preferences import bp as user_preferences_bp
+from .scanner_imports import bp as scanner_imports_bp
 
 
 _BLUEPRINTS = [
@@ -55,6 +57,8 @@ _BLUEPRINTS = [
     tasks_bp,
     search_bp,
     webhooks_bp,
+    user_preferences_bp,
+    scanner_imports_bp,
 ]
 
 

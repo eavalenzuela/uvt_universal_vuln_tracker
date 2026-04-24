@@ -18,6 +18,7 @@ import { ProductDetailView } from "../views/products/productDetailView.js";
 import { ProductDependencyGraphView } from "../views/products/productDependencyGraphView.js";
 import { ControlsView } from "../views/controls/controlsView.js";
 import { NotificationsView } from "../views/notifications/notificationsView.js";
+import { SettingsView } from "../views/settings/settingsView.js";
 
 export const ROUTES = [
   { path: "/login", view: LoginView, public: true },
@@ -38,6 +39,7 @@ export const ROUTES = [
   { path: "/products/:id", view: ProductDetailView, guard: () => requireAuth() },
   { path: "/products/:id/versions/:productVersionId/dependency-graph", view: ProductDependencyGraphView, guard: () => requireAuth() },
   { path: "/notifications", view: NotificationsView, guard: () => requireAuth() },
+  { path: "/settings", view: SettingsView, guard: () => requireAuth() },
 
   { path: "/admin/users", view: AdminUsersView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/logs", view: AdminLogsView, guard: () => requireAuth() && requireRole("Admin") },

@@ -32,6 +32,7 @@ const BINDINGS = [
   { chord: ["g", "p"], label: "Go to Products", action: () => navigate("/products") },
   { chord: ["g", "c"], label: "Go to Controls", action: () => navigate("/controls") },
   { chord: ["g", "n"], label: "Go to Notifications", action: () => navigate("/notifications") },
+  { chord: ["g", ","], label: "Go to Settings", action: () => navigate("/settings") },
   { chord: ["g", "u"], label: "Admin: Users", action: () => navigate("/admin/users"), role: "Admin" },
   { chord: ["g", "s"], label: "Admin: Audit logs", action: () => navigate("/admin/logs"), role: "Admin" },
   { chord: ["g", "t"], label: "Admin: API tokens", action: () => navigate("/admin/api-tokens") },

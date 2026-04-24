@@ -64,6 +64,10 @@ from .webhooks import (
     WebhookDeliveryLog,
 )
 
+from .user_preferences import (
+    UserPreferences,
+)
+
 __all__ = [
     "User",
     "ApiToken",
@@ -105,4 +109,5 @@ __all__ = [
     "ReportArtifact",
     "WebhookEndpoint",
     "WebhookDeliveryLog",
+    "UserPreferences",
 ]
