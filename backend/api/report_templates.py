@@ -27,13 +27,20 @@ def _serialize_template(template):
 
 
 def _query_visible_templates(user):
+    # F15: "team" visibility means teammates can see it; otherwise owner-only.
+    # Team-scoped filter runs on top — Admins bypass both.
+    from ..services.team_scope import team_ids_for_user
+
     if user.role == "Admin":
         return ReportTemplate.query
+    my_team_ids = team_ids_for_user(user)
+    team_visible = (
+        (ReportTemplate.visibility == "team") & ReportTemplate.team_id.in_(my_team_ids)
+        if my_team_ids
+        else (ReportTemplate.visibility == "team") & False
+    )
     return ReportTemplate.query.filter(
-        or_(
-            ReportTemplate.owner_id == user.id,
-            ReportTemplate.visibility == "team",
-        )
+        or_(ReportTemplate.owner_id == user.id, team_visible)
     )
 
 
@@ -206,6 +213,7 @@ def create_report_template():
         delivery_preferences_json=preferences,
         visibility=visibility,
         owner_id=user.id,
+        team_id=getattr(request, "current_team_id", None),
     )
     db.session.add(template)
     db.session.commit()
@@ -289,7 +297,7 @@ def update_report_template(template_id):
                 $ref: '#/components/schemas/Error'
     """
     user = request.user
-    template = ReportTemplate.query.get_or_404(template_id)
+    template = _query_visible_templates(user).filter(ReportTemplate.id == template_id).first_or_404()
     if not _can_manage_template(user, template):
         return error_response("Forbidden", status_code=403)
 
@@ -367,7 +375,7 @@ def delete_report_template(template_id):
                 $ref: '#/components/schemas/Error'
     """
     user = request.user
-    template = ReportTemplate.query.get_or_404(template_id)
+    template = _query_visible_templates(user).filter(ReportTemplate.id == template_id).first_or_404()
     if not _can_manage_template(user, template):
         return error_response("Forbidden", status_code=403)
     db.session.delete(template)

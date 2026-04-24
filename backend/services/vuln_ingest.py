@@ -27,11 +27,20 @@ def upsert_vulnerability(
     *,
     source: str | None = None,
     source_id: str | None = None,
+    team_id: int | None = None,
 ) -> Vulnerability:
+    """Upsert a normalized vuln.
+
+    F15: ``team_id`` is applied ONLY when the vuln row is first created. Once a
+    vuln exists in the DB its ``team_id`` is immutable through ingest paths —
+    shared-pool vulns (NULL) stay shared even if a later product linkage would
+    otherwise suggest promotion. See docs/plans/F15-team-acl.md §6.
+    """
     vulnerability = _upsert_vulnerability_no_commit(
         normalized,
         source=source,
         source_id=source_id,
+        team_id=team_id,
     )
 
     db.session.commit()
@@ -43,6 +52,7 @@ def _upsert_vulnerability_no_commit(
     *,
     source: str | None = None,
     source_id: str | None = None,
+    team_id: int | None = None,
 ) -> Vulnerability:
     normalized = replace(
         normalized,
@@ -55,6 +65,7 @@ def _upsert_vulnerability_no_commit(
         vulnerability = Vulnerability(
             cve_id=normalized.cve_id,
             title=normalized.title,
+            team_id=team_id,
         )
         db.session.add(vulnerability)
 
@@ -77,6 +88,7 @@ def upsert_vulnerabilities(
     normalized_items: list[NormalizedVuln],
     *,
     source: str | None = None,
+    team_id: int | None = None,
 ) -> list[Vulnerability]:
     results: list[Vulnerability] = []
     try:
@@ -86,6 +98,7 @@ def upsert_vulnerabilities(
                     normalized,
                     source=source,
                     source_id=_extract_source_id(normalized),
+                    team_id=team_id,
                 )
             )
 

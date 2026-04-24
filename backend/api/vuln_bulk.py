@@ -10,6 +10,7 @@ from ..models import (
     User,
 )
 from ..auth import login_required, role_required
+from ..services.team_scope import get_vulnerability_or_404
 from ..services.audit import build_field_diff, record_audit
 from ..services.sla import recompute_vulnerability_sla
 from ..rate_limiter import rate_limit
@@ -355,7 +356,7 @@ def list_vulnerability_watchers(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     watchers = (
         VulnerabilityWatcher.query
         .filter_by(vulnerability_id=vuln_id)
@@ -416,7 +417,7 @@ def watch_vulnerability(vuln_id: int):
         404:
           description: Vulnerability or user not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     requested_user_id = data.get("user_id", request.user.id)
     try:
@@ -475,7 +476,7 @@ def unwatch_vulnerability(vuln_id: int, user_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     if request.user.role != "Admin" and user_id != request.user.id:
         return error_response("Only admins can remove watchers for other users", status_code=403)
 

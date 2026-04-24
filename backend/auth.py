@@ -320,9 +320,11 @@ def enforce_scopes(app):
             return csrf_error
         scope = scope_for_request(request.path, request.method)
         if not scope:
-            # Still resolve team context for unscoped endpoints so views can
-            # read request.current_team_id without re-parsing the header.
-            _populate_current_team()
+            # Unscoped endpoints may still need team context inside the view
+            # (e.g. user preferences, settings). Views call
+            # ``current_team_id()`` from backend.services.team_scope lazily
+            # instead of relying on a before_request stamp — that avoids
+            # running authentication twice and tripping rate-limited paths.
             return None
         if getattr(request, "user", None) is None:
             _, _, error = authenticate_request()

@@ -4,6 +4,7 @@ from sqlalchemy import asc
 from ..database import db
 from ..models import TerminalImpact, Vulnerability, VulnerabilityTerminalImpact
 from ..auth import login_required, role_required
+from ..services.team_scope import get_vulnerability_or_404
 from ..services.audit import record_audit
 from .validation import ValidationError, error_response, required_string
 
@@ -266,7 +267,7 @@ def list_vulnerability_terminal_impacts(vuln_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     mappings = VulnerabilityTerminalImpact.query.filter_by(vulnerability_id=vuln_id).all()
     return jsonify([_mapping_json(m) for m in mappings])
 
@@ -322,7 +323,7 @@ def attach_vulnerability_terminal_impacts(vuln_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     impact_ids = data.get("terminal_impact_ids") or []
     added = 0
@@ -399,7 +400,7 @@ def update_vulnerability_terminal_impact(vuln_id: int, mapping_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     mapping = VulnerabilityTerminalImpact.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
     data = request.get_json(silent=True) or {}
 
@@ -448,7 +449,7 @@ def delete_vulnerability_terminal_impact(vuln_id: int, mapping_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     mapping = VulnerabilityTerminalImpact.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
     db.session.delete(mapping)
     db.session.commit()

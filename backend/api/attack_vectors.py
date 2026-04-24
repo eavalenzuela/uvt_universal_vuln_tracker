@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from ..auth import login_required, role_required
+from ..services.team_scope import get_vulnerability_or_404
 from ..services.attack_vector_service import (
     attach_vulnerability_attack_vectors as svc_attach,
     create_attack_vector as svc_create,

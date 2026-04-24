@@ -4,6 +4,7 @@ from sqlalchemy import asc, or_
 from ..auth import login_required
 from ..database import db
 from ..models import DashboardLayoutPreset
+from ..services.team_scope import current_team_id
 from .validation import ValidationError, enum_value, error_response, required_string
 
 bp = Blueprint("dashboard_layout_presets_api", __name__, url_prefix="/api/dashboard/layout-presets")
@@ -29,13 +30,25 @@ def _serialize(item):
 
 
 def _query_visible_presets(user):
+    """F15: own presets always, plus "team"-visibility presets in user's teams.
+
+    Presets with NULL team_id remain visible (back-compat for pre-F15 rows).
+    """
+    from ..services.team_scope import team_ids_for_user, current_team_id
+
     if user.role == "Admin":
         return DashboardLayoutPreset.query
-    return DashboardLayoutPreset.query.filter(
-        or_(
-            DashboardLayoutPreset.owner_id == user.id,
-            DashboardLayoutPreset.visibility == "team",
+    my_team_ids = team_ids_for_user(user)
+    team_clause = DashboardLayoutPreset.visibility == "team"
+    if my_team_ids:
+        team_clause = team_clause & (
+            DashboardLayoutPreset.team_id.is_(None)
+            | DashboardLayoutPreset.team_id.in_(my_team_ids)
         )
+    else:
+        team_clause = team_clause & DashboardLayoutPreset.team_id.is_(None)
+    return DashboardLayoutPreset.query.filter(
+        or_(DashboardLayoutPreset.owner_id == user.id, team_clause)
     )
 
 
@@ -169,6 +182,7 @@ def create_layout_preset():
         visibility=visibility,
         owner_id=user.id,
         is_default=is_default,
+        team_id=current_team_id(),
     )
     db.session.add(item)
     db.session.commit()
@@ -235,7 +249,7 @@ def update_layout_preset(preset_id):
                 $ref: '#/components/schemas/Error'
     """
     user = request.user
-    item = DashboardLayoutPreset.query.get(preset_id)
+    item = _query_visible_presets(user).filter(DashboardLayoutPreset.id == preset_id).first()
     if not item:
         return error_response("Dashboard layout preset not found", status_code=404)
     if not _can_manage(user, item):
@@ -307,7 +321,7 @@ def delete_layout_preset(preset_id):
                 $ref: '#/components/schemas/Error'
     """
     user = request.user
-    item = DashboardLayoutPreset.query.get(preset_id)
+    item = _query_visible_presets(user).filter(DashboardLayoutPreset.id == preset_id).first()
     if not item:
         return error_response("Dashboard layout preset not found", status_code=404)
     if not _can_manage(user, item):

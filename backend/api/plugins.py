@@ -10,7 +10,8 @@ from sqlalchemy import asc
 from ..auth import login_required, role_required
 from ..rate_limiter import rate_limit
 from ..database import db
-from ..models import PluginConfig, PluginRunArtifact
+from ..models import PluginConfig, PluginRun, PluginRunArtifact
+from ..services.team_scope import team_scope
 from .validation import error_response
 from ..plugins.config import is_masked_value, mask_config
 from ..plugins.base import BasePlugin, ControlsImportPlugin, VulnerabilityFeedPlugin
@@ -22,6 +23,21 @@ from ..services.audit import record_audit as _audit
 from ..serializers.plugin_serializers import artifact_json, plugin_run_json, redact_storage_path
 
 bp = Blueprint("plugins_api", __name__, url_prefix="/api")
+
+
+def _scoped_plugin_run(run_id: int):
+    return team_scope(
+        PluginRun.query, PluginRun, getattr(request, "user", None),
+    ).filter(PluginRun.id == run_id).first()
+
+
+def _scoped_latest_run(plugin_id: str):
+    return (
+        team_scope(PluginRun.query, PluginRun, getattr(request, "user", None))
+        .filter(PluginRun.plugin_id == plugin_id)
+        .order_by(PluginRun.started_at.desc())
+        .first()
+    )
 
 
 def _plugin_run_json(run):
@@ -157,7 +173,7 @@ def list_plugins():
     plugins = []
     for plugin_cls in registry.list_plugins():
         config_row = get_plugin_config(plugin_cls.plugin_id)
-        last_run = get_latest_plugin_run(plugin_cls.plugin_id)
+        last_run = _scoped_latest_run(plugin_cls.plugin_id)
         plugins.append(
             {
                 "plugin_id": plugin_cls.plugin_id,
@@ -233,7 +249,7 @@ def get_plugin(plugin_id: str):
     if not plugin_cls:
         return error_response("Plugin not found", status_code=404)
     config_row = get_plugin_config(plugin_id)
-    last_run = get_latest_plugin_run(plugin_id)
+    last_run = _scoped_latest_run(plugin_id)
     payload = {
         "plugin_id": plugin_cls.plugin_id,
         "display_name": plugin_cls.display_name,
@@ -355,7 +371,7 @@ def get_plugin_run_status(run_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    run = get_plugin_run_by_id(run_id)
+    run = _scoped_plugin_run(run_id)
     if not run:
         return error_response("Plugin run not found", status_code=404)
     return jsonify(_plugin_run_json(run)), 200
@@ -510,7 +526,7 @@ def list_plugin_run_artifacts(run_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    run = get_plugin_run_by_id(run_id)
+    run = _scoped_plugin_run(run_id)
     if not run:
         return error_response("Plugin run not found", status_code=404)
     artifacts = PluginRunArtifact.query.filter_by(plugin_run_id=run_id).order_by(PluginRunArtifact.created_at.asc()).all()

@@ -28,7 +28,7 @@ from ..services.cve_enrichment import (
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, error_response, normalize_cve_id, parse_float, parse_int, parse_iso_date, parse_query_bool, required_string
 from ..services.vulnerability_query import build_vulnerability_query
-from ..services.team_scope import team_scope
+from ..services.team_scope import get_vulnerability_or_404 as _get_vuln_or_404, team_scope
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
 from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
 from ..services.vulnerability_service import (
@@ -49,24 +49,6 @@ from ..serializers.vulnerability_serializers import (
 bp = Blueprint("vulns_api", __name__, url_prefix="/api")
 
 MAX_PAGE_SIZE = 100
-
-
-def _get_vuln_or_404(vuln_id: int):
-    """Fetch a vulnerability the caller can see, else abort 404.
-
-    Shared-pool vulns (team_id IS NULL) are visible to every authenticated user.
-    """
-    from flask import abort
-    scoped = team_scope(
-        Vulnerability.query,
-        Vulnerability,
-        getattr(request, "user", None),
-        allow_null_team=True,
-    ).filter(Vulnerability.id == vuln_id)
-    vuln = scoped.first()
-    if vuln is None:
-        abort(404)
-    return vuln
 
 
 def _parse_sla_due_at(value, *, field="sla_due_at"):
@@ -156,7 +138,11 @@ def list_product_versions():
         include_inactive = parse_query_bool(request.args.get("include_inactive"), field="include_inactive") or False
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
-    q = ProductVersion.query.join(Product, ProductVersion.product_id == Product.id)
+    q = team_scope(
+        ProductVersion.query.join(Product, ProductVersion.product_id == Product.id),
+        Product,
+        getattr(request, "user", None),
+    )
     if not include_inactive:
         q = q.filter(ProductVersion.is_active.is_(True))
 
@@ -473,7 +459,11 @@ def create_vulnerability():
     data = request.get_json(silent=True) or {}
 
     try:
-        v = create_vulnerability_workflow(data=data, actor_id=request.user.id)
+        v = create_vulnerability_workflow(
+            data=data,
+            actor_id=request.user.id,
+            team_id=getattr(request, "current_team_id", None),
+        )
     except ValidationError as exc:
         db.session.rollback()
         return error_response(exc.error, field=exc.field, details=exc.details)
@@ -750,7 +740,10 @@ def merge_vulnerability_into_target(target_vuln_id: int):
     if source_vuln_id == target_vuln_id:
         return error_response("source_vulnerability_id must be different from target", field="source_vulnerability_id")
 
-    source = Vulnerability.query.get(source_vuln_id)
+    # F15: source must also be visible to the caller.
+    source = team_scope(
+        Vulnerability.query, Vulnerability, getattr(request, "user", None), allow_null_team=True,
+    ).filter(Vulnerability.id == source_vuln_id).first()
     if not source:
         return error_response("Source vulnerability not found", field="source_vulnerability_id", status_code=404)
 

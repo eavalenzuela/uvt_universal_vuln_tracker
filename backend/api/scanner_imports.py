@@ -17,6 +17,7 @@ from ..auth import role_required
 from ..database import db
 from ..services.audit import record_audit as _audit
 from ..services.scanner_imports import PARSERS, ScannerImportError, import_scanner_file
+from ..services.team_scope import current_team_id
 from .validation import error_response
 
 bp = Blueprint("scanner_imports_api", __name__, url_prefix="/api")
@@ -57,6 +58,7 @@ def import_scanner(scanner: str):
             scanner=scanner,
             file_bytes=data,
             source_label=f"import:{scanner}:{upload.filename}",
+            team_id=current_team_id(),
         )
     except ScannerImportError as exc:
         return error_response(str(exc), status_code=422)

@@ -6,6 +6,7 @@ from sqlalchemy import or_
 from ..auth import login_required
 from ..database import db
 from ..models import Vulnerability, Product, VulnerabilityComment, User
+from ..services.team_scope import team_ids_for_user, team_scope
 
 bp = Blueprint("search_api", __name__, url_prefix="/api")
 
@@ -85,10 +86,11 @@ def global_search():
         return jsonify({"error": "Search query must be at least 2 characters"}), 400
 
     like = f"%{q}%"
+    user = request.user
 
-    # Vulnerabilities: title, cve_id, description
+    # Vulnerabilities: title, cve_id, description (scoped, shared-pool included)
     vulns = (
-        Vulnerability.query
+        team_scope(Vulnerability.query, Vulnerability, user, allow_null_team=True)
         .filter(or_(
             Vulnerability.title.ilike(like),
             Vulnerability.cve_id.ilike(like),
@@ -99,9 +101,9 @@ def global_search():
         .all()
     )
 
-    # Products: name, description
+    # Products: name, description (scoped by team)
     products = (
-        Product.query
+        team_scope(Product.query, Product, user)
         .filter(or_(
             Product.name.ilike(like),
             Product.description.ilike(like),
@@ -111,12 +113,26 @@ def global_search():
         .all()
     )
 
-    # Comments: body (join to get author name)
-    comment_rows = (
+    # Comments: visibility inherited from the parent vulnerability.
+    comment_query = (
         db.session.query(VulnerabilityComment, User.username)
         .join(User, VulnerabilityComment.author_id == User.id)
         .filter(VulnerabilityComment.body.ilike(like))
-        .order_by(VulnerabilityComment.created_at.desc())
+    )
+    if user and user.role != "Admin":
+        ids = team_ids_for_user(user)
+        comment_query = comment_query.join(
+            Vulnerability, VulnerabilityComment.vulnerability_id == Vulnerability.id,
+        )
+        if ids:
+            comment_query = comment_query.filter(
+                or_(Vulnerability.team_id.in_(ids), Vulnerability.team_id.is_(None))
+            )
+        else:
+            comment_query = comment_query.filter(Vulnerability.team_id.is_(None))
+
+    comment_rows = (
+        comment_query.order_by(VulnerabilityComment.created_at.desc())
         .limit(MAX_RESULTS_PER_TYPE)
         .all()
     )

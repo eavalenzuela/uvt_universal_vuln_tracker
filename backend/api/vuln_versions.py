@@ -6,6 +6,7 @@ from ..models import (
     VulnerabilityVersion,
 )
 from ..auth import role_required
+from ..services.team_scope import get_vulnerability_or_404
 from ..services.audit import record_audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from .validation import error_response
@@ -62,7 +63,7 @@ def attach_versions(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    v = Vulnerability.query.get_or_404(vuln_id)
+    v = get_vulnerability_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     pv_ids = data.get("product_version_ids") or []
     added = 0
@@ -161,7 +162,7 @@ def update_vulnerability_version(vuln_id: int, mapping_id: int):
         404:
           description: Vulnerability or mapping not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
     data = request.get_json(silent=True) or {}
 
@@ -244,7 +245,7 @@ def delete_vulnerability_version(vuln_id: int, mapping_id: int):
         404:
           description: Vulnerability or mapping not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     mapping = VulnerabilityVersion.query.filter_by(id=mapping_id, vulnerability_id=vuln_id).first_or_404()
 
     record_audit("DELETE", "vulnerability_versions", mapping.id, old_values={

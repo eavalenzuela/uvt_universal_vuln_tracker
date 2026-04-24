@@ -15,6 +15,16 @@ from ..auth import login_required
 from ..database import db
 from ..models import ReportArtifact, Vulnerability
 from ..rate_limiter import rate_limit
+from ..services.team_scope import team_scope as _team_scope
+
+
+def _scoped_vuln_base():
+    return _team_scope(
+        Vulnerability.query,
+        Vulnerability,
+        getattr(request, "user", None),
+        allow_null_team=True,
+    )
 from .validation import ValidationError, error_response
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.reporting_service import dashboard_aggregate, risk_trends
@@ -293,6 +303,7 @@ def _build_export_artifact(*, report_type, export_format, filters, payload, file
         content_type=content_type,
         filters_json=dict(filters or {}),
         created_by=created_by_user_id or request.user.id,
+        team_id=getattr(request, "current_team_id", None),
     )
     db.session.add(artifact)
     db.session.commit()
@@ -331,7 +342,7 @@ def _csv_content(fieldnames, rows):
 
 
 def _dashboard_summary(filters):
-    q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
+    q, _ = build_vulnerability_query(filters, base_query=_scoped_vuln_base())
     total = q.count()
     by_severity = dict(
         db.session.query(Vulnerability.severity, func.count(Vulnerability.id))
@@ -362,7 +373,7 @@ def _build_export_artifact_async(*, report_type, export_format, filters, user_id
     if report_type == "dashboard_summary":
         payload = _dashboard_summary(filters)
     else:
-        q, _ = build_vulnerability_query(filters or {}, base_query=Vulnerability.query)
+        q, _ = build_vulnerability_query(filters or {}, base_query=_scoped_vuln_base())
         payload = [_vuln_row(v) for v in q.all()]
 
     return _build_export_artifact(
@@ -537,7 +548,7 @@ def export_vulnerabilities():
         filters = template.filters_json or filters
         export_format = template.export_format or export_format
     try:
-        items, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
+        items, _ = build_vulnerability_query(filters, base_query=_scoped_vuln_base())
         items = items.all()
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
@@ -676,7 +687,14 @@ def download_report_artifact(artifact_id):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    artifact = ReportArtifact.query.filter_by(id=artifact_id).first()
+    # F15: the token already binds artifact_id to user_id, but we still apply
+    # team_scope so an old token doesn't let a user re-download an artifact
+    # whose team they've since left.
+    artifact = (
+        _team_scope(ReportArtifact.query, ReportArtifact, getattr(request, "user", None))
+        .filter(ReportArtifact.id == artifact_id)
+        .first()
+    )
     if not artifact:
         return error_response("Artifact not found", status_code=404)
 

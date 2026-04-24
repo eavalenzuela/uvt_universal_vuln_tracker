@@ -5,10 +5,24 @@ from sqlalchemy import asc
 
 from ..auth import login_required, role_required
 from ..rate_limiter import rate_limit
-from ..models import ComponentDependency, ProductVersion, SoftwareComponent, Vulnerability, VulnerabilityComponent
+from ..models import ComponentDependency, Product, ProductVersion, SoftwareComponent, Vulnerability, VulnerabilityComponent
 from .validation import error_response
 from ..services.component_diff import compare_product_version_components
 from ..services.sbom_ingest import SbomFormatError, ingest_sbom
+from ..services.team_scope import team_scope as _team_scope
+
+
+def _get_product_version_or_404(product_version_id: int) -> ProductVersion:
+    """Fetch a ProductVersion whose parent Product is in the caller's teams."""
+    from flask import abort
+    user = getattr(request, "user", None)
+    q = ProductVersion.query.join(Product, ProductVersion.product_id == Product.id).filter(
+        ProductVersion.id == product_version_id
+    )
+    pv = _team_scope(q, Product, user).first()
+    if pv is None:
+        abort(404)
+    return pv
 
 bp = Blueprint("components_api", __name__, url_prefix="/api")
 
@@ -44,7 +58,7 @@ def list_components(product_version_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    ProductVersion.query.get_or_404(product_version_id)
+    _get_product_version_or_404(product_version_id)
     components = (
         SoftwareComponent.query
         .filter_by(product_version_id=product_version_id)
@@ -285,7 +299,7 @@ def get_dependency_graph(product_version_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    ProductVersion.query.get_or_404(product_version_id)
+    _get_product_version_or_404(product_version_id)
 
     components = (
         SoftwareComponent.query

@@ -149,14 +149,19 @@ def ingest_webhook_payload(
     source_type: str,
     payload: Mapping[str, Any],
     source_label: str,
+    team_id: int | None = None,
 ) -> int:
-    """Parse payload by source_type and upsert vulns. Returns count."""
+    """Parse payload by source_type and upsert vulns. Returns count.
+
+    ``team_id`` is the stamp applied to any NEW vulns created — typically the
+    owning WebhookEndpoint's team. NULL means shared-pool.
+    """
     parser = PARSERS.get(source_type)
     if parser is None:
         raise WebhookPayloadError(f"unsupported source_type: {source_type}")
 
     ingested = 0
     for normalized in parser(payload):
-        upsert_vulnerability(normalized, source=source_label)
+        upsert_vulnerability(normalized, source=source_label, team_id=team_id)
         ingested += 1
     return ingested

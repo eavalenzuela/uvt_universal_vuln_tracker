@@ -7,6 +7,7 @@ from ..models import (
     VulnerabilityComment,
 )
 from ..auth import login_required, role_required
+from ..services.team_scope import get_vulnerability_or_404
 from ..services.audit import record_audit
 from ..services.notification_rules import trigger_mention_notifications
 from .validation import ValidationError, error_response, required_string
@@ -52,7 +53,7 @@ def list_vulnerability_comments(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     comments = (
         VulnerabilityComment.query
         .filter_by(vulnerability_id=vuln_id)
@@ -109,7 +110,7 @@ def create_vulnerability_comment(vuln_id: int):
         404:
           description: Vulnerability not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     try:
         body = required_string(data, "body")
@@ -188,7 +189,7 @@ def update_vulnerability_comment(vuln_id: int, comment_id: int):
         404:
           description: Vulnerability or comment not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
     if not _can_moderate_comment(request.user, comment):
         return error_response("Not permitted to edit this comment", status_code=403)
@@ -249,7 +250,7 @@ def delete_vulnerability_comment(vuln_id: int, comment_id: int):
         404:
           description: Vulnerability or comment not found
     """
-    Vulnerability.query.get_or_404(vuln_id)
+    get_vulnerability_or_404(vuln_id)
     comment = VulnerabilityComment.query.filter_by(id=comment_id, vulnerability_id=vuln_id).first_or_404()
     if not _can_moderate_comment(request.user, comment):
         return error_response("Not permitted to delete this comment", status_code=403)

@@ -96,4 +96,6 @@ def test_dashboard_layout_presets_forbid_non_owner_update(app, client):
         headers=_auth_header(other),
         json={"name": "Attempt"},
     )
-    assert update_resp.status_code == 403
+    # F15: private presets are invisible to non-owners, so detail lookups
+    # return 404 (no existence oracle) instead of 403.
+    assert update_resp.status_code == 404

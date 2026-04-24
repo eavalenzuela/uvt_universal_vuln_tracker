@@ -9,8 +9,22 @@ from ..database import db
 from ..models import NotificationDeliveryLog, NotificationRule, Vulnerability
 from ..services.audit import record_audit as _audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from ..services.team_scope import team_scope, current_team_id
 from ..serializers.notification_rule_serializers import rule_json as _rule_json
 from .validation import ValidationError, enum_value, error_response, paginate_query, parse_bool, parse_int, required_string
+
+
+def _get_rule_or_404(rule_id: int) -> NotificationRule:
+    from flask import abort
+    scoped = team_scope(
+        NotificationRule.query,
+        NotificationRule,
+        getattr(request, "user", None),
+    ).filter(NotificationRule.id == rule_id)
+    rule = scoped.first()
+    if rule is None:
+        abort(404)
+    return rule
 
 bp = Blueprint("notification_rules_api", __name__, url_prefix="/api")
 
@@ -65,7 +79,9 @@ def list_rules():
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    query = NotificationRule.query.order_by(NotificationRule.id.desc())
+    query = team_scope(
+        NotificationRule.query, NotificationRule, getattr(request, "user", None),
+    ).order_by(NotificationRule.id.desc())
     try:
         rows, meta = paginate_query(query)
     except ValidationError as exc:
@@ -176,6 +192,8 @@ def create_rule():
         channels=data.get("channels") or [],
         recipients=data.get("recipients") or [],
         created_by=request.user.id,
+        team_id=current_team_id(),
+        include_shared=bool(data.get("include_shared", True)),
     )
     db.session.add(rule)
     db.session.flush()
@@ -267,7 +285,7 @@ def update_rule(rule_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    rule = NotificationRule.query.get_or_404(rule_id)
+    rule = _get_rule_or_404(rule_id)
     data = request.get_json(silent=True) or {}
     old = _rule_json(rule)
 
@@ -376,7 +394,7 @@ def delete_rule(rule_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    rule = NotificationRule.query.get_or_404(rule_id)
+    rule = _get_rule_or_404(rule_id)
     old = _rule_json(rule)
     _audit("DELETE", "notification_rules", rule.id, old_values=old)
     db.session.delete(rule)
@@ -437,7 +455,7 @@ def test_send(rule_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    rule = NotificationRule.query.get_or_404(rule_id)
+    rule = _get_rule_or_404(rule_id)
     vuln = Vulnerability.query.order_by(desc(Vulnerability.updated_at)).first()
     if not vuln:
         return error_response("No vulnerabilities found to use for test-send", field="vulnerability_id")
@@ -518,7 +536,19 @@ def list_delivery_logs():
         limit = parse_int(request.args.get("limit", 100), field="limit", minimum=1, maximum=500, required=True)
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
-    rows = NotificationDeliveryLog.query.order_by(NotificationDeliveryLog.id.desc()).limit(limit).all()
+    # Delivery logs inherit team visibility from their parent rule.
+    base = NotificationDeliveryLog.query
+    user = getattr(request, "user", None)
+    if user is not None and user.role != "Admin":
+        from ..services.team_scope import team_ids_for_user
+        ids = team_ids_for_user(user)
+        if ids:
+            base = base.join(
+                NotificationRule, NotificationDeliveryLog.rule_id == NotificationRule.id
+            ).filter(NotificationRule.team_id.in_(ids))
+        else:
+            base = base.filter(False)
+    rows = base.order_by(NotificationDeliveryLog.id.desc()).limit(limit).all()
     return jsonify([
         {
             "id": row.id,

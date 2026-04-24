@@ -6,10 +6,33 @@ from flask import Blueprint, jsonify, request
 
 from ..auth import role_required
 from ..database import db
-from ..models import NotificationDeliveryLog
+from ..models import NotificationDeliveryLog, NotificationRule
 from ..services.audit import record_audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
+from ..services.team_scope import team_ids_for_user
 from .validation import ValidationError, error_response, parse_int
+
+
+def _scope_delivery_query(query):
+    user = getattr(request, "user", None)
+    if user is None or user.role == "Admin":
+        return query
+    ids = team_ids_for_user(user)
+    if not ids:
+        return query.filter(False)
+    return query.join(
+        NotificationRule, NotificationDeliveryLog.rule_id == NotificationRule.id
+    ).filter(NotificationRule.team_id.in_(ids))
+
+
+def _get_delivery_or_404(attempt_id: int) -> NotificationDeliveryLog:
+    from flask import abort
+    row = _scope_delivery_query(NotificationDeliveryLog.query).filter(
+        NotificationDeliveryLog.id == attempt_id
+    ).first()
+    if row is None:
+        abort(404)
+    return row
 
 bp = Blueprint("notification_delivery_api", __name__, url_prefix="/api")
 
@@ -144,7 +167,7 @@ def list_delivery_attempts():
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
-    query = NotificationDeliveryLog.query.order_by(NotificationDeliveryLog.id.desc())
+    query = _scope_delivery_query(NotificationDeliveryLog.query).order_by(NotificationDeliveryLog.id.desc())
     if failed_only:
         query = query.filter_by(success=False)
     rows = query.limit(limit).all()
@@ -220,7 +243,7 @@ def retry_delivery_attempt(attempt_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    row = NotificationDeliveryLog.query.get_or_404(attempt_id)
+    row = _get_delivery_or_404(attempt_id)
     result = _retry_or_replay(log_row=row, action="retry", guard_failures_only=True)
     _audit(
         "RETRY_NOTIFICATION_DELIVERY",
@@ -281,7 +304,7 @@ def replay_delivery_attempt(attempt_id: int):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    row = NotificationDeliveryLog.query.get_or_404(attempt_id)
+    row = _get_delivery_or_404(attempt_id)
     result = _retry_or_replay(log_row=row, action="replay", guard_failures_only=False)
     _audit(
         "REPLAY_NOTIFICATION_DELIVERY",

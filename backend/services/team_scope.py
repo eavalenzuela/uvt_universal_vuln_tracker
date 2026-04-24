@@ -72,6 +72,29 @@ def default_team_id_for_user(user: User | None) -> int | None:
     return row.team_id if row else None
 
 
+def current_team_id() -> int | None:
+    """Read (or compute) the active team id for the current request.
+
+    Prefers ``request.current_team_id`` if the before_request hook already set
+    it (scoped paths); otherwise resolves lazily from the header/defaults.
+    Callable from any view regardless of whether the path is scope-checked.
+    """
+    if not request:
+        return None
+    stamped = getattr(request, "current_team_id", None)
+    if stamped is not None:
+        return stamped
+    user = getattr(request, "user", None)
+    if user is None:
+        return None
+    resolved = resolve_current_team_id(user)
+    try:
+        request.current_team_id = resolved
+    except Exception:
+        pass
+    return resolved
+
+
 def resolve_current_team_id(user: User | None) -> int | None:
     """The team for the current request.
 
@@ -119,6 +142,25 @@ def team_scope(query, model, user: User | None, *, allow_null_team: bool = False
     if allow_null_team:
         return query.filter(or_(column.in_(ids), column.is_(None)))
     return query.filter(column.in_(ids))
+
+
+def get_vulnerability_or_404(vuln_id: int):
+    """Fetch a vulnerability visible to the current user, else abort 404.
+
+    Shared across all vuln-child endpoints (comments, versions, bulk,
+    attack-vector mappings, terminal-impact mappings) so the scoping contract
+    stays in one place.
+    """
+    from flask import abort
+    from backend.models import Vulnerability
+    user = getattr(request, "user", None) if request else None
+    scoped = team_scope(
+        Vulnerability.query, Vulnerability, user, allow_null_team=True,
+    ).filter(Vulnerability.id == vuln_id)
+    vuln = scoped.first()
+    if vuln is None:
+        abort(404)
+    return vuln
 
 
 def user_can_access_team(user: User | None, team_id: int | None) -> bool:

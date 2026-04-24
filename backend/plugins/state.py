@@ -82,7 +82,13 @@ def create_plugin_run(
     finished_at: datetime | None = None,
     error: str | None = None,
     stats: Mapping[str, Any] | None = None,
+    team_id: int | None = None,
 ) -> PluginRun:
+    # F15: team_id defaults to the plugin's configured team if not passed.
+    if team_id is None:
+        config = get_plugin_config(plugin_id)
+        if config is not None:
+            team_id = getattr(config, "team_id", None)
     run = PluginRun(
         plugin_id=plugin_id,
         status=status,
@@ -90,6 +96,7 @@ def create_plugin_run(
         finished_at=finished_at,
         error=error,
         stats_json=dict(stats or {}) if stats is not None else None,
+        team_id=team_id,
     )
     db.session.add(run)
     db.session.commit()

@@ -211,13 +211,19 @@ PARSERS = {
 }
 
 
-def import_scanner_file(*, scanner: str, file_bytes: bytes, source_label: str) -> int:
+def import_scanner_file(
+    *,
+    scanner: str,
+    file_bytes: bytes,
+    source_label: str,
+    team_id: int | None = None,
+) -> int:
     parser = PARSERS.get(scanner)
     if parser is None:
         raise ScannerImportError(f"unsupported scanner: {scanner}")
 
     ingested = 0
     for normalized in parser(file_bytes):
-        upsert_vulnerability(normalized, source=source_label)
+        upsert_vulnerability(normalized, source=source_label, team_id=team_id)
         ingested += 1
     return ingested

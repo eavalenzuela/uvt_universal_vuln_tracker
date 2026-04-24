@@ -91,6 +91,7 @@ def log_audit_event(
     action: str,
     resource: str,
     record_id: int | None,
+    team_id: int | None = None,
     old_values: dict[str, Any] | None = None,
     new_values: dict[str, Any] | None = None,
 ):
@@ -99,23 +100,40 @@ def log_audit_event(
         action=action,
         table_name=resource,
         record_id=record_id,
+        team_id=team_id,
         old_values=scrub_snapshot(old_values) if old_values is not None else None,
         new_values=scrub_snapshot(new_values) if new_values is not None else None,
     )
     return db_row
 
 
-def record_audit(action: str, resource: str, record_id: int | None, *, old_values=None, new_values=None):
-    """Convenience wrapper: resolves the current request user and adds the log to the session."""
+def record_audit(
+    action: str,
+    resource: str,
+    record_id: int | None,
+    *,
+    team_id: int | None = None,
+    old_values=None,
+    new_values=None,
+):
+    """Convenience wrapper: resolves the current request user and adds the log.
+
+    F15: if ``team_id`` is not passed, fall back to ``request.current_team_id``
+    so cross-cutting actions (login, user admin) naturally carry whatever team
+    context the caller was acting under.
+    """
     from flask import request
     from ..database import db
 
     actor = getattr(request, "user", None)
+    if team_id is None:
+        team_id = getattr(request, "current_team_id", None)
     db.session.add(log_audit_event(
         actor_id=actor.id if actor else None,
         action=action,
         resource=resource,
         record_id=record_id,
+        team_id=team_id,
         old_values=old_values,
         new_values=new_values,
     ))

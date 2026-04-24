@@ -36,6 +36,18 @@ def _serialize_template(template):
     return serialize_template(template)
 
 
+def _get_schedule_or_404(schedule_id: int):
+    from flask import abort
+    from ..services.team_scope import team_scope as _team_scope
+    scoped = _team_scope(
+        ReportSchedule.query, ReportSchedule, getattr(request, "user", None),
+    ).filter(ReportSchedule.id == schedule_id)
+    row = scoped.first()
+    if row is None:
+        abort(404)
+    return row
+
+
 def _schedule_json(schedule):
     status = schedule.last_run_status if schedule.last_run_status in RUN_STATUS_VALUES else "never"
     return {
@@ -180,6 +192,7 @@ def create_report_schedule():
         delivery_preferences_json=delivery_preferences,
         created_by=request.user.id,
         report_template_id=(report_template.id if report_template else None),
+        team_id=getattr(request, "current_team_id", None),
     )
     db.session.add(schedule)
     db.session.commit()
@@ -233,7 +246,8 @@ def list_report_schedules():
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    q = ReportSchedule.query
+    from ..services.team_scope import team_scope as _team_scope
+    q = _team_scope(ReportSchedule.query, ReportSchedule, request.user)
     if request.user.role != "Admin":
         q = q.filter(ReportSchedule.created_by == request.user.id)
     q = q.order_by(desc(ReportSchedule.created_at))
@@ -321,7 +335,7 @@ def update_report_schedule(schedule_id):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    schedule = ReportSchedule.query.get_or_404(schedule_id)
+    schedule = _get_schedule_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
 
@@ -398,7 +412,7 @@ def delete_report_schedule(schedule_id):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    schedule = ReportSchedule.query.get_or_404(schedule_id)
+    schedule = _get_schedule_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
     db.session.delete(schedule)
@@ -462,7 +476,7 @@ def run_report_schedule(schedule_id):
               schema:
                 $ref: '#/components/schemas/Error'
     """
-    schedule = ReportSchedule.query.get_or_404(schedule_id)
+    schedule = _get_schedule_or_404(schedule_id)
     if request.user.role != "Admin" and schedule.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
 
