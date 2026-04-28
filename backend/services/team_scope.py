@@ -5,7 +5,7 @@ scoped resource is stamped with that team. The `team_scope()` filter helper is
 load-bearing from day one, even when there is only one team — that way Phase 2
 (surfacing team creation in the UI) activates naturally without a flag flip.
 
-See docs/plans/F15-team-acl.md.
+See docs/plans/done/F15-team-acl.md.
 """
 
 from __future__ import annotations

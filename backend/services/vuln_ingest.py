@@ -34,7 +34,7 @@ def upsert_vulnerability(
     F15: ``team_id`` is applied ONLY when the vuln row is first created. Once a
     vuln exists in the DB its ``team_id`` is immutable through ingest paths —
     shared-pool vulns (NULL) stay shared even if a later product linkage would
-    otherwise suggest promotion. See docs/plans/F15-team-acl.md §6.
+    otherwise suggest promotion. See docs/plans/done/F15-team-acl.md §6.
     """
     vulnerability = _upsert_vulnerability_no_commit(
         normalized,

@@ -43,11 +43,11 @@ Blueprints (routes)  ->  Services (business logic)  ->  Models (data)
 
 ### API Blueprints (`api/`)
 
-24 route modules organized by domain:
+31 route modules organized by domain. Every route is also reachable under `/api/v1/*` via WSGI alias middleware (F18).
 
 | Module | Prefix | Purpose |
 |--------|--------|---------|
-| `auth_routes.py` | `/api/auth` | Login, refresh, logout, register, OIDC SSO, CSRF token |
+| `auth_routes.py` | `/api/auth` | Login, refresh, logout, register, OIDC SSO, CSRF token, password reset |
 | `products.py` | `/api/products` | Product CRUD, versions |
 | `components.py` | `/api` | SBOM upload, component listing, dependency graphs, version comparison |
 | `controls.py` | `/api/controls` | Security control CRUD |
@@ -58,9 +58,9 @@ Blueprints (routes)  ->  Services (business logic)  ->  Models (data)
 | `vuln_versions.py` | `/api/vulnerabilities` | Affected product version associations |
 | `vuln_bulk.py` | `/api/vulnerabilities` | Batch/bulk updates, watchers |
 | `vulnerability_filters.py` | `/api/vulnerabilities/filters` | Saved filter presets |
-| `vulnerability_query.py` | — | Query builder (service, no blueprint) |
 | `users_crud.py` | `/api/users` | User CRUD, invite, impersonate, toggle active, export |
 | `users_tokens.py` | `/api/users` | API token management (personal + admin) |
+| `user_preferences.py` | `/api/users/me/preferences` | Per-user settings (timezone, default filter, channels) |
 | `audit_logs.py` | `/api/audit-logs` | Audit log listing |
 | `plugins.py` | `/api/plugins` | Plugin listing, run, config, artifact download, import |
 | `notification_rules.py` | `/api/notification-rules` | Notification rule CRUD, test-send, delivery logs |
@@ -68,12 +68,18 @@ Blueprints (routes)  ->  Services (business logic)  ->  Models (data)
 | `notifications.py` | `/api/notifications` | In-app notification CRUD, read-all |
 | `live_notifications.py` | `/api/notifications/stream` | SSE real-time event stream |
 | `sla_policy.py` | `/api/sla_policy` | SLA policy get/set |
-| `report_exports.py` | `/api/reports` | Vulnerability/dashboard export, risk trends, artifact download |
+| `report_exports.py` | `/api/reports` | Vulnerability/dashboard export (CSV/JSON/PDF), artifact status + download, risk trends |
 | `report_templates.py` | `/api/reports/templates` | Report template CRUD |
 | `report_schedules.py` | `/api/reports/schedules` | Report schedule CRUD + manual run |
 | `dashboard_layout_presets.py` | `/api/dashboard/layout-presets` | Dashboard layout preset CRUD |
+| `webhooks.py` | `/api/webhooks` | Inbound webhook receiver + endpoint CRUD (F14) |
+| `scanner_imports.py` | `/api/scanner-imports` | Nessus / Qualys / Trivy bulk import (F19) |
+| `teams.py` | `/api/teams`, `/api/me/teams` | Team CRUD + memberships, current-user team list (F15) |
+| `branding.py` | `/api/admin/branding` | PDF report branding settings + logo upload (F17 Slice 3, admin-only) |
+| `tasks.py` | `/api/tasks` | Background Celery task status |
+| `search.py` | `/api/search` | Cross-entity full-text search (F9) |
 
-Helper: `validation.py` — `ValidationError`, `error_response()`, request parsing utilities.
+Helpers: `validation.py` — `ValidationError`, `error_response()`, request parsing. `vulnerability_query.py` — service-level query builder (no blueprint).
 
 ### Services (`services/`)
 
@@ -98,17 +104,28 @@ Helper: `validation.py` — `ValidationError`, `error_response()`, request parsi
 | `jira_sync.py` | Jira API integration (create/update issues) |
 | `oidc.py` | OIDC authorization flow, user creation from claims |
 | `oidc_mapping.py` | Maps OIDC group claims to UVT roles |
-| `reporting_service.py` | Aggregates vulnerability data for reports |
+| `password_reset.py` | Forgot-password / reset-password token lifecycle |
+| `reporting_service.py` | Aggregates vulnerability data for reports — `dashboard_aggregate()`, `risk_trends()`, `executive_summary()` (KPIs + severity + SLA buckets) |
+| `pdf_renderer.py` | F17 Slice 1: WeasyPrint + Jinja2 renderer. Auto-loads `OrganizationBranding` row, exposes `render_pdf(layout_name, context) -> bytes` |
+| `pdf_charts.py` | F17 Slice 2: Matplotlib (`Agg` backend) chart helpers — `severity_donut()`, `sla_bar()` returning base64 PNG data URIs |
+| `team_scope.py` | F15: `team_scope(query, model, user, allow_null_team=False)` filters every query site to the user's team membership; Admin and Default-team posture handled centrally |
+| `webhook_ingest.py` | F14: dispatches inbound webhook payloads to format adapters and into the normalized vulnerability model |
+| `scanner_imports.py` | F19: parses Nessus `.nessus` XML, Qualys CSV/XML, and Trivy JSON into vulnerability records (CVE-deduped) |
 
 ### Models (`models/`)
 
 Organized by bounded context. All use SQLAlchemy ORM with UTC-aware timestamps (`TZDateTime`).
 
-**Auth** (`models/auth.py`):
+**Auth** (`models/auth.py`, `models/password_reset.py`):
 - `User` — username, email, password_hash, role, token_version
 - `ApiToken` — hashed secret, scopes, expiry, usage tracking
 - `RefreshToken` — hashed token, expiry, revocation
-- `AuditLog` — action, table, record, old/new values (JSON)
+- `AuditLog` — action, table, record, old/new values (JSON), team_id
+- `PasswordResetToken` — single-use, hashed, 60-minute TTL (F2)
+
+**Teams** (`models/teams.py`, F15):
+- `Team` — name, slug, description, `is_default` (singleton-Default-team enforced via partial unique index)
+- `UserTeam` — user↔team membership with `is_default` (per-user active team)
 
 **Products** (`models/products.py`):
 - `Product` — name, description, owners, versions, controls
@@ -149,7 +166,17 @@ Organized by bounded context. All use SQLAlchemy ORM with UTC-aware timestamps (
 **Reports** (`models/reports.py`):
 - `ReportTemplate` — saved report configurations (fields, filters, delivery)
 - `ReportSchedule` — scheduled report execution with retry tracking
-- `ReportArtifact` — generated report files with checksums
+- `ReportArtifact` — generated report files with checksums; F17 Slice 2 added `status` (`pending`/`ready`/`failed`), `error`, `celery_task_id` for the async PDF lifecycle
+
+**Branding** (`models/branding.py`, F17 Slice 3):
+- `OrganizationBranding` — singleton row with `primary_color`, `footer_text`, `logo_path`. `logo_data_uri()` helper inlines the logo as base64 so WeasyPrint never needs filesystem access from templates.
+
+**Webhooks** (`models/webhooks.py`, F14):
+- `WebhookEndpoint` — token-authenticated inbound endpoint (scoped per format)
+- `WebhookDeliveryLog` — per-payload ingest results
+
+**User Preferences** (`models/user_preferences.py`, F16):
+- `UserPreferences` — JSON blob per user: timezone, default vulnerability filter, notification channel preferences
 
 ### Serializers (`serializers/`)
 
@@ -182,6 +209,16 @@ Three roles with 16 scopes across 8 resource types:
 
 `scope_for_request(path, method)` maps each request to its required scope.
 `enforce_scopes(app)` runs as a `before_request` hook.
+
+### Team Scope (`services/team_scope.py`, F15)
+
+A second access layer on top of roles. Every query that returns team-scoped data passes through `team_scope(query, model, user, allow_null_team=False)`, which:
+
+- Lets Admins see every row.
+- For non-Admins, restricts to rows where `model.team_id` is in the user's `UserTeam` set, optionally including `team_id IS NULL` (e.g. CVE intel that's globally visible).
+- Reads the active team from the `X-UVT-Team-Id` request header (set by the frontend's top-nav team selector), falling back to the user's default team.
+
+Default-team posture (Phase 1 of F15) stamps every existing row with the auto-created Default team so behavior is identical to pre-F15 until an Admin creates a second team.
 
 ---
 
@@ -239,3 +276,27 @@ SSE (Server-Sent Events) real-time push:
 - `flask seed-admin` — create/update admin user
 - `flask run-plugins` — execute plugins (with filtering options)
 - `flask run-notification-scan` — evaluate and deliver scheduled notifications
+- `flask purge-old-data` — apply retention policies (audit logs, plugin runs, report artifacts)
+
+---
+
+## PDF Reports (F17)
+
+Three components work together to produce branded PDFs:
+
+1. **`services/pdf_renderer.py`** — `render_pdf(layout_name, context)` looks up `backend/templates/reports/<layout_name>.html`, renders it with Jinja2, and pipes the HTML through WeasyPrint. Auto-loads the `OrganizationBranding` row when no explicit `branding` key is in the context.
+2. **`services/pdf_charts.py`** — Matplotlib helpers for severity donut and SLA bar that emit base64-encoded PNG data URIs (so templates stay self-contained).
+3. **`templates/reports/`** — Jinja layouts:
+   - `default.html` — parity with the pre-F17 output (vuln table or dashboard summary), branded header rule and footer.
+   - `executive_summary.html` — KPI tiles (open / critical open / SLA compliance / new in period), severity donut + SLA bar, full vulnerability appendix on its own page.
+
+### Sync vs. async path
+
+`/api/reports/{vulnerabilities,dashboard}/export?format=pdf&pdf_layout={default,executive_summary}`:
+
+- When `CELERY_ENABLED=false` (default in dev / tests): renders inline and returns `200` with a ready artifact.
+- When `CELERY_ENABLED=true`: creates a `pending` `ReportArtifact`, dispatches `uvt.generate_report` with `artifact_id`, returns **`202 Accepted`**. The worker calls `_finalize_pdf_artifact()`, which re-applies `team_scope()` using `artifact.created_by` (no request context), renders, writes the file, and flips status to `ready` (or `failed` with an `error` message ≤ 500 chars).
+
+The frontend polls `GET /api/reports/artifacts/<id>` until `status == "ready"`, then downloads via the signed download URL. `GET /artifacts/<id>/download` returns `409 Conflict` if the artifact is still pending.
+
+CSV and JSON export paths are always synchronous regardless of `CELERY_ENABLED`.

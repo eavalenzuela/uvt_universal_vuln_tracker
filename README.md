@@ -1,15 +1,18 @@
-# Universal Vulnerability Tracker (UVT) — v2.12.0
+# Universal Vulnerability Tracker (UVT) — v2.19.0
 
 A full-stack vulnerability management platform with a Python/Flask API backend and vanilla JavaScript frontend. Track products, software components, vulnerabilities, SLA compliance, and risk trends across your organization.
 
 **Key capabilities:**
 - Product catalog with SBOM ingestion (CycloneDX/SPDX) and dependency graphing
 - Vulnerability lifecycle management with severity, status, SLA tracking, and merge/dedup
-- Role-based access control (Admin / Analyst / Viewer) with JWT + cookie auth and optional OIDC SSO
+- Team-based access control (Default team + custom teams) layered on top of Admin / Analyst / Viewer roles, JWT + cookie auth, optional OIDC SSO
 - Multi-widget dashboard with risk trends, SLA deadlines, and per-user work queues
 - Plugin framework for external feeds (NVD, ExploitDB) and integrations (Slack, Jira)
-- Background job queue (Celery + Redis) with metrics and caching
-- Full-text search, notification rules, report scheduling, and light/dark theme
+- Inbound webhooks + bulk scanner imports (Nessus / Qualys / Trivy)
+- Background job queue (Celery + Redis) with metrics, caching, and async PDF rendering
+- Branded PDF reports (WeasyPrint + Matplotlib) with executive-summary layout, severity donut, and SLA bar
+- Full-text search, notification rules, report scheduling, API versioning (`/api/v1/*`)
+- User preferences, keyboard shortcuts, and light/dark theme
 
 ## Quick Start
 

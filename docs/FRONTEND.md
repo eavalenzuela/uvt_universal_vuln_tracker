@@ -16,7 +16,7 @@ Single-page application — vanilla JS with ES modules, hash-based routing, no f
 
 **`src/main.js`** — Initializes router, renders shell (header + sidebar), manages session, sets up SSE live notification stream (mentions, rule triggers, escalations), periodically refreshes session.
 
-**`src/config.js`** — Reads API base from `window.__UVT_API_BASE__` or defaults to `http://127.0.0.1:5000`.
+**`src/config.js`** — Reads API base from `window.__UVT_API_BASE__` (default: `""` — same-origin via nginx). Set the global before the app boots when running the SPA against a separate backend (e.g. dev mode without nginx, or the screenshot tool which injects it via Playwright `add_init_script`).
 
 ---
 
@@ -51,6 +51,7 @@ Single-page application — vanilla JS with ES modules, hash-based routing, no f
 | `/products/:id/versions/:pvId/dependency-graph` | ProductDependencyGraphView | Interactive dependency tree with severity coloring |
 | `/controls` | ControlsView | Security control catalog with framework filter |
 | `/notifications` | NotificationsView | Paginated inbox with mark read/archive actions |
+| `/settings` | SettingsView | User preferences: timezone, default vulnerability filter, notification channels (F16) |
 | `/admin/api-tokens` | AdminApiTokensView | Personal API token management (create, revoke, copy) |
 
 ### Admin Only
@@ -63,6 +64,8 @@ Single-page application — vanilla JS with ES modules, hash-based routing, no f
 | `/admin/notification-rules` | AdminNotificationRulesView | Notification rule CRUD, test-send, delivery logs |
 | `/admin/notification-delivery` | AdminNotificationDeliveryView | Delivery attempt table with retry/replay |
 | `/admin/reports` | AdminReportsView | Report templates and scheduled report management |
+| `/admin/teams` | AdminTeamsView | Team CRUD + memberships (F15 Phase 2) |
+| `/admin/branding` | AdminBrandingView | PDF report branding: primary color, footer text, logo upload (F17 Slice 3) |
 
 ### Catch-all
 
@@ -122,6 +125,18 @@ Per-rule: adapter (slack/email/webhook/jira), severity threshold, event triggers
 
 Templates (type, format, delivery channel, visibility, recipients) and schedules (frequency, timezone, template link, manual run).
 
+### Admin: Teams (`/admin/teams`, F15 Phase 2)
+
+Create / rename / delete teams; add or remove members. Combined with the top-nav team selector (visible to multi-team users and Admins), the active team is persisted in `localStorage` and attached to every API call as `X-UVT-Team-Id`.
+
+### Admin: PDF Branding (`/admin/branding`, F17 Slice 3)
+
+Theme card (primary-color picker + hex input, footer text) and logo card (upload PNG/SVG/JPEG, ≤ 1 MB, with remove). Applies to every rendered PDF (default and executive_summary layouts).
+
+### Settings (`/settings`, F16)
+
+Per-user preferences: timezone, default vulnerability filter, notification channels.
+
 ---
 
 ## State Management (`src/state/`)
@@ -152,8 +167,12 @@ Templates (type, format, delivery channel, visibility, recipients) and schedules
 | `users.js` | User CRUD, invite, impersonate, toggle active, export, API tokens, active user list |
 | `auditLogs.js` | Audit log listing with filters |
 | `plugins.js` | Plugin listing, config, import sources, validate, register |
-| `reports.js` | Export vulns/dashboard, templates, schedules, dashboard summary, risk trends |
+| `reports.js` | Export vulns/dashboard (CSV/JSON/PDF), `waitForReportArtifact()` polling helper, templates, schedules, dashboard summary, risk trends |
 | `dashboardLayoutPresets.js` | Layout preset CRUD |
+| `teams.js` | Team CRUD + member management (F15) |
+| `branding.js` | PDF branding GET/PUT + logo upload/delete (F17 Slice 3) |
+| `userPreferences.js` | Per-user preferences GET/PATCH (F16) |
+| `search.js` | Cross-entity search (F9) |
 
 ---
 
@@ -196,3 +215,5 @@ Theme: dark background (#0b0d12), light text (#e6e8ee), blue accent (#2563eb).
 - **SSE notifications** — `EventSource` for real-time dashboard and notification updates
 - **Closure-free widgets** — dashboard widgets receive `ctx = { user, writable }` as parameter
 - **Re-export shims** — `views/` re-exports from `features/` to avoid router changes after module splits
+- **Active team header** — when a non-Default team is selected in the top nav, `apiFetch()` reads `session.currentTeamId` and attaches it as `X-UVT-Team-Id`. The backend resolves it in `auth._populate_current_team` before scope checks.
+- **Async PDF polling** — for large PDF exports, the backend may return `202 Accepted` with a pending artifact. Use `waitForReportArtifact(artifactId)` from `api/reports.js` to poll `/api/reports/artifacts/<id>` until status is `ready` (or `failed`), then trigger the file download. The existing CSV/JSON paths stay synchronous.

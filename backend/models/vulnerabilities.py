@@ -77,7 +77,7 @@ class Vulnerability(db.Model):
 
     # F15: NULL = shared/global pool visible to every authenticated user
     # (typical for CVE enrichment and unattached ingest); populated value
-    # restricts visibility to members of that team. See docs/plans/F15-team-acl.md.
+    # restricts visibility to members of that team. See docs/plans/done/F15-team-acl.md.
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
 
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)

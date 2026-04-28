@@ -9,16 +9,8 @@ Missing features and improvements needed to bring UVT to production readiness, o
 ### ~~F1. Remove Alembic References~~ ✅ Done (v2.0.7)
 Removed `flask_migrate` and `alembic` from setup scripts. Replaced migration commands with `db.create_all()`.
 
-### F2. Self-Service Password Reset
-**Effort:** Medium
-
-No forgot-password flow exists. Admins must manually reset passwords (and the temp password is returned in the API response — see SECURITY_FIXES.md S2).
-
-**What to do:**
-- `POST /api/auth/forgot-password` — accepts email, sends time-limited reset link
-- `POST /api/auth/reset-password` — accepts token + new password
-- Frontend: forgot-password page linked from login
-- Rate-limit the forgot-password endpoint aggressively
+### ~~F2. Self-Service Password Reset~~ ✅ Done (v2.2.x)
+`POST /api/auth/forgot-password` and `POST /api/auth/reset-password` with single-use, 60-minute, SHA-256-hashed tokens. Forgot-password and reset-password pages linked from login. Rate-limited under `RATE_LIMIT_SENSITIVE_LIMIT`. New `PasswordResetToken` model and `FRONTEND_URL` config var.
 
 ### F3. Email Verification on Registration
 This feature requires too much additional configuration (and relies on the external email service), and will not be implemented.
@@ -26,16 +18,8 @@ This feature requires too much additional configuration (and relies on the exter
 ### ~~F4. OpenAPI / Swagger Documentation~~ ✅ Done (v2.4.0)
 Added `apispec` with Flask plugin for OpenAPI 3.0.3 spec generation, Swagger UI at `/api/docs`, spec at `/api/openapi.json`. All 100 paths (140 operations) documented with YAML docstrings, 32 component schemas, and security schemes.
 
-### F5. Structured Logging
-**Effort:** Small
-
-Currently uses `logging.basicConfig(level=INFO)` with no structured output. Production deployments need parseable logs for aggregation.
-
-**What to do:**
-- JSON log formatter (e.g., `python-json-logger`)
-- Request ID correlation (add to each log line)
-- Configurable log level via env var
-- Access log with timing, status, user ID
+### ~~F5. Structured Logging~~ ✅ Done (v2.2.x)
+Replaced `logging.basicConfig()` with `python-json-logger`. Each request gets a unique ID (from `X-Request-ID` header or auto-generated), injected into all log records and returned in `X-Request-ID` response header. Access log records method, path, status, duration, and user ID. Config: `LOG_LEVEL` (default `INFO`), `LOG_FORMAT` (`json` or `text`).
 
 ### ~~F6. Production Deployment Guide~~ ✅ Done (v2.5.0)
 Added `docs/DEPLOYMENT.md` covering all env vars with production recommendations, Docker Compose / standalone / Kubernetes deployment options, Gunicorn tuning, database backup/restore, logging and monitoring, operational runbook, and security checklist.
@@ -53,20 +37,11 @@ Added `prometheus_client` with custom metrics: HTTP request count/latency/in-pro
 ### ~~F9. Full-Text Search~~ ✅ Done (v2.10.0)
 Added `GET /api/search?q=...` endpoint searching across vulnerabilities (title, cve_id, description), products (name, description), and comments (body). Results grouped by entity type with max 10 per type. Frontend global search bar in header with debounced typeahead dropdown and keyboard navigation. Works with both SQLite and PostgreSQL.
 
-### F10. Security Response Headers
-**Effort:** Small
+### ~~F10. Security Response Headers~~ ✅ Done (v2.2.x)
+`after_request` hook in `uvt_app.py` sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` on all responses. `Strict-Transport-Security` (2-year max-age, includeSubDomains) is added when `auth_cookie_secure` is enabled.
 
-No CSP, X-Frame-Options, HSTS, etc. (See SECURITY_FIXES.md S4 for details.)
-
-### F11. Database Connection Tuning
-**Effort:** Small
-
-SQLAlchemy pool settings (`pool_size`, `pool_recycle`, `pool_pre_ping`) use defaults. Production PostgreSQL needs tuning.
-
-**What to do:**
-- Add pool configuration to `AppConfig` (env vars)
-- Set `pool_pre_ping=True` to handle stale connections
-- Document recommended settings for different deployment sizes
+### ~~F11. Database Connection Tuning~~ ✅ Done (v2.2.x)
+Added `DB_POOL_SIZE` (5), `DB_POOL_MAX_OVERFLOW` (10), `DB_POOL_RECYCLE` (1800s), and `DB_POOL_PRE_PING` (true) env vars. Pool settings apply to PostgreSQL deployments only; SQLite is unaffected.
 
 ### ~~F12. Caching Layer~~ ✅ Done (v2.11.0)
 Added Redis-backed cache module (`backend/cache.py`) with JSON serialization, TTL, and automatic fallback when Redis is unavailable. Dashboard summary cached with configurable TTL (`CACHE_DASHBOARD_TTL`, default 30s). Product list cached (`CACHE_PRODUCTS_TTL`, default 60s) with invalidation on create/update/delete. Config: `CACHE_ENABLED`, `CACHE_DASHBOARD_TTL`, `CACHE_PRODUCTS_TTL`.
@@ -78,80 +53,26 @@ Added retention policy configuration and `flask purge-old-data` CLI command with
 
 ## P2 — Valuable Enhancements
 
-### F14. Inbound Webhook / Scanner Integration
-**Effort:** Large
+### ~~F14. Inbound Webhook / Scanner Integration~~ ✅ Done (v2.13.0)
+Added `WebhookEndpoint` model (token-authenticated, scoped) and `POST /api/webhooks/ingest/<token>` for receiving payloads. Format-detection adapter pipeline maps Nessus/Qualys/Trivy/generic JSON into the normalized vulnerability model via `webhook_ingest.py`.
 
-Currently only ingests data via SBOM upload and plugin feeds (NVD, ExploitDB). No way to receive results from Nessus, Qualys, Tenable, etc.
+### ~~F15. Team / Project-Level Access Control~~ ✅ Done (v2.15.0–v2.16.0)
+Two-phase rollout. Phase 1 (v2.15.x) added `teams` + `user_teams` tables, `team_id` on Product/Vulnerability/notification rules/webhooks/saved filters/dashboard presets/report templates+schedules+artifacts/plugin runs/audit logs. Default-team posture stamps every existing row, and `services/team_scope.py` filters every query site so behavior is identical to pre-F15 until an Admin creates a second team. Phase 2 (v2.16.0) shipped `/admin/teams` for create/rename/delete + memberships, the top-nav team selector, and `X-UVT-Team-Id` plumbing.
 
-**What to do:**
-- `POST /api/webhooks/ingest` — generic webhook receiver with format detection
-- Adapter pattern for common scanner output formats
-- Map scanner findings to normalized vulnerability model
+### ~~F16. User Preferences Page~~ ✅ Done (v2.14.0)
+Added `UserPreferences` model (per-user JSON blob), `GET/PATCH /api/users/me/preferences`, and a `/settings` page covering timezone, default vulnerability filter, and notification channel preferences.
 
-### F15. Team / Project-Level Access Control
-**Effort:** Large
+### ~~F17. Improved PDF Reports~~ ✅ Done (v2.17.0–v2.19.0)
+Three slices. Slice 1 (v2.17.0) replaced the hand-written 5-object PDF stream with WeasyPrint + Jinja2 (`backend/services/pdf_renderer.py` + `backend/templates/reports/`). Slice 2 (v2.18.0) added Matplotlib charts (`pdf_charts.py`), the `executive_summary` layout with KPI tiles + severity donut + SLA bar + appendix, and async rendering via Celery (`ReportArtifact.status`, `202 Accepted`, frontend polling via `waitForReportArtifact`). Slice 3 (v2.19.0) added `OrganizationBranding` (primary color + footer text + logo upload, admin-only) injected into all layouts.
 
-All products are visible to all authenticated users. `ProductOwner` exists but doesn't restrict visibility.
+### ~~F18. API Versioning~~ ✅ Done (v2.13.0)
+Added `/api/v1/*` alias via WSGI middleware (`_V1AliasMiddleware` in `backend/api/__init__.py`). Single source of truth for routes, no double-registration in OpenAPI.
 
-**What to do:**
-- Add Team model (name, members)
-- Associate products with teams
-- Filter product visibility by team membership
-- Analyst/Viewer see only their team's products (Admin sees all)
+### ~~F19. Bulk Scanner Import~~ ✅ Done (v2.14.0)
+`backend/services/scanner_imports.py` parses Nessus `.nessus` XML, Qualys CSV/XML, and Trivy JSON; admin upload via `/api/scanner-imports/<format>`. Maps scanner findings to the normalized vulnerability model with dedup against existing CVE records.
 
-### F16. User Preferences Page
-**Effort:** Medium
-
-No per-user settings. Users can't configure timezone, notification preferences, or default filters.
-
-**What to do:**
-- `UserPreference` model (JSON blob per user)
-- `GET/PATCH /api/users/me/preferences`
-- Frontend: settings page accessible from header dropdown
-- Support: timezone, default vulnerability filter, notification channels
-
-### F17. Improved PDF Reports
-**Effort:** Medium
-
-Current PDF generation is basic text-only. No charts, branding, or executive summary formatting.
-
-**What to do:**
-- Use WeasyPrint or ReportLab for styled PDF output
-- Include severity distribution charts, trend graphs
-- Configurable branding (logo, header, footer)
-- Executive summary page with KPIs
-
-### F18. API Versioning
-**Effort:** Medium
-
-Single `/api/*` namespace with no versioning strategy. Breaking changes will affect all consumers.
-
-**What to do:**
-- Version prefix: `/api/v1/*`
-- Keep unversioned routes as aliases to current version
-- Document deprecation policy
-
-### F19. Bulk Scanner Import
-**Effort:** Medium per scanner
-
-Beyond SBOM, support direct import of common scanner formats.
-
-**What to do (per scanner):**
-- Nessus `.nessus` XML import
-- Qualys CSV/XML import
-- Trivy JSON import
-- Map to normalized vulnerability model via plugin framework
-
-### F20. Keyboard Shortcuts
-**Effort:** Small
-
-No hotkeys for power users navigating large vulnerability sets.
-
-**What to do:**
-- `j`/`k` for next/prev in lists
-- `/` to focus search
-- `e` to edit selected item
-- `?` to show shortcut help modal
+### ~~F20. Keyboard Shortcuts~~ ✅ Done (v2.13.0)
+`j`/`k` (next/prev row), `/` (focus search), `e` (edit selected vuln on detail view), `?` (help modal). Implemented in `frontend/src/ui/keybindings/`.
 
 ---
 
@@ -160,22 +81,24 @@ No hotkeys for power users navigating large vulnerability sets.
 | ID | Priority | Effort | Description |
 |----|----------|--------|-------------|
 | ~~F1~~ | ~~P0~~ | ~~Small~~ | ~~Remove Alembic references~~ ✅ |
-| F2 | P0 | Medium | Self-service password reset |
-| F3 | P0 | Medium | Email verification on registration |
+| ~~F2~~ | ~~P0~~ | ~~Medium~~ | ~~Self-service password reset~~ ✅ |
+| F3 | P0 | Medium | Email verification on registration *(won't do — see F3)* |
 | ~~F4~~ | ~~P0~~ | ~~Medium~~ | ~~OpenAPI / Swagger documentation~~ ✅ |
-| F5 | P0 | Small | Structured logging |
+| ~~F5~~ | ~~P0~~ | ~~Small~~ | ~~Structured logging~~ ✅ |
 | ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
 | ~~F7~~ | ~~P1~~ | ~~Large~~ | ~~Background job queue (Celery)~~ ✅ |
 | ~~F8~~ | ~~P1~~ | ~~Medium~~ | ~~Application metrics & monitoring~~ ✅ |
 | ~~F9~~ | ~~P1~~ | ~~Medium~~ | ~~Full-text search~~ ✅ |
-| F10 | P1 | Small | Security response headers |
-| F11 | P1 | Small | Database connection tuning |
+| ~~F10~~ | ~~P1~~ | ~~Small~~ | ~~Security response headers~~ ✅ |
+| ~~F11~~ | ~~P1~~ | ~~Small~~ | ~~Database connection tuning~~ ✅ |
 | ~~F12~~ | ~~P1~~ | ~~Medium~~ | ~~Caching layer~~ ✅ |
 | ~~F13~~ | ~~P1~~ | ~~Medium~~ | ~~Data retention & archival~~ ✅ |
-| F14 | P2 | Large | Inbound webhook / scanner integration |
-| F15 | P2 | Large | Team / project-level access control |
-| F16 | P2 | Medium | User preferences page |
-| F17 | P2 | Medium | Improved PDF reports |
-| F18 | P2 | Medium | API versioning |
-| F19 | P2 | Medium | Bulk scanner import |
-| F20 | P2 | Small | Keyboard shortcuts |
+| ~~F14~~ | ~~P2~~ | ~~Large~~ | ~~Inbound webhook / scanner integration~~ ✅ |
+| ~~F15~~ | ~~P2~~ | ~~Large~~ | ~~Team / project-level access control~~ ✅ |
+| ~~F16~~ | ~~P2~~ | ~~Medium~~ | ~~User preferences page~~ ✅ |
+| ~~F17~~ | ~~P2~~ | ~~Medium~~ | ~~Improved PDF reports~~ ✅ |
+| ~~F18~~ | ~~P2~~ | ~~Medium~~ | ~~API versioning~~ ✅ |
+| ~~F19~~ | ~~P2~~ | ~~Medium~~ | ~~Bulk scanner import~~ ✅ |
+| ~~F20~~ | ~~P2~~ | ~~Small~~ | ~~Keyboard shortcuts~~ ✅ |
+
+**Roadmap status: complete.** All P0/P1/P2 items shipped except F3 (email verification on registration), which was explicitly descoped. New work is tracked in `docs/CHANGELOG.md` and per-feature plans in `docs/plans/`.
