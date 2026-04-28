@@ -41,6 +41,7 @@ PAGES = [
     ("12-admin-notification-delivery", "/admin/notification-delivery", True),
     ("13-admin-api-tokens",            "/admin/api-tokens",            True),
     ("14-admin-teams",                 "/admin/teams",                 True),
+    ("15-admin-branding",              "/admin/branding",              True),
 ]
 
 

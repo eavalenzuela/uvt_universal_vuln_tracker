@@ -74,6 +74,7 @@ export function renderSidebar() {
     nav.appendChild(navLink("Admin: Notification Delivery", "/admin/notification-delivery"));
     nav.appendChild(navLink("Admin: Reports", "/admin/reports"));
     nav.appendChild(navLink("Admin: Teams", "/admin/teams"));
+    nav.appendChild(navLink("Admin: PDF Branding", "/admin/branding"));
   }
 
   root.appendChild(nav);

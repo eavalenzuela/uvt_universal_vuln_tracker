@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root {
+    --primary: {{ branding.primary_color or "#2563eb" }};
+  }
+  @page {
+    size: Letter;
+    margin: 0.75in 0.6in 0.9in 0.6in;
+    @bottom-left {
+      content: "{{ branding.footer_text or '' }}";
+      font-family: "DejaVu Sans", sans-serif;
+      font-size: 8.5pt;
+      color: #6b7280;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "DejaVu Sans", sans-serif;
+      font-size: 8.5pt;
+      color: #6b7280;
+    }
+  }
+  html { font-family: "DejaVu Sans", sans-serif; font-size: 10pt; color: #1f2937; }
+  body { margin: 0; }
+  .header { display: flex; align-items: center; gap: 12pt; border-bottom: 2pt solid var(--primary); padding-bottom: 6pt; margin-bottom: 14pt; }
+  .header .logo { max-height: 36pt; max-width: 100pt; }
+  .header h1 { font-size: 18pt; margin: 0; color: #111827; flex: 1; }
+  .meta { color: #6b7280; font-size: 9pt; margin-bottom: 16pt; }
+  h2 { font-size: 13pt; margin: 16pt 0 6pt 0; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 3pt; }
+  .kpi { display: flex; gap: 8pt; margin: 8pt 0 16pt; }
+  .kpi .card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4pt; padding: 10pt; border-top: 3pt solid var(--primary); }
+  .kpi .label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+  .kpi .value { font-size: 20pt; font-weight: 700; color: #111827; margin-top: 2pt; }
+  .kpi .sub { font-size: 8pt; color: #9ca3af; }
+  .charts { display: flex; gap: 16pt; margin: 8pt 0; }
+  .charts .panel { flex: 1; border: 1px solid #e5e7eb; border-radius: 4pt; padding: 10pt; text-align: center; }
+  .charts h3 { font-size: 10pt; margin: 0 0 6pt 0; color: #374151; text-transform: uppercase; letter-spacing: 0.04em; }
+  .charts img { max-width: 100%; height: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.5pt; }
+  th, td { border: 1px solid #e5e7eb; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  tr { page-break-inside: avoid; }
+  .sev-Critical { color: #b91c1c; font-weight: 600; }
+  .sev-High     { color: #c2410c; font-weight: 600; }
+  .sev-Medium   { color: #a16207; }
+  .sev-Low      { color: #15803d; }
+  .sev-None     { color: #6b7280; }
+  .empty { color: #6b7280; font-style: italic; padding: 8pt 0; }
+  .appendix { page-break-before: always; }
+</style>
+</head>
+<body>
+  <div class="header">
+    {% if branding.logo_data_uri %}<img class="logo" src="{{ branding.logo_data_uri }}" alt="logo">{% endif %}
+    <h1>{{ title }}</h1>
+  </div>
+  <div class="meta">Generated {{ generated_at }} · Period: last {{ period_days }} days{% if filters_summary %} · Filters: {{ filters_summary }}{% endif %}</div>
+
+  <div class="kpi">
+    <div class="card">
+      <div class="label">Open</div>
+      <div class="value">{{ kpi.total_open }}</div>
+      <div class="sub">across all severities</div>
+    </div>
+    <div class="card">
+      <div class="label">Critical open</div>
+      <div class="value">{{ kpi.critical_open }}</div>
+      <div class="sub">requires immediate action</div>
+    </div>
+    <div class="card">
+      <div class="label">SLA compliance</div>
+      <div class="value">{% if kpi.sla_compliance_pct is none %}—{% else %}{{ kpi.sla_compliance_pct }}%{% endif %}</div>
+      <div class="sub">on-track of open</div>
+    </div>
+    <div class="card">
+      <div class="label">New ({{ period_days }}d)</div>
+      <div class="value">{{ kpi.new_in_period }}</div>
+      <div class="sub">created in period</div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="panel">
+      <h3>Severity distribution</h3>
+      {% if severity_chart %}
+        <img src="{{ severity_chart }}" alt="severity distribution">
+      {% else %}
+        <div class="empty">No data.</div>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>SLA status (open)</h3>
+      {% if sla_chart %}
+        <img src="{{ sla_chart }}" alt="SLA status">
+      {% else %}
+        <div class="empty">No open vulnerabilities.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="appendix">
+    <h2>Vulnerability appendix ({{ rows|length }})</h2>
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>CVE</th>
+          <th>Title</th>
+          <th>Severity</th>
+          <th>CVSS</th>
+          <th>Status</th>
+          <th>Assigned</th>
+          <th>Published</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.cve_id or "—" }}</td>
+          <td>{{ r.title }}</td>
+          <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
+          <td>{{ r.cvss_score if r.cvss_score != "" else "—" }}</td>
+          <td>{{ r.status }}</td>
+          <td>{{ r.assigned_to if r.assigned_to != "" else "—" }}</td>
+          <td>{{ r.published_date[:10] if r.published_date else "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No vulnerabilities matched the filter.</div>{% endif %}
+  </div>
+</body>
+</html>

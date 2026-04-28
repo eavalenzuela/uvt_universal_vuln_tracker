@@ -10,12 +10,41 @@ function withParams(base, params = {}) {
   return suffix ? `${base}?${suffix}` : base;
 }
 
-export function exportVulnerabilities(filters = {}, format = "csv") {
-  return apiFetch(withParams("/api/reports/vulnerabilities/export", { ...filters, format }), { method: "GET" });
+export function exportVulnerabilities(filters = {}, format = "csv", options = {}) {
+  const params = { ...filters, format };
+  if (options.pdfLayout) params.pdf_layout = options.pdfLayout;
+  return apiFetch(withParams("/api/reports/vulnerabilities/export", params), { method: "GET" });
 }
 
-export function exportDashboardSummary(filters = {}, format = "csv") {
-  return apiFetch(withParams("/api/reports/dashboard/export", { ...filters, format }), { method: "GET" });
+export function exportDashboardSummary(filters = {}, format = "csv", options = {}) {
+  const params = { ...filters, format };
+  if (options.pdfLayout) params.pdf_layout = options.pdfLayout;
+  return apiFetch(withParams("/api/reports/dashboard/export", params), { method: "GET" });
+}
+
+export function getReportArtifact(artifactId) {
+  return apiFetch(`/api/reports/artifacts/${artifactId}`, { method: "GET" });
+}
+
+/**
+ * Poll a report artifact's status endpoint until it reaches `ready` or `failed`.
+ * Returns the final artifact payload, or rejects if it fails / times out.
+ * F17 Slice 2: PDF rendering moves to Celery; the export route returns
+ * status=pending and the frontend waits here.
+ */
+export async function waitForReportArtifact(artifactId, { intervalMs = 1000, timeoutMs = 120000 } = {}) {
+  const start = Date.now();
+  // Skip the first poll if status is already ready (sync code path).
+  while (Date.now() - start < timeoutMs) {
+    const { artifact } = await getReportArtifact(artifactId);
+    if (!artifact) throw new Error("Artifact not found");
+    if (artifact.status === "ready") return artifact;
+    if (artifact.status === "failed") {
+      throw new Error(artifact.error || "Report generation failed");
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Timed out waiting for report to render");
 }
 
 export async function downloadReportArtifact(downloadUrl) {

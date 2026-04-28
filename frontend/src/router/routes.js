@@ -13,6 +13,7 @@ import { AdminNotificationDeliveryView } from "../views/admin/adminNotificationD
 import { AdminApiTokensView } from "../views/admin/adminApiTokensView.js";
 import { AdminReportsView } from "../views/admin/adminReportsView.js";
 import { AdminTeamsView } from "../views/admin/adminTeamsView.js";
+import { AdminBrandingView } from "../views/admin/adminBrandingView.js";
 import { ProductsView } from "../views/products/productsView.js";
 import { ProductComponentDiffView } from "../views/products/productComponentDiffView.js";
 import { ProductDetailView } from "../views/products/productDetailView.js";
@@ -50,4 +51,5 @@ export const ROUTES = [
   { path: "/admin/api-tokens", view: AdminApiTokensView, guard: () => requireAuth() },
   { path: "/admin/reports", view: AdminReportsView, guard: () => requireAuth() && requireRole("Admin") },
   { path: "/admin/teams", view: AdminTeamsView, guard: () => requireAuth() && requireRole("Admin") },
+  { path: "/admin/branding", view: AdminBrandingView, guard: () => requireAuth() && requireRole("Admin") },
 ];

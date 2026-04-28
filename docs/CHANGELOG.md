@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.19.0 — F17 Slice 3: PDF report branding (logo + color + footer)
+
+### Added
+- **`OrganizationBranding` model** (`backend/models/branding.py`) — singleton row holding `primary_color`, `footer_text`, and `logo_path`. Logo bytes live on disk under `instance/branding/`; the model exposes a `logo_data_uri()` helper that the renderer embeds inline so WeasyPrint never needs filesystem access from the template.
+- **Admin branding API** (`backend/api/branding.py`, `/api/admin/branding`) — `GET` for everyone, `PUT` (color + footer) and `POST/DELETE /logo` for Admins only. Uploads are validated: PNG / SVG / JPEG, ≤ 1 MiB, content-type and extension checked.
+- **Admin: PDF Branding view** (`/admin/branding`) — color picker (hex + native input), footer text field, logo upload/remove with status indicator. Linked from the sidebar.
+- **Branding injected into PDFs** — both `default.html` and `executive_summary.html` already consume `branding.primary_color` (CSS variable for KPI tile borders, header rule, accents), `branding.footer_text` (rendered in `@bottom-left`), and `branding.logo_data_uri` (rendered in the header). Renderer auto-loads the row when no explicit branding context is passed.
+
+### Tests
+- New `backend/tests/api/test_branding.py` (8 tests) — defaults, admin-only `PUT`, color/footer validation, logo upload/delete lifecycle, oversize and bad-extension rejection, end-to-end injection into a rendered exec-summary PDF.
+- Full suite green (314 backend + 28 frontend).
+
+## v2.18.0 — F17 Slice 2: charts, executive summary, async PDF rendering
+
+### Added
+- **`backend/services/pdf_charts.py`** — Matplotlib (Agg backend) chart helpers returning base64 PNG data URIs: `severity_donut(by_severity)` and `sla_bar(sla_status)`. Both gracefully return `None` when there's no data.
+- **`executive_summary.html` layout** — 4 KPI tiles (Open / Critical open / SLA compliance % / New in period), severity donut + SLA bar side-by-side, page-break-isolated vulnerability appendix table. Selected via `?pdf_layout=executive_summary` on the export endpoints; the default layout (`pdf_layout=default`) is unchanged.
+- **`executive_summary()` aggregator** in `reporting_service.py` — computes the KPI block, severity distribution, and SLA bucket counts (`on_track / at_risk / breached`) for the layout.
+- **Async PDF rendering** — when `CELERY_ENABLED` and `format=pdf`, the export route creates a `pending` `ReportArtifact` row, dispatches `uvt.generate_report` with `artifact_id`, and returns **`202 Accepted`**. The worker calls `_finalize_pdf_artifact()`, which re-applies team_scope via `artifact.created_by`, renders the PDF, writes the file, and flips status to `ready` (or `failed` with an `error` message). When Celery is disabled, the original sync path still runs.
+- **`GET /api/reports/artifacts/<id>`** — status-poll endpoint. Returns `{status, error, download_url}`. `download_url` is `null` until status flips to `ready`.
+- **Frontend polling** — `waitForReportArtifact(artifactId, {intervalMs, timeoutMs})` in `frontend/src/api/reports.js`. The vulnerability list and dashboard export buttons now show a "Generating report" toast and poll until the PDF is ready, then trigger the file download.
+- **PDF layout selector** in the vulnerability list — only shown when `Format=PDF`, lets the user pick "Default layout" or "Executive summary".
+- **`ReportArtifact` schema** — new `status` (default `ready`), `error`, and `celery_task_id` columns. SQLite dev DBs auto-backfill via `_SQLITE_REPORT_ARTIFACT_BACKFILL`. `storage_path` is now nullable (filled in when the worker completes).
+- **`requirements.txt`** — adds `matplotlib>=3.8,<4.0`.
+
+### Fixed
+- **Export format selector was rendered nowhere on the vulnerability list** (`vulnListView.js`). The `<select>` was created but never inserted into the toolbar, so PDF/JSON exports were unreachable from the UI. Added it (and the new layout dropdown) to the actions row.
+
+### Tests
+- `backend/tests/services/test_pdf_charts.py` (4 tests).
+- `backend/tests/services/test_pdf_renderer.py` adds executive-layout + no-charts tests.
+- `backend/tests/api/test_reports_async_pdf.py` (5 tests) — covers `pdf_layout=executive_summary`, validation of unknown layouts, the status endpoint, the full 202 → poll → ready → download lifecycle in `task_always_eager` mode, and `409 Conflict` on download of a still-pending artifact.
+
 ## v2.17.0 — F17 Slice 1: real PDF rendering via WeasyPrint
 
 ### Added

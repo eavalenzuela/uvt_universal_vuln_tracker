@@ -101,20 +101,39 @@ def notification_scan_task(self, *, dry_run: bool = False):
 def generate_report_task(
     self,
     *,
-    report_type: str,
-    export_format: str,
+    artifact_id: int | None = None,
+    report_type: str | None = None,
+    export_format: str | None = None,
     filters: dict | None = None,
     user_id: int | None = None,
+    pdf_layout: str = "default",
 ):
-    """Generate a report artifact in the background."""
-    from .api.report_exports import _build_export_artifact_async
+    """Generate a report artifact in the background.
 
+    Two modes:
+      * artifact_id: finalize an already-created pending PDF artifact (F17 Slice 2).
+      * legacy kwargs (report_type/export_format/...): build a fresh artifact
+        end-to-end. Kept for callers that don't pre-create the row.
+    """
+    if artifact_id is not None:
+        from .api.report_exports import _finalize_pdf_artifact
+        try:
+            artifact = _finalize_pdf_artifact(artifact_id)
+            if artifact is None:
+                return {"status": "failed", "error": "artifact not found"}
+            return {"status": "success", "artifact_id": artifact.id}
+        except Exception as exc:
+            logger.exception("PDF artifact finalize failed for %s", artifact_id)
+            return {"status": "failed", "artifact_id": artifact_id, "error": str(exc)}
+
+    from .api.report_exports import _build_export_artifact_async
     try:
         artifact = _build_export_artifact_async(
             report_type=report_type,
             export_format=export_format,
             filters=filters,
             user_id=user_id,
+            pdf_layout=pdf_layout,
         )
         return {"status": "success", "artifact_id": artifact.id}
     except Exception as exc:

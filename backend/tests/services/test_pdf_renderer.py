@@ -41,3 +41,50 @@ def test_render_pdf_handles_empty_rows():
         {"title": "UVT Vulnerabilities Report", "report_type": "vulnerabilities", "rows": []},
     )
     assert pdf.startswith(b"%PDF-")
+
+
+def test_render_pdf_executive_summary_layout():
+    from backend.services.pdf_charts import severity_donut, sla_bar
+
+    pdf = render_pdf(
+        "executive_summary",
+        {
+            "title": "UVT Executive Summary",
+            "report_type": "vulnerabilities",
+            "kpi": {"total_open": 5, "critical_open": 2, "sla_compliance_pct": 80.0, "new_in_period": 1},
+            "period_days": 14,
+            "severity_chart": severity_donut({"Critical": 2, "High": 3}),
+            "sla_chart": sla_bar({"on_track": 4, "at_risk": 1, "breached": 0}),
+            "rows": [
+                {
+                    "cve_id": "CVE-2026-9001",
+                    "title": "demo",
+                    "severity": "High",
+                    "cvss_score": 7.4,
+                    "status": "Open",
+                    "assigned_to": "alice",
+                    "published_date": "2026-04-01T00:00:00",
+                }
+            ],
+            "branding": {"primary_color": "#2563eb", "footer_text": "UVT", "logo_data_uri": None},
+        },
+    )
+    assert pdf.startswith(b"%PDF-")
+    assert len(pdf) > 5000
+
+
+def test_render_pdf_executive_summary_handles_no_charts():
+    pdf = render_pdf(
+        "executive_summary",
+        {
+            "title": "UVT Executive Summary",
+            "report_type": "vulnerabilities",
+            "kpi": {"total_open": 0, "critical_open": 0, "sla_compliance_pct": None, "new_in_period": 0},
+            "period_days": 14,
+            "severity_chart": None,
+            "sla_chart": None,
+            "rows": [],
+            "branding": {"primary_color": "#2563eb", "footer_text": "", "logo_data_uri": None},
+        },
+    )
+    assert pdf.startswith(b"%PDF-")

@@ -234,8 +234,39 @@ def _json_bytes(payload):
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
 
 
-def _pdf_bytes(report_type, payload, *, filters=None):
+PDF_LAYOUTS = {"default", "executive_summary"}
+
+
+def _filters_summary(filters):
+    if not filters:
+        return None
+    parts = [f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "")]
+    return ", ".join(parts) if parts else None
+
+
+def _pdf_bytes(report_type, payload, *, filters=None, layout="default"):
     from ..services.pdf_renderer import render_pdf
+    from ..services.pdf_charts import severity_donut, sla_bar
+    from ..services.reporting_service import executive_summary
+
+    layout = layout if layout in PDF_LAYOUTS else "default"
+
+    if layout == "executive_summary" and report_type == "vulnerabilities":
+        context = {
+            "title": "UVT Executive Summary",
+            "report_type": report_type,
+        }
+        exec_data = executive_summary(filters or {}, base_query=_scoped_vuln_base())
+        primary = "#2563eb"
+        context["kpi"] = exec_data["kpi"]
+        context["period_days"] = exec_data["period_days"]
+        context["severity_chart"] = severity_donut(exec_data["by_severity"], primary)
+        context["sla_chart"] = sla_bar(exec_data["sla_status"], primary)
+        context["rows"] = [_vuln_row(v) for v in exec_data["vulns"]]
+        summary = _filters_summary(filters)
+        if summary:
+            context["filters_summary"] = summary
+        return render_pdf("executive_summary", context)
 
     title = (
         "UVT Dashboard Summary"
@@ -247,10 +278,9 @@ def _pdf_bytes(report_type, payload, *, filters=None):
         context["summary"] = payload
     else:
         context["rows"] = payload
-    if filters:
-        parts = [f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "")]
-        if parts:
-            context["filters_summary"] = ", ".join(parts)
+    summary = _filters_summary(filters)
+    if summary:
+        context["filters_summary"] = summary
     return render_pdf("default", context)
 
 
@@ -264,7 +294,7 @@ def _report_dir():
     return root
 
 
-def _build_export_artifact(*, report_type, export_format, filters, payload, filename_prefix, created_by_user_id=None):
+def _build_export_artifact(*, report_type, export_format, filters, payload, filename_prefix, created_by_user_id=None, pdf_layout="default"):
     if export_format == "csv":
         if report_type == "dashboard_summary":
             content_bytes = _csv_content_bytes(["metric", "group", "value"], _summary_rows(payload))
@@ -277,7 +307,7 @@ def _build_export_artifact(*, report_type, export_format, filters, payload, file
         content_type = "application/json"
         extension = "json"
     else:
-        content_bytes = _pdf_bytes(report_type, payload, filters=filters)
+        content_bytes = _pdf_bytes(report_type, payload, filters=filters, layout=pdf_layout)
         content_type = "application/pdf"
         extension = "pdf"
 
@@ -309,7 +339,7 @@ def _artifact_download_url(artifact):
 
 
 def _report_artifact_json(artifact):
-    return {
+    payload = {
         "id": artifact.id,
         "report_type": artifact.report_type,
         "format": artifact.format,
@@ -317,8 +347,15 @@ def _report_artifact_json(artifact):
         "size": artifact.size,
         "checksum": artifact.checksum,
         "created_at": artifact.created_at.isoformat() if artifact.created_at else None,
-        "download_url": _artifact_download_url(artifact),
+        "status": getattr(artifact, "status", "ready"),
+        "error": getattr(artifact, "error", None),
+        "status_url": f"/api/reports/artifacts/{artifact.id}",
     }
+    if payload["status"] == "ready":
+        payload["download_url"] = _artifact_download_url(artifact)
+    else:
+        payload["download_url"] = None
+    return payload
 
 
 def _csv_content_bytes(fieldnames, rows):
@@ -334,8 +371,8 @@ def _csv_content(fieldnames, rows):
     return buf.getvalue()
 
 
-def _dashboard_summary(filters):
-    q, _ = build_vulnerability_query(filters, base_query=_scoped_vuln_base())
+def _dashboard_summary(filters, base_query=None):
+    q, _ = build_vulnerability_query(filters, base_query=base_query if base_query is not None else _scoped_vuln_base())
     total = q.count()
     by_severity = dict(
         db.session.query(Vulnerability.severity, func.count(Vulnerability.id))
@@ -361,12 +398,16 @@ def _summary_rows(summary):
     return rows
 
 
-def _build_export_artifact_async(*, report_type, export_format, filters, user_id):
-    """Build a report artifact from a background task (no request context)."""
+def _build_export_artifact_async(*, report_type, export_format, filters, user_id, pdf_layout="default"):
+    """Build a report artifact from a background task (no request context).
+
+    NOTE: still callable in the legacy "create everything" mode for the
+    existing ``generate_report_task`` callers — kept for compatibility.
+    """
     if report_type == "dashboard_summary":
         payload = _dashboard_summary(filters)
     else:
-        q, _ = build_vulnerability_query(filters or {}, base_query=_scoped_vuln_base())
+        q, _ = build_vulnerability_query(filters or {}, base_query=Vulnerability.query)
         payload = [_vuln_row(v) for v in q.all()]
 
     return _build_export_artifact(
@@ -376,7 +417,84 @@ def _build_export_artifact_async(*, report_type, export_format, filters, user_id
         payload=payload,
         filename_prefix="report",
         created_by_user_id=user_id,
+        pdf_layout=pdf_layout,
     )
+
+
+def _create_pending_pdf_artifact(*, report_type, filters, pdf_layout, created_by_user_id):
+    """Create a placeholder ReportArtifact row in 'pending' state (no file yet)."""
+    artifact = ReportArtifact(
+        report_type=report_type,
+        format="pdf",
+        storage_path=None,
+        content_type="application/pdf",
+        filters_json=dict(filters or {}),
+        created_by=created_by_user_id,
+        team_id=getattr(request, "current_team_id", None),
+        status="pending",
+    )
+    # Stash layout in filters_json under reserved key — the worker reads it back.
+    artifact.filters_json = {**(artifact.filters_json or {}), "_pdf_layout": pdf_layout}
+    db.session.add(artifact)
+    db.session.commit()
+    return artifact
+
+
+def _finalize_pdf_artifact(artifact_id):
+    """Render the PDF for a pending artifact and persist it.
+
+    Called from the celery worker. Reads layout/filters off the row, renders,
+    writes file + checksum + size, flips status to 'ready' (or 'failed').
+    Re-applies team_scope using ``artifact.created_by`` since there is no
+    request context inside the worker.
+    """
+    from ..models import User
+    artifact = ReportArtifact.query.filter_by(id=artifact_id).first()
+    if artifact is None:
+        return None
+    try:
+        layout = "default"
+        filters = dict(artifact.filters_json or {})
+        if "_pdf_layout" in filters:
+            layout = filters.pop("_pdf_layout") or "default"
+
+        owner = User.query.filter_by(id=artifact.created_by).first()
+        scoped_base = _team_scope(
+            Vulnerability.query, Vulnerability, owner, allow_null_team=True,
+        )
+
+        if artifact.report_type == "dashboard_summary":
+            payload = _dashboard_summary(filters, base_query=scoped_base)
+        else:
+            q, _ = build_vulnerability_query(filters, base_query=scoped_base)
+            payload = [_vuln_row(v) for v in q.all()]
+
+        content_bytes = _pdf_bytes(artifact.report_type, payload, filters=filters, layout=layout)
+
+        digest = hashlib.sha256(content_bytes).hexdigest()
+        prefix = "vulnerabilities_export" if artifact.report_type == "vulnerabilities" else "dashboard_summary"
+        storage_name = f"{prefix}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}.pdf"
+        storage_path = os.path.join(_report_dir(), storage_name)
+        with open(storage_path, "wb") as handle:
+            handle.write(content_bytes)
+
+        artifact.storage_path = storage_path
+        artifact.checksum = digest
+        artifact.size = len(content_bytes)
+        artifact.status = "ready"
+        artifact.error = None
+        # Strip the reserved layout key so download links don't surface it.
+        artifact.filters_json = filters
+        db.session.commit()
+        return artifact
+    except Exception as exc:  # noqa: BLE001 — record the failure for the user
+        db.session.rollback()
+        artifact = ReportArtifact.query.filter_by(id=artifact_id).first()
+        if artifact is not None:
+            artifact.status = "failed"
+            artifact.error = str(exc)[:500]
+            db.session.commit()
+        raise
 
 
 def _deliver_report(schedule, content):
@@ -530,8 +648,14 @@ def export_vulnerabilities():
     export_format = (request.args.get("format") or "csv").lower()
     if export_format not in ALLOWED_EXPORT_FORMATS:
         return error_response("format must be one of csv, json, pdf", status_code=400)
+    pdf_layout = (request.args.get("pdf_layout") or "default").lower()
+    if pdf_layout not in PDF_LAYOUTS:
+        return error_response(
+            f"pdf_layout must be one of {sorted(PDF_LAYOUTS)}", status_code=400, field="pdf_layout"
+        )
     filters = request.args.to_dict(flat=True)
     filters.pop("format", None)
+    filters.pop("pdf_layout", None)
     template = None
     try:
         template = _resolve_template_for_user(request.args.get("report_template_id"), user=request.user)
@@ -540,6 +664,20 @@ def export_vulnerabilities():
     if template:
         filters = template.filters_json or filters
         export_format = template.export_format or export_format
+
+    if export_format == "pdf" and current_app.config.get("CELERY_ENABLED"):
+        artifact = _create_pending_pdf_artifact(
+            report_type="vulnerabilities",
+            filters=filters,
+            pdf_layout=pdf_layout,
+            created_by_user_id=request.user.id,
+        )
+        from ..tasks import generate_report_task
+        async_result = generate_report_task.delay(artifact_id=artifact.id)
+        artifact.celery_task_id = async_result.id
+        db.session.commit()
+        return jsonify({"artifact": _report_artifact_json(artifact)}), 202
+
     try:
         items, _ = build_vulnerability_query(filters, base_query=_scoped_vuln_base())
         items = items.all()
@@ -552,6 +690,7 @@ def export_vulnerabilities():
         filters=filters,
         payload=rows,
         filename_prefix="vulnerabilities_export",
+        pdf_layout=pdf_layout,
     )
     return jsonify({"artifact": _report_artifact_json(artifact)})
 
@@ -604,8 +743,14 @@ def export_dashboard_summary():
     export_format = (request.args.get("format") or "csv").lower()
     if export_format not in ALLOWED_EXPORT_FORMATS:
         return error_response("format must be one of csv, json, pdf", status_code=400)
+    pdf_layout = (request.args.get("pdf_layout") or "default").lower()
+    if pdf_layout not in PDF_LAYOUTS:
+        return error_response(
+            f"pdf_layout must be one of {sorted(PDF_LAYOUTS)}", status_code=400, field="pdf_layout"
+        )
     filters = request.args.to_dict(flat=True)
     filters.pop("format", None)
+    filters.pop("pdf_layout", None)
     template = None
     try:
         template = _resolve_template_for_user(request.args.get("report_template_id"), user=request.user)
@@ -614,6 +759,20 @@ def export_dashboard_summary():
     if template:
         filters = template.filters_json or filters
         export_format = template.export_format or export_format
+
+    if export_format == "pdf" and current_app.config.get("CELERY_ENABLED"):
+        artifact = _create_pending_pdf_artifact(
+            report_type="dashboard_summary",
+            filters=filters,
+            pdf_layout=pdf_layout,
+            created_by_user_id=request.user.id,
+        )
+        from ..tasks import generate_report_task
+        async_result = generate_report_task.delay(artifact_id=artifact.id)
+        artifact.celery_task_id = async_result.id
+        db.session.commit()
+        return jsonify({"artifact": _report_artifact_json(artifact)}), 202
+
     try:
         summary = _dashboard_summary(filters)
     except ValueError as exc:
@@ -624,10 +783,44 @@ def export_dashboard_summary():
         filters=filters,
         payload=summary,
         filename_prefix="dashboard_summary",
+        pdf_layout=pdf_layout,
     )
     return jsonify({"artifact": _report_artifact_json(artifact)})
 
 
+
+
+@bp.get("/reports/artifacts/<int:artifact_id>")
+@login_required
+def get_report_artifact(artifact_id):
+    """Get the status of a report artifact (used to poll async PDF jobs).
+    ---
+    get:
+      summary: Get report artifact status
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: artifact_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Artifact metadata + status (pending|ready|failed)
+        404:
+          description: Artifact not found
+    """
+    artifact = (
+        _team_scope(ReportArtifact.query, ReportArtifact, getattr(request, "user", None))
+        .filter(ReportArtifact.id == artifact_id)
+        .first()
+    )
+    if not artifact:
+        return error_response("Artifact not found", status_code=404)
+    if request.user.role != "Admin" and artifact.created_by != request.user.id:
+        return error_response("Forbidden", status_code=403)
+    return jsonify({"artifact": _report_artifact_json(artifact)})
 
 
 @bp.get("/reports/artifacts/<int:artifact_id>/download")
@@ -705,6 +898,12 @@ def download_report_artifact(artifact_id):
 
     if request.user.role != "Admin" and artifact.created_by != request.user.id:
         return error_response("Forbidden", status_code=403)
+
+    if getattr(artifact, "status", "ready") != "ready" or not artifact.storage_path:
+        return error_response(
+            f"Artifact is not ready (status={getattr(artifact, 'status', 'unknown')})",
+            status_code=409,
+        )
 
     filename = f"{artifact.report_type}.{artifact.format}"
     return send_file(

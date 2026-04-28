@@ -73,6 +73,10 @@ from .user_preferences import (
     UserPreferences,
 )
 
+from .branding import (
+    OrganizationBranding,
+)
+
 __all__ = [
     "Team",
     "UserTeam",
@@ -117,4 +121,5 @@ __all__ = [
     "WebhookEndpoint",
     "WebhookDeliveryLog",
     "UserPreferences",
+    "OrganizationBranding",
 ]

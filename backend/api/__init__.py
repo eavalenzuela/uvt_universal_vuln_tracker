@@ -28,6 +28,7 @@ from .webhooks import bp as webhooks_bp
 from .user_preferences import bp as user_preferences_bp
 from .scanner_imports import bp as scanner_imports_bp
 from .teams import bp as teams_bp
+from .branding import bp as branding_bp
 
 
 _BLUEPRINTS = [
@@ -61,6 +62,7 @@ _BLUEPRINTS = [
     user_preferences_bp,
     scanner_imports_bp,
     teams_bp,
+    branding_bp,
 ]
 
 

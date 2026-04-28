@@ -114,6 +114,69 @@ def dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 da
     }
 
 
+def executive_summary(filters, *, period_days: int = 14, base_query=None):
+    """Compute KPI + chart data for the F17 executive_summary PDF layout.
+
+    Returns a dict with:
+      kpi: {total_open, critical_open, sla_compliance_pct, new_in_period}
+      by_severity: {severity: count}  — over the filtered set
+      sla_status: {on_track, at_risk, breached}  — open vulns only
+      period_days: int
+    """
+    from .sla import compute_sla_state, get_sla_policy
+
+    base = base_query if base_query is not None else Vulnerability.query
+    q, _ = build_vulnerability_query(filters or {}, base_query=base)
+    vulns = q.all()
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+    by_severity: dict[str, int] = {}
+    sla_status = {"on_track": 0, "at_risk": 0, "breached": 0}
+    total_open = 0
+    critical_open = 0
+    new_in_period = 0
+    policy = get_sla_policy()
+
+    for v in vulns:
+        sev = v.severity or "Unknown"
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+
+        is_open = (v.status or "") in OPEN_STATUSES
+        if is_open:
+            total_open += 1
+            if sev == "Critical":
+                critical_open += 1
+            state = compute_sla_state(v, policy=policy)
+            if state == "breached":
+                sla_status["breached"] += 1
+            elif state == "due_soon":
+                sla_status["at_risk"] += 1
+            else:
+                sla_status["on_track"] += 1
+
+        created = v.created_at
+        if created and created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if created and created >= cutoff:
+            new_in_period += 1
+
+    sla_total = sum(sla_status.values())
+    sla_compliance_pct = round(100.0 * sla_status["on_track"] / sla_total, 1) if sla_total else None
+
+    return {
+        "kpi": {
+            "total_open": total_open,
+            "critical_open": critical_open,
+            "sla_compliance_pct": sla_compliance_pct,
+            "new_in_period": new_in_period,
+        },
+        "by_severity": by_severity,
+        "sla_status": sla_status,
+        "period_days": period_days,
+        "vulns": vulns,
+    }
+
+
 def risk_trends(filters):
     bucket = (filters.get("bucket") or "week").lower()
     if bucket not in {"day", "week", "month"}:

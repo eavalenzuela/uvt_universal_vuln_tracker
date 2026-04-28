@@ -32,6 +32,13 @@ _SQLITE_VULN_COLUMN_BACKFILL = [
     ("availability_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
 ]
 
+# F17 Slice 2: report artifact lifecycle columns.
+_SQLITE_REPORT_ARTIFACT_BACKFILL = [
+    ("status", "VARCHAR(16) NOT NULL DEFAULT 'ready'"),
+    ("error", "TEXT"),
+    ("celery_task_id", "VARCHAR(64)"),
+]
+
 
 def init_database(app):
     db.init_app(app)
@@ -62,14 +69,26 @@ def _ensure_sqlite_schema(app):
         insp = inspect(db.engine)
 
         # Backfill columns that were added after initial schema.
+        added = False
         if "vulnerabilities" in insp.get_table_names():
             existing_cols = {c["name"] for c in insp.get_columns("vulnerabilities")}
-            added = False
             for col_name, col_def in _SQLITE_VULN_COLUMN_BACKFILL:
                 if col_name not in existing_cols:
                     db.session.execute(
                         text(f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_def}")
                     )
                     added = True
-            if added:
-                db.session.commit()
+
+        if "report_artifacts" in insp.get_table_names():
+            existing_cols = {c["name"] for c in insp.get_columns("report_artifacts")}
+            for col_name, col_def in _SQLITE_REPORT_ARTIFACT_BACKFILL:
+                if col_name not in existing_cols:
+                    db.session.execute(
+                        text(f"ALTER TABLE report_artifacts ADD COLUMN {col_name} {col_def}")
+                    )
+                    added = True
+            # storage_path was NOT NULL pre-Slice-2; SQLite ALTER cannot drop NOT NULL,
+            # but new artifacts use INSERT-then-UPDATE so existing rows remain valid.
+
+        if added:
+            db.session.commit()

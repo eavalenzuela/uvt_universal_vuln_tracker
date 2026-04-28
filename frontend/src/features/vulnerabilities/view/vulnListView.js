@@ -13,7 +13,7 @@ import {
 } from "../../../api/vulnerabilities.js";
 import { getState } from "../../../state/store.js";
 import { canWrite, isAdmin } from "../../../state/permissions.js";
-import { downloadReportArtifact, exportVulnerabilities } from "../../../api/reports.js";
+import { downloadReportArtifact, exportVulnerabilities, waitForReportArtifact } from "../../../api/reports.js";
 import { navigate } from "../../../router/router.js";
 import { collectFilterValues, applyFilterValues } from "../selectors/filterNormalization.js";
 import { createFilterRow } from "../../../ui/primitives/filters.js";
@@ -236,6 +236,13 @@ export async function VulnListView(params = {}) {
     el("option", { value: "json", text: "JSON" }),
     el("option", { value: "pdf", text: "PDF" }),
   );
+  const pdfLayoutSelect = el("select", { class: "input max-w-180", style: "display: none;" },
+    el("option", { value: "default", text: "Default layout" }),
+    el("option", { value: "executive_summary", text: "Executive summary" }),
+  );
+  exportFormatSelect.addEventListener("change", () => {
+    pdfLayoutSelect.style.display = exportFormatSelect.value === "pdf" ? "" : "none";
+  });
   const exportBtn = el("button", { class: "btn", type: "button" }, "Export current view");
   exportBtn.addEventListener("click", async () => {
     exportBtn.disabled = true;
@@ -252,19 +259,26 @@ export async function VulnListView(params = {}) {
       componentDepthInput,
     });
     try {
-      const response = await exportVulnerabilities(filters, exportFormatSelect.value);
-      const artifact = response?.artifact;
+      const fmt = exportFormatSelect.value;
+      const opts = fmt === "pdf" && pdfLayoutSelect ? { pdfLayout: pdfLayoutSelect.value } : {};
+      const response = await exportVulnerabilities(filters, fmt, opts);
+      let artifact = response?.artifact;
+      if (!artifact) throw new Error("Export artifact missing");
+      if (artifact.status && artifact.status !== "ready") {
+        toast({ title: "Generating report", message: "Rendering PDF — this can take a few seconds…" });
+        artifact = await waitForReportArtifact(artifact.id);
+      }
       if (!artifact?.download_url) throw new Error("Export artifact missing download URL");
       const blob = await downloadReportArtifact(artifact.download_url);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `vulnerabilities_export.${artifact.format || exportFormatSelect.value}`;
+      a.download = `vulnerabilities_export.${artifact.format || fmt}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast({ title: "Export ready", message: `Downloaded vulnerabilities ${String((artifact.format || exportFormatSelect.value)).toUpperCase()}.` });
+      toast({ title: "Export ready", message: `Downloaded vulnerabilities ${String((artifact.format || fmt)).toUpperCase()}.` });
     } catch (e) {
       toast({ title: "Export failed", message: e?.message || "Unable to export vulnerabilities" });
     } finally {
@@ -378,7 +392,7 @@ export async function VulnListView(params = {}) {
 
   const controls = createFilterRow({
     controls: [searchInput, statusSelect, severitySelect, attackComplexitySelect, confidentialitySelect, integritySelect, availabilitySelect, componentEcosystemInput, componentNameInput, componentDepthInput],
-    actions: [applyBtn, exportBtn, savedFiltersSelect, saveCurrentBtn, setDefaultBtn, deleteSavedBtn],
+    actions: [applyBtn, exportFormatSelect, pdfLayoutSelect, exportBtn, savedFiltersSelect, saveCurrentBtn, setDefaultBtn, deleteSavedBtn],
   });
   controls.classList.add("my-12");
 

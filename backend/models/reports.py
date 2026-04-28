@@ -64,7 +64,8 @@ class ReportArtifact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     report_type = db.Column(db.String(30), nullable=False, index=True)
     format = db.Column(db.String(10), nullable=False)
-    storage_path = db.Column(db.String(1024), nullable=False)
+    # F17 Slice 2: storage_path is null until the async render completes.
+    storage_path = db.Column(db.String(1024))
     checksum = db.Column(db.String(256))
     size = db.Column(db.BigInteger)
     content_type = db.Column(db.String(255))
@@ -72,5 +73,11 @@ class ReportArtifact(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # F17 Slice 2 — async PDF rendering lifecycle.
+    # 'ready' covers all sync-built artifacts (csv/json + sync-mode pdf).
+    status = db.Column(db.String(16), nullable=False, default="ready", index=True)
+    error = db.Column(db.Text)
+    celery_task_id = db.Column(db.String(64))
 
     creator = db.relationship("User", foreign_keys=[created_by])

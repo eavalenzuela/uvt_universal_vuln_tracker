@@ -1,7 +1,7 @@
 import { el } from "../../../ui/dom/el.js";
 import { canWrite } from "../../../state/permissions.js";
 import { getState } from "../../../state/store.js";
-import { downloadReportArtifact, exportDashboardSummary } from "../../../api/reports.js";
+import { downloadReportArtifact, exportDashboardSummary, waitForReportArtifact } from "../../../api/reports.js";
 import {
   createDashboardLayoutPreset,
   getDefaultDashboardLayoutPreset,
@@ -71,22 +71,28 @@ export async function DashboardView() {
   exportBtn.addEventListener("click", async () => {
     exportBtn.disabled = true;
     try {
+      const fmt = exportFormatSelect.value;
       const response = await exportDashboardSummary({
         status: exportStatusSelect.value || undefined,
         severity: exportSeveritySelect.value || undefined,
-      }, exportFormatSelect.value);
-      const artifact = response?.artifact;
+      }, fmt);
+      let artifact = response?.artifact;
+      if (!artifact) throw new Error("Export artifact missing");
+      if (artifact.status && artifact.status !== "ready") {
+        toast({ title: "Generating report", message: "Rendering PDF — this can take a few seconds…" });
+        artifact = await waitForReportArtifact(artifact.id);
+      }
       if (!artifact?.download_url) throw new Error("Export artifact missing download URL");
       const blob = await downloadReportArtifact(artifact.download_url);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `dashboard_summary.${artifact.format || exportFormatSelect.value}`;
+      a.download = `dashboard_summary.${artifact.format || fmt}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast({ title: "Export ready", message: `Downloaded dashboard summary ${String((artifact.format || exportFormatSelect.value)).toUpperCase()}.` });
+      toast({ title: "Export ready", message: `Downloaded dashboard summary ${String((artifact.format || fmt)).toUpperCase()}.` });
     } catch (error) {
       toast({ title: "Export failed", message: error?.message || "Unable to export dashboard summary" });
     } finally {
