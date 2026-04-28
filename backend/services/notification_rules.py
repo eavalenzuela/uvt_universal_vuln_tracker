@@ -278,7 +278,7 @@ def _publish_rule_trigger_event(event: NotificationEvent, vulnerability: Vulnera
 
 
 def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id: int | None = None) -> list[NotificationDeliveryLog]:
-    vulnerability = Vulnerability.query.get(event.vulnerability_id)
+    vulnerability = db.session.get(Vulnerability, event.vulnerability_id)
     if not vulnerability:
         return []
 

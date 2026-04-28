@@ -637,7 +637,7 @@ def test_vulnerability_bulk_update_reports_per_record_failures(app, client):
     vuln_id = create_resp.get_json()["id"]
 
     with app.app_context():
-        vuln = Vulnerability.query.get(vuln_id)
+        vuln = db.session.get(Vulnerability, vuln_id)
         vuln.is_merged = True
         db.session.commit()
 

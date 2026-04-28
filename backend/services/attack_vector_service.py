@@ -94,7 +94,7 @@ def attach_vulnerability_attack_vectors(vuln_id: int, mappings: list[dict]) -> i
         parsed_attack_vector_id = parse_int(
             attack_vector_id, field="attack_vector_id", minimum=1, required=True,
         )
-        vector = AttackVector.query.get(parsed_attack_vector_id)
+        vector = db.session.get(AttackVector, parsed_attack_vector_id)
         if not vector:
             raise ValidationError(
                 error=f"Invalid attack vector {attack_vector_id}",
@@ -107,7 +107,7 @@ def attach_vulnerability_attack_vectors(vuln_id: int, mappings: list[dict]) -> i
             else None
         )
         if pv_id is not None:
-            pv = ProductVersion.query.get(pv_id)
+            pv = db.session.get(ProductVersion, pv_id)
             if not pv:
                 raise ValidationError(
                     error=f"Invalid product version {pv_id}",
@@ -152,7 +152,7 @@ def update_vulnerability_attack_vector(
             if vector_id
             else None
         )
-        vector = AttackVector.query.get(parsed_vector_id) if parsed_vector_id else None
+        vector = db.session.get(AttackVector, parsed_vector_id) if parsed_vector_id else None
         if not vector:
             raise ValidationError(
                 error=f"Invalid attack vector {vector_id}",
@@ -168,7 +168,7 @@ def update_vulnerability_attack_vector(
             parsed_pv_id = parse_int(
                 pv_id, field="product_version_id", minimum=1, required=True,
             )
-            pv = ProductVersion.query.get(parsed_pv_id)
+            pv = db.session.get(ProductVersion, parsed_pv_id)
             if not pv:
                 raise ValidationError(
                     error=f"Invalid product version {pv_id}",
@@ -200,7 +200,7 @@ def serialize_mapping(mapping: VulnerabilityAttackVector) -> dict:
     Resolves the associated ProductVersion to include product details.
     """
     pv = (
-        ProductVersion.query.get(mapping.product_version_id)
+        db.session.get(ProductVersion, mapping.product_version_id)
         if mapping.product_version_id
         else None
     )

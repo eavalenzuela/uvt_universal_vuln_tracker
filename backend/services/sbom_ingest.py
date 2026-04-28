@@ -13,7 +13,7 @@ class SbomFormatError(ValueError):
 
 
 def ingest_sbom(*, product_version_id: int, sbom_payload: Mapping[str, Any], fmt: str) -> dict[str, int]:
-    product_version = ProductVersion.query.get(product_version_id)
+    product_version = db.session.get(ProductVersion, product_version_id)
     if not product_version:
         raise SbomFormatError("Unknown product version")
 

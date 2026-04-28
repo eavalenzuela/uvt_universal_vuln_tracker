@@ -97,7 +97,7 @@ def authenticate_api_token(raw_token: str):
     if token_record.expires_at and token_record.expires_at <= datetime.datetime.now(datetime.timezone.utc):
         return None, (jsonify({"error": "Token expired"}), 401)
 
-    user = User.query.get(token_record.owner_id)
+    user = db.session.get(User, token_record.owner_id)
     if not user or not user.is_active:
         return None, (jsonify({"error": "User inactive or not found"}), 401)
 
@@ -161,7 +161,7 @@ def rotate_refresh_token(raw_token: str):
     if token_record.expires_at <= datetime.datetime.now(datetime.timezone.utc):
         return None, "expired"
 
-    user = User.query.get(token_record.user_id)
+    user = db.session.get(User, token_record.user_id)
     if not user or not user.is_active:
         return None, "inactive"
 
@@ -236,7 +236,7 @@ def authenticate_request():
             return None, None, (jsonify({"error": "Invalid token"}), 401)
         return user, None, None
 
-    user = User.query.get(int(claims["sub"]))
+    user = db.session.get(User, int(claims["sub"]))
     if not user or not user.is_active:
         return None, None, (jsonify({"error": "User inactive or not found"}), 401)
 
@@ -360,7 +360,7 @@ def _populate_current_team():
 
 
 def get_user_by_id(user_id: int):
-    return User.query.get(user_id)
+    return db.session.get(User, user_id)
 
 
 def get_user_by_username(username: str):

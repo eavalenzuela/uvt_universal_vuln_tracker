@@ -64,7 +64,7 @@ def test_bearer_api_token_auth_with_scope_enforcement(client, admin_user, auth_h
     assert denied.status_code == 403
 
     with client.application.app_context():
-        token_row = ApiToken.query.get(created["api_token"]["id"])
+        token_row = db.session.get(ApiToken, created["api_token"]["id"])
         assert token_row.last_used_at is not None
 
 
@@ -85,7 +85,7 @@ def test_revoked_api_token_is_rejected(client, admin_user, auth_header):
     created = _create_api_token(client, headers, scopes=["products:read"])
 
     with client.application.app_context():
-        token_row = ApiToken.query.get(created["api_token"]["id"])
+        token_row = db.session.get(ApiToken, created["api_token"]["id"])
         token_row.revoked_at = db.func.now()
         db.session.add(token_row)
         db.session.commit()

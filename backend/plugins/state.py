@@ -171,7 +171,7 @@ def save_plugin_run_result(
         db.session.commit()
     except Exception:
         db.session.rollback()
-        run = PluginRun.query.get(run.id)
+        run = db.session.get(PluginRun, run.id)
         run.status = "partial_failed"
         run.finished_at = finished_at
         run.error = "artifact persistence failed"

@@ -529,7 +529,7 @@ def get_vulnerability(vuln_id: int):
     mappings = VulnerabilityVersion.query.filter_by(vulnerability_id=v.id).all()
     version_rows = []
     for m in mappings:
-        pv = ProductVersion.query.get(m.product_version_id)
+        pv = db.session.get(ProductVersion, m.product_version_id)
         version_rows.append({
             "id": m.id,
             "product_version_id": m.product_version_id,
@@ -546,7 +546,7 @@ def get_vulnerability(vuln_id: int):
     attack_vector_mappings = VulnerabilityAttackVector.query.filter_by(vulnerability_id=v.id).all()
     attack_vector_rows = []
     for mapping in attack_vector_mappings:
-        pv = ProductVersion.query.get(mapping.product_version_id) if mapping.product_version_id else None
+        pv = db.session.get(ProductVersion, mapping.product_version_id) if mapping.product_version_id else None
         attack_vector_rows.append({
             "id": mapping.id,
             "attack_vector_id": mapping.attack_vector_id,

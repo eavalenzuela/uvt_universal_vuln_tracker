@@ -260,7 +260,7 @@ def _bulk_update_vulnerabilities():
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
-    if "assigned_to" in parsed_updates and parsed_updates["assigned_to"] is not None and not User.query.get(parsed_updates["assigned_to"]):
+    if "assigned_to" in parsed_updates and parsed_updates["assigned_to"] is not None and not db.session.get(User, parsed_updates["assigned_to"]):
         return error_response("assigned_to user not found", field="assigned_to")
 
     vulnerabilities = Vulnerability.query.filter(Vulnerability.id.in_(vulnerability_ids)).all()
@@ -428,7 +428,7 @@ def watch_vulnerability(vuln_id: int):
     if request.user.role != "Admin" and user_id != request.user.id:
         return error_response("Only admins can add watchers for other users", status_code=403)
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return error_response("User not found", field="user_id", status_code=404)
 

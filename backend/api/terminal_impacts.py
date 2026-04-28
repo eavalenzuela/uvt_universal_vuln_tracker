@@ -331,7 +331,7 @@ def attach_vulnerability_terminal_impacts(vuln_id: int):
     for impact_id in impact_ids:
         if not impact_id:
             return error_response("terminal_impact_ids must include valid ids", field="terminal_impact_ids")
-        impact = TerminalImpact.query.get(int(impact_id))
+        impact = db.session.get(TerminalImpact, int(impact_id))
         if not impact:
             return error_response(f"Invalid terminal impact {impact_id}", field="terminal_impact_ids")
 
@@ -406,7 +406,7 @@ def update_vulnerability_terminal_impact(vuln_id: int, mapping_id: int):
 
     if "terminal_impact_id" in data:
         impact_id = data.get("terminal_impact_id")
-        impact = TerminalImpact.query.get(int(impact_id)) if impact_id else None
+        impact = db.session.get(TerminalImpact, int(impact_id)) if impact_id else None
         if not impact:
             return error_response(f"Invalid terminal impact {impact_id}", field="terminal_impact_id")
         mapping.terminal_impact_id = impact.id

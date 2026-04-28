@@ -573,7 +573,7 @@ def reset_password():
     if not record:
         return error_response("Invalid or expired reset token", status_code=400)
 
-    user = User.query.get(record.user_id)
+    user = db.session.get(User, record.user_id)
     if not user or not user.is_active:
         return error_response("Invalid or expired reset token", status_code=400)
 
