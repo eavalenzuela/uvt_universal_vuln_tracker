@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.20.0 — F17 follow-ups: trend chart, top components, async cleanup, worker recycle
+
+### Added
+- **Activity trend line** on the executive-summary PDF — Matplotlib line chart of vulnerabilities updated per day across the report period, computed from `executive_summary()`'s new `trend_buckets` field.
+- **Top affected components panel** on the executive-summary PDF — table of up to 10 components (name + ecosystem + open vuln count) sorted by open count, computed from `top_affected_components(vulns, limit)` operating on already-loaded vuln objects (no extra query, works in both sync and Celery paths).
+- **`CELERY_WORKER_MAX_TASKS_PER_CHILD`** config (default `100`) — applied via `celery.conf.worker_max_tasks_per_child`. Recycles each worker child after N tasks to release WeasyPrint + Matplotlib memory held across PDF renders. Documented in `docs/DEPLOYMENT.md`.
+- **Cookie-only artifact download test** — confirms the SPA's raw `fetch(... credentials: include)` works against `/api/reports/artifacts/<id>/download` without an `Authorization` header (the signed token in the URL still binds artifact to user).
+
+### Changed
+- **`generate_report_task` simplified** — dropped the legacy `report_type/export_format/filters/user_id/pdf_layout` kwargs branch and the unused `_build_export_artifact_async()` helper. The task now takes only `artifact_id` and finalizes a pre-created pending artifact (the only mode actually called since v2.18.0).
+- **`init_celery()` — ContextTask reads the active Flask app from `celery._uvt_flask_app` at call time** instead of capturing it via closure. Eliminates a stale-binding hazard exposed by the test suite (per-test apps would otherwise route into the first app's app_context and miss its in-memory SQLite DB). Single-app prod deployments behave identically.
+
+### Tests
+- Backend: 319 passed (was 314).
+  - `test_pdf_charts.py` adds 2 tests (`trend_line` data URI / empty-input behavior).
+  - `test_pdf_renderer.py` adds 1 test for the top-components panel.
+  - `test_reports_async_pdf.py` adds 1 lifecycle test for `dashboard_summary` async PDF (mirroring the vulnerabilities one).
+  - `test_reports_export_contract.py` adds 1 cookie-auth download test.
+- Frontend: 28 passed (unchanged).
+
 ## v2.19.0 — F17 Slice 3: PDF report branding (logo + color + footer)
 
 ### Visual review (v2.19.0-after)

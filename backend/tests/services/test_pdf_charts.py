@@ -22,3 +22,22 @@ def test_sla_bar_returns_data_uri():
 def test_sla_bar_returns_none_when_empty():
     assert sla_bar({"on_track": 0, "at_risk": 0, "breached": 0}) is None
     assert sla_bar({}) is None
+
+
+def test_trend_line_returns_data_uri():
+    from backend.services.pdf_charts import trend_line
+    buckets = [
+        {"date": "2026-04-14", "count": 2},
+        {"date": "2026-04-15", "count": 5},
+        {"date": "2026-04-16", "count": 3},
+        {"date": "2026-04-17", "count": 7},
+    ]
+    out = trend_line(buckets)
+    assert out is not None
+    assert out.startswith("data:image/png;base64,")
+
+
+def test_trend_line_returns_none_when_empty():
+    from backend.services.pdf_charts import trend_line
+    assert trend_line([]) is None
+    assert trend_line([{"date": "2026-04-14", "count": 0}]) is None

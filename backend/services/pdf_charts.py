@@ -71,6 +71,38 @@ def severity_donut(by_severity: dict[str, int], primary_color: str = DEFAULT_PRI
     return _png_data_uri(fig)
 
 
+def trend_line(buckets: list[dict], primary_color: str = DEFAULT_PRIMARY) -> str | None:
+    """Render a trend line of vulnerability activity per day.
+
+    Accepts the ``buckets`` list from ``dashboard_aggregate`` —
+    each item is ``{"date": "YYYY-MM-DD", "count": int}``. Returns
+    None if all buckets are empty.
+    """
+    if not buckets:
+        return None
+    counts = [int(b.get("count", 0) or 0) for b in buckets]
+    if not any(counts):
+        return None
+    labels = [str(b.get("date", "")) for b in buckets]
+
+    fig, ax = plt.subplots(figsize=(10.5, 2.4))
+    ax.plot(range(len(counts)), counts, color=primary_color, linewidth=1.8, marker="o", markersize=3)
+    ax.fill_between(range(len(counts)), counts, color=primary_color, alpha=0.12)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="both", labelsize=8)
+    # Show first/middle/last x-tick labels only — keeps 14+ days legible.
+    if len(labels) >= 3:
+        idxs = [0, len(labels) // 2, len(labels) - 1]
+        ax.set_xticks(idxs)
+        ax.set_xticklabels([labels[i] for i in idxs])
+    else:
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels)
+    ax.set_ylim(0, max(counts) * 1.2 if max(counts) else 1)
+    return _png_data_uri(fig)
+
+
 def sla_bar(sla_status: dict[str, int], primary_color: str = DEFAULT_PRIMARY) -> str | None:
     """Render a horizontal bar chart for SLA bucket counts.
 

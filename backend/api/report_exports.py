@@ -252,6 +252,7 @@ def _pdf_bytes(report_type, payload, *, filters=None, layout="default"):
     layout = layout if layout in PDF_LAYOUTS else "default"
 
     if layout == "executive_summary" and report_type == "vulnerabilities":
+        from ..services.pdf_charts import trend_line
         context = {
             "title": "UVT Executive Summary",
             "report_type": report_type,
@@ -262,6 +263,8 @@ def _pdf_bytes(report_type, payload, *, filters=None, layout="default"):
         context["period_days"] = exec_data["period_days"]
         context["severity_chart"] = severity_donut(exec_data["by_severity"], primary)
         context["sla_chart"] = sla_bar(exec_data["sla_status"], primary)
+        context["trend_chart"] = trend_line(exec_data.get("trend_buckets") or [], primary)
+        context["top_components"] = exec_data.get("top_components") or []
         context["rows"] = [_vuln_row(v) for v in exec_data["vulns"]]
         summary = _filters_summary(filters)
         if summary:
@@ -396,29 +399,6 @@ def _summary_rows(summary):
     rows.extend({"metric": "severity", "group": k, "value": v} for k, v in sorted(summary["by_severity"].items()))
     rows.extend({"metric": "status", "group": k, "value": v} for k, v in sorted(summary["by_status"].items()))
     return rows
-
-
-def _build_export_artifact_async(*, report_type, export_format, filters, user_id, pdf_layout="default"):
-    """Build a report artifact from a background task (no request context).
-
-    NOTE: still callable in the legacy "create everything" mode for the
-    existing ``generate_report_task`` callers — kept for compatibility.
-    """
-    if report_type == "dashboard_summary":
-        payload = _dashboard_summary(filters)
-    else:
-        q, _ = build_vulnerability_query(filters or {}, base_query=Vulnerability.query)
-        payload = [_vuln_row(v) for v in q.all()]
-
-    return _build_export_artifact(
-        report_type=report_type,
-        export_format=export_format,
-        filters=filters,
-        payload=payload,
-        filename_prefix="report",
-        created_by_user_id=user_id,
-        pdf_layout=pdf_layout,
-    )
 
 
 def _create_pending_pdf_artifact(*, report_type, filters, pdf_layout, created_by_user_id):

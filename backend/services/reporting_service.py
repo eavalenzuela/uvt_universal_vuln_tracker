@@ -114,6 +114,30 @@ def dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 da
     }
 
 
+def top_affected_components(vulns, limit: int = 10):
+    """Return [{"name", "ecosystem", "open_count"}, ...] for the components
+    with the most open vulnerabilities in ``vulns``.
+
+    Operates on already-loaded `Vulnerability` objects so we don't re-query
+    in different request contexts (works for both sync and Celery paths).
+    """
+    counts: dict[tuple[str, str | None], int] = {}
+    for v in vulns:
+        if (v.status or "") not in OPEN_STATUSES:
+            continue
+        for link in v.affected_components or []:
+            comp = link.component
+            if comp is None or not comp.name:
+                continue
+            key = (comp.name, comp.ecosystem)
+            counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0][0].lower()))[:limit]
+    return [
+        {"name": name, "ecosystem": ecosystem, "open_count": count}
+        for (name, ecosystem), count in ranked
+    ]
+
+
 def executive_summary(filters, *, period_days: int = 14, base_query=None):
     """Compute KPI + chart data for the F17 executive_summary PDF layout.
 
@@ -121,6 +145,8 @@ def executive_summary(filters, *, period_days: int = 14, base_query=None):
       kpi: {total_open, critical_open, sla_compliance_pct, new_in_period}
       by_severity: {severity: count}  — over the filtered set
       sla_status: {on_track, at_risk, breached}  — open vulns only
+      trend_buckets: [{date, count}, ...]  — vulns updated per day
+      top_components: [{name, ecosystem, open_count}, ...]  — top-10 by open vuln count
       period_days: int
     """
     from .sla import compute_sla_state, get_sla_policy
@@ -163,6 +189,25 @@ def executive_summary(filters, *, period_days: int = 14, base_query=None):
     sla_total = sum(sla_status.values())
     sla_compliance_pct = round(100.0 * sla_status["on_track"] / sla_total, 1) if sla_total else None
 
+    # Trend: vulns updated per day across the period window.
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=period_days)
+    days = max(1, (end.date() - start.date()).days + 1)
+    trend_buckets = [
+        {"date": (start.date() + timedelta(days=i)).isoformat(), "count": 0}
+        for i in range(days)
+    ]
+    for v in vulns:
+        upd = v.updated_at
+        if upd is None:
+            continue
+        if upd.tzinfo is None:
+            upd = upd.replace(tzinfo=timezone.utc)
+        if start <= upd <= end:
+            idx = (upd.date() - start.date()).days
+            if 0 <= idx < len(trend_buckets):
+                trend_buckets[idx]["count"] += 1
+
     return {
         "kpi": {
             "total_open": total_open,
@@ -172,6 +217,8 @@ def executive_summary(filters, *, period_days: int = 14, base_query=None):
         },
         "by_severity": by_severity,
         "sla_status": sla_status,
+        "trend_buckets": trend_buckets,
+        "top_components": top_affected_components(vulns, limit=10),
         "period_days": period_days,
         "vulns": vulns,
     }

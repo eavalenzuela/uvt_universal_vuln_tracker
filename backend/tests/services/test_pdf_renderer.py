@@ -73,6 +73,28 @@ def test_render_pdf_executive_summary_layout():
     assert len(pdf) > 5000
 
 
+def test_render_pdf_executive_summary_includes_top_components():
+    pdf = render_pdf(
+        "executive_summary",
+        {
+            "title": "UVT Executive Summary",
+            "report_type": "vulnerabilities",
+            "kpi": {"total_open": 3, "critical_open": 1, "sla_compliance_pct": 100.0, "new_in_period": 0},
+            "period_days": 14,
+            "severity_chart": None,
+            "sla_chart": None,
+            "trend_chart": None,
+            "top_components": [
+                {"name": "lodash", "ecosystem": "npm", "open_count": 4},
+                {"name": "django", "ecosystem": "pypi", "open_count": 2},
+            ],
+            "rows": [],
+            "branding": {"primary_color": "#2563eb", "footer_text": "", "logo_data_uri": None},
+        },
+    )
+    assert pdf.startswith(b"%PDF-")
+
+
 def test_render_pdf_executive_summary_handles_no_charts():
     pdf = render_pdf(
         "executive_summary",

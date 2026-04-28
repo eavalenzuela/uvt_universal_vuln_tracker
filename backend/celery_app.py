@@ -33,19 +33,31 @@ celery.config_from_object({
 
 
 def init_celery(app) -> Celery:
-    """Bind Celery to a Flask app so tasks execute inside app context."""
+    """Bind Celery to a Flask app so tasks execute inside app context.
+
+    Stores the active Flask app on ``celery._uvt_flask_app`` so ContextTask
+    looks it up at call time rather than capturing whichever app was current
+    when the task class was first defined. Otherwise tests that create
+    multiple Flask apps (per-test fixtures) all dispatch into the first
+    app's app_context and miss the per-test in-memory SQLite DB.
+    """
     celery.conf.update(
         broker_url=app.config["CELERY_BROKER_URL"],
         result_backend=app.config["CELERY_RESULT_BACKEND"],
         task_time_limit=app.config["CELERY_TASK_TIMEOUT"],
         task_soft_time_limit=app.config["CELERY_TASK_SOFT_TIMEOUT"],
+        # Recycle each worker child after N tasks. Necessary because
+        # WeasyPrint+Matplotlib accumulate memory across PDF renders.
+        worker_max_tasks_per_child=app.config.get("CELERY_WORKER_MAX_TASKS_PER_CHILD", 100),
     )
+    celery._uvt_flask_app = app  # type: ignore[attr-defined]
 
     class ContextTask(celery.Task):
-        """Wraps task execution in a Flask application context."""
+        """Wraps task execution in the currently-bound Flask app context."""
 
         def __call__(self, *args, **kwargs):
-            with app.app_context():
+            active_app = getattr(celery, "_uvt_flask_app", app)
+            with active_app.app_context():
                 return self.run(*args, **kwargs)
 
     celery.Task = ContextTask

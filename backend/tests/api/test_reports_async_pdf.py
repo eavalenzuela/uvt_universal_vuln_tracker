@@ -49,7 +49,8 @@ def test_async_pdf_returns_202_then_polls_to_ready(client, auth_header, admin_us
     return 202, and the status endpoint should reflect ready state after the
     eager-mode worker finishes."""
     # Run celery tasks inline so .delay() executes synchronously.
-    from backend.celery_app import celery
+    from backend.celery_app import celery, init_celery
+    init_celery(app)
     celery.conf.update(task_always_eager=True, task_eager_propagates=True)
     app.config["CELERY_ENABLED"] = True
     try:
@@ -71,6 +72,42 @@ def test_async_pdf_returns_202_then_polls_to_ready(client, auth_header, admin_us
 
         download = client.get(final["download_url"], headers=auth_header(admin_user))
         assert download.status_code == 200
+        assert download.get_data().startswith(b"%PDF-")
+    finally:
+        celery.conf.update(task_always_eager=False, task_eager_propagates=False)
+        app.config["CELERY_ENABLED"] = False
+
+
+def test_async_pdf_dashboard_summary_lifecycle(client, auth_header, admin_user, sample_vulnerabilities, app):
+    """Mirror of the vulnerabilities async test, but for the dashboard_summary route."""
+    from backend.celery_app import celery, init_celery
+    # Rebind ContextTask to *this* test's app — the closure in celery_app.py
+    # otherwise points at whichever app first called init_celery, and that
+    # app's in-memory SQLite is long gone by the time later tests run.
+    init_celery(app)
+    celery.conf.update(task_always_eager=True, task_eager_propagates=True)
+    app.config["CELERY_ENABLED"] = True
+    try:
+        resp = client.get(
+            "/api/reports/dashboard/export?format=pdf",
+            headers=auth_header(admin_user),
+        )
+        assert resp.status_code == 202
+        artifact = resp.get_json()["artifact"]
+        artifact_id = artifact["id"]
+
+        status_resp = client.get(
+            f"/api/reports/artifacts/{artifact_id}", headers=auth_header(admin_user)
+        )
+        assert status_resp.status_code == 200
+        final = status_resp.get_json()["artifact"]
+        assert final["status"] == "ready"
+        assert final["report_type"] == "dashboard_summary"
+        assert final["download_url"]
+
+        download = client.get(final["download_url"], headers=auth_header(admin_user))
+        assert download.status_code == 200
+        assert download.headers["Content-Type"].startswith("application/pdf")
         assert download.get_data().startswith(b"%PDF-")
     finally:
         celery.conf.update(task_always_eager=False, task_eager_propagates=False)

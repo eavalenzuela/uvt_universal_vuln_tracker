@@ -101,6 +101,35 @@
     </div>
   </div>
 
+  {% if trend_chart %}
+  <div class="panel" style="margin-top: 8pt;">
+    <h3>Activity trend (last {{ period_days }} days)</h3>
+    <img src="{{ trend_chart }}" alt="activity trend">
+  </div>
+  {% endif %}
+
+  {% if top_components %}
+  <h2>Top affected components</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 50%;">Component</th>
+        <th>Ecosystem</th>
+        <th>Open vulns</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in top_components %}
+      <tr>
+        <td>{{ c.name }}</td>
+        <td>{{ c.ecosystem or "—" }}</td>
+        <td>{{ c.open_count }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <div class="appendix">
     <h2>Vulnerability appendix ({{ rows|length }})</h2>
     {% if rows %}

@@ -79,6 +79,35 @@ def test_vulnerability_export_rejects_invalid_assignee_filter(client, auth_heade
     assert payload["error"] == "assigned_to must be a user id or 'unassigned'"
 
 
+def test_artifact_download_with_cookie_auth_only(client, admin_user, sample_vulnerabilities):
+    """The frontend's downloadReportArtifact() does a raw fetch with
+    `credentials: 'include'` — no Authorization header. Confirm the
+    download endpoint accepts the cookie alone (the signed token in the
+    URL still binds artifact to user, so this is safe)."""
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "secret-pass-12"},
+    )
+    assert login.status_code == 200
+    bearer_token = login.get_json()["token"]
+
+    # Create the artifact via Bearer auth (the SPA does this through apiFetch).
+    create = client.get(
+        "/api/reports/vulnerabilities/export?severity=Critical&format=pdf",
+        headers={"Authorization": f"Bearer {bearer_token}"},
+    )
+    assert create.status_code == 200
+    artifact = create.get_json()["artifact"]
+    assert artifact["download_url"]
+
+    # Now download via cookie alone (no Authorization header). The Werkzeug
+    # test client persists Set-Cookie from the login above into client.cookies.
+    download = client.get(artifact["download_url"])
+    assert download.status_code == 200
+    assert download.headers["Content-Type"].startswith("application/pdf")
+    assert download.get_data().startswith(b"%PDF-")
+
+
 def test_dashboard_summary_export_rejects_invalid_sort_field(client, auth_header, admin_user, sample_vulnerabilities):
     resp = client.get(
         "/api/reports/dashboard/export?sort=not_a_field",

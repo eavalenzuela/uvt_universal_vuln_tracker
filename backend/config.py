@@ -175,6 +175,9 @@ class AppConfig:
     celery_worker_concurrency: int = 4
     celery_task_timeout: int = 3600
     celery_task_soft_timeout: int = 3300
+    # Recycle worker after N tasks to release WeasyPrint/Matplotlib memory
+    # held across PDF renders. 100 keeps RSS under ~500 MB on typical loads.
+    celery_worker_max_tasks_per_child: int = 100
 
     # Frontend
     frontend_url: str = "http://127.0.0.1:5173"
@@ -252,6 +255,7 @@ def load_config() -> AppConfig:
         celery_worker_concurrency=_int("CELERY_WORKER_CONCURRENCY", 4),
         celery_task_timeout=_int("CELERY_TASK_TIMEOUT", 3600),
         celery_task_soft_timeout=_int("CELERY_TASK_SOFT_TIMEOUT", 3300),
+        celery_worker_max_tasks_per_child=_int("CELERY_WORKER_MAX_TASKS_PER_CHILD", 100),
         frontend_url=_str("FRONTEND_URL", "http://127.0.0.1:5173"),
         plugin_import_paths=_parse_plugin_paths(),
     )
@@ -325,6 +329,7 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["CELERY_WORKER_CONCURRENCY"] = cfg.celery_worker_concurrency
     app.config["CELERY_TASK_TIMEOUT"] = cfg.celery_task_timeout
     app.config["CELERY_TASK_SOFT_TIMEOUT"] = cfg.celery_task_soft_timeout
+    app.config["CELERY_WORKER_MAX_TASKS_PER_CHILD"] = cfg.celery_worker_max_tasks_per_child
 
     app.config["FRONTEND_URL"] = cfg.frontend_url
 

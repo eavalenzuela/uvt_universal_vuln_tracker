@@ -599,6 +599,18 @@ For Docker Compose, override the Gunicorn command (see [Gunicorn Tuning](#gunico
 kubectl scale deployment uvt-backend --replicas=4
 ```
 
+### Celery Worker Memory (PDF rendering)
+
+Celery workers that render PDFs hold WeasyPrint and Matplotlib state across tasks; without recycling, RSS grows over time. UVT defaults to recycling each child after **100 tasks** (`CELERY_WORKER_MAX_TASKS_PER_CHILD=100`). For sites that produce large PDFs or run many exec-summary reports, drop this to 25–50 to keep peak memory predictable. Set to `0` to disable recycling.
+
+```bash
+# Tune via env var — applies to both the Compose worker and any standalone invocation.
+CELERY_WORKER_MAX_TASKS_PER_CHILD=50
+
+# Equivalent CLI override:
+celery -A backend.celery_app:celery worker --max-tasks-per-child=50 --concurrency=4
+```
+
 ### Check Database Connectivity
 
 ```bash
