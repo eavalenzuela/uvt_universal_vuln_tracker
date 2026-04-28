@@ -82,6 +82,15 @@ def take_screenshots(
             viewport={"width": viewport_width, "height": viewport_height},
             ignore_https_errors=True,
         )
+        # Allow pointing the SPA at a separate backend (dev mode without nginx).
+        # Set UVT_API_BASE in the environment to inject window.__UVT_API_BASE__
+        # before frontend bootstrap runs.
+        import os as _os
+        _api_base = _os.environ.get("UVT_API_BASE")
+        if _api_base:
+            context.add_init_script(
+                f"window.__UVT_API_BASE__ = {_api_base!r};"
+            )
         page = context.new_page()
 
         # Capture console errors for debugging

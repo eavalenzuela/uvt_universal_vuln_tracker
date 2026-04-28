@@ -2,6 +2,15 @@
 
 ## v2.19.0 — F17 Slice 3: PDF report branding (logo + color + footer)
 
+### Visual review (v2.19.0-after)
+
+| Page | Screenshot |
+|------|-----------|
+| Admin: PDF Branding (new) | ![branding](images/v2.19.0-after/15-admin-branding.png) |
+| PDF — exec summary, page 1 (charts) | ![exec1](images/v2.19.0-after/16-pdf-executive-page1.png) |
+| PDF — exec summary, page 2 (appendix) | ![exec2](images/v2.19.0-after/17-pdf-executive-page2.png) |
+| Vulnerabilities (export controls now visible) | ![vulns](images/v2.19.0-after/03-vulnerabilities.png) |
+
 ### Added
 - **`OrganizationBranding` model** (`backend/models/branding.py`) — singleton row holding `primary_color`, `footer_text`, and `logo_path`. Logo bytes live on disk under `instance/branding/`; the model exposes a `logo_data_uri()` helper that the renderer embeds inline so WeasyPrint never needs filesystem access from the template.
 - **Admin branding API** (`backend/api/branding.py`, `/api/admin/branding`) — `GET` for everyone, `PUT` (color + footer) and `POST/DELETE /logo` for Admins only. Uploads are validated: PNG / SVG / JPEG, ≤ 1 MiB, content-type and extension checked.
