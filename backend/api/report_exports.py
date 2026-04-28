@@ -234,31 +234,24 @@ def _json_bytes(payload):
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
 
 
-def _pdf_bytes(title, payload):
-    lines = [title, "", json.dumps(payload, indent=2, sort_keys=True)]
-    text = "\n".join(lines)
-    safe = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    stream = f"BT /F1 10 Tf 40 780 Td ({safe}) Tj ET"
-    content = stream.encode("latin-1", errors="replace")
-    objects = [
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
-        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
-        f"5 0 obj << /Length {len(content)} >> stream\n".encode("ascii") + content + b"\nendstream endobj",
-    ]
-    output = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for obj in objects:
-        offsets.append(len(output))
-        output.extend(obj + b"\n")
-    xref_offset = len(output)
-    output.extend(f"xref\n0 {len(offsets)}\n".encode("ascii"))
-    output.extend(b"0000000000 65535 f \n")
-    for off in offsets[1:]:
-        output.extend(f"{off:010d} 00000 n \n".encode("ascii"))
-    output.extend(f"trailer << /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode("ascii"))
-    return bytes(output)
+def _pdf_bytes(report_type, payload, *, filters=None):
+    from ..services.pdf_renderer import render_pdf
+
+    title = (
+        "UVT Dashboard Summary"
+        if report_type == "dashboard_summary"
+        else "UVT Vulnerabilities Report"
+    )
+    context = {"title": title, "report_type": report_type}
+    if report_type == "dashboard_summary":
+        context["summary"] = payload
+    else:
+        context["rows"] = payload
+    if filters:
+        parts = [f"{k}={v}" for k, v in sorted(filters.items()) if v not in (None, "")]
+        if parts:
+            context["filters_summary"] = ", ".join(parts)
+    return render_pdf("default", context)
 
 
 def _report_serializer():
@@ -284,7 +277,7 @@ def _build_export_artifact(*, report_type, export_format, filters, payload, file
         content_type = "application/json"
         extension = "json"
     else:
-        content_bytes = _pdf_bytes(f"UVT {report_type} report", payload)
+        content_bytes = _pdf_bytes(report_type, payload, filters=filters)
         content_type = "application/pdf"
         extension = "pdf"
 

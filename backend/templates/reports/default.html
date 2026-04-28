@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  @page {
+    size: Letter;
+    margin: 0.75in 0.6in 0.9in 0.6in;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "DejaVu Sans", sans-serif;
+      font-size: 9pt;
+      color: #666;
+    }
+  }
+  html { font-family: "DejaVu Sans", sans-serif; font-size: 10pt; color: #1f2937; }
+  body { margin: 0; }
+  h1 { font-size: 18pt; margin: 0 0 4pt 0; color: #111827; }
+  .meta { color: #6b7280; font-size: 9pt; margin-bottom: 16pt; }
+  h2 { font-size: 13pt; margin: 16pt 0 6pt 0; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 3pt; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.5pt; }
+  th, td { border: 1px solid #e5e7eb; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  tr { page-break-inside: avoid; }
+  .sev-Critical { color: #b91c1c; font-weight: 600; }
+  .sev-High     { color: #c2410c; font-weight: 600; }
+  .sev-Medium   { color: #a16207; }
+  .sev-Low      { color: #15803d; }
+  .sev-None     { color: #6b7280; }
+  .kpi { display: flex; gap: 8pt; margin: 8pt 0 16pt; }
+  .kpi .card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4pt; padding: 8pt; }
+  .kpi .label { font-size: 8pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+  .kpi .value { font-size: 18pt; font-weight: 700; color: #111827; }
+  .empty { color: #6b7280; font-style: italic; padding: 8pt 0; }
+</style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <div class="meta">Generated {{ generated_at }}{% if filters_summary %} · Filters: {{ filters_summary }}{% endif %}</div>
+
+  {% if report_type == "dashboard_summary" %}
+    <div class="kpi">
+      <div class="card"><div class="label">Total</div><div class="value">{{ summary.total }}</div></div>
+      {% for sev in ["Critical", "High", "Medium", "Low"] %}
+      <div class="card">
+        <div class="label">{{ sev }}</div>
+        <div class="value">{{ summary.by_severity.get(sev, 0) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <h2>By severity</h2>
+    {% if summary.by_severity %}
+    <table>
+      <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for sev, count in summary.by_severity.items()|sort %}
+        <tr><td class="sev-{{ sev }}">{{ sev }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No data.</div>{% endif %}
+
+    <h2>By status</h2>
+    {% if summary.by_status %}
+    <table>
+      <thead><tr><th>Status</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for status, count in summary.by_status.items()|sort %}
+        <tr><td>{{ status }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No data.</div>{% endif %}
+
+  {% else %}
+    <h2>Vulnerabilities ({{ rows|length }})</h2>
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>CVE</th>
+          <th>Title</th>
+          <th>Severity</th>
+          <th>CVSS</th>
+          <th>Status</th>
+          <th>Assigned</th>
+          <th>Published</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.cve_id or "—" }}</td>
+          <td>{{ r.title }}</td>
+          <td class="sev-{{ r.severity }}">{{ r.severity }}</td>
+          <td>{{ r.cvss_score if r.cvss_score != "" else "—" }}</td>
+          <td>{{ r.status }}</td>
+          <td>{{ r.assigned_to if r.assigned_to != "" else "—" }}</td>
+          <td>{{ r.published_date[:10] if r.published_date else "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty">No vulnerabilities matched the filter.</div>{% endif %}
+  {% endif %}
+</body>
+</html>

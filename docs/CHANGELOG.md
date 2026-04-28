@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.17.0 — F17 Slice 1: real PDF rendering via WeasyPrint
+
+### Added
+- **WeasyPrint-based PDF renderer** — new `backend/services/pdf_renderer.py` exposes `render_pdf(layout_name, context) -> bytes` using Jinja2-rendered HTML+CSS. Layouts live on disk under `backend/templates/reports/` (currently `default.html`).
+- **`default.html` layout** — styled report covering both `vulnerabilities` (CVE/title/severity/CVSS/status/assignee/published table) and `dashboard_summary` (KPI tiles + by-severity / by-status tables). Uses CSS paged media for page numbers (`@bottom-center: counter(page) of counter(pages)`) and per-row page-break protection.
+
+### Changed
+- **`/api/reports/{vulnerabilities,dashboard}/export?format=pdf`** now returns a real PDF rendered by WeasyPrint instead of the previous hand-written 5-object PDF stream. Same payload, same artifact contract, real fonts and page breaks. Sync request path is unchanged for this slice — async/Celery move is Slice 2.
+- **`Dockerfile`** installs WeasyPrint native deps (`libpango-1.0-0`, `libpangoft2-1.0-0`, `libcairo2`, `libgdk-pixbuf-2.0-0`, `libffi8`, `shared-mime-info`, `fonts-dejavu-core`). Adds ~80–120 MB to the backend image; cold-start renders are ~300 ms.
+- **`requirements.txt`** pins `WeasyPrint>=63,<66` and `Jinja2>=3.1,<4`.
+
+### Tests
+- New `backend/tests/services/test_pdf_renderer.py` — unit tests confirm both layouts produce valid `%PDF-` bytes including the empty-rows path.
+- Existing `test_reports_export_contract.py` (5 tests) continues to pass against the new renderer; full suite green (295 passed).
+
 ## v2.16.0 — F15 Phase 2: team admin UI + active-team plumbing
 
 ### Added
