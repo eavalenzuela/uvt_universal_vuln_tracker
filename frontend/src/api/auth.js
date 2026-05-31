@@ -46,3 +46,17 @@ export async function resetPassword(token, password) {
     body: { token, password },
   });
 }
+
+export async function verifyEmail(token) {
+  return apiFetch("/api/auth/verify-email", {
+    method: "POST",
+    body: { token },
+  });
+}
+
+export async function resendVerification(email) {
+  return apiFetch("/api/auth/resend-verification", {
+    method: "POST",
+    body: { email },
+  });
+}

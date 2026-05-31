@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.21.0 — F3: email verification on registration
+
+Closes the last open roadmap item. Previously descoped, F3 is now implemented by re-using the existing F2 password-reset machinery and the `email_delivery` service — no new external dependency.
+
+### Added
+- **`REQUIRE_EMAIL_VERIFICATION` config flag** (default `false`). Behavior is identical to before until an operator opts in, matching how F15/F17 were gated. Documented in `backend/dev.env` and `docs/DEPLOYMENT.md`.
+- **`User.email_verified` column** (default `True`). Existing users, admin-invited users, OIDC logins, and the seeded admin are all treated as verified. SQLite dev DBs auto-backfill via `_SQLITE_USER_COLUMN_BACKFILL` (`DEFAULT 1`), so upgrading never locks anyone out.
+- **`EmailVerificationToken` model** + **`services/email_verification.py`** — `create/validate/consume_verification_token` and `send_verification_email`, mirroring `password_reset.py`. Tokens are SHA-256 hashed at rest, 24-hour expiry, single-use, and previous outstanding tokens are invalidated on reissue.
+- **`POST /api/auth/verify-email`** `{token}` — confirms the address, flips `email_verified`, and writes a `VERIFY_EMAIL` audit record.
+- **`POST /api/auth/resend-verification`** `{email}` — always returns `200` (anti-enumeration); issues a fresh token only for an existing, active, still-unverified account.
+- **`email_verified` exposed** in `serialize_user` so admins can see verification status.
+
+### Changed
+- **`POST /api/auth/register`** — when `REQUIRE_EMAIL_VERIFICATION` is on, a public registration creates an unverified user, sends the verification email, and returns `201` with `{email_verification_required: true}` **without** auto-login tokens. The bootstrap Admin (first user on a fresh install) is always exempt so an operator can't lock themselves out before mail is configured. When the flag is off, registration is unchanged (auto-verified + auto-login).
+- **`POST /api/auth/login`** — blocks unverified users with `403` when the flag is on.
+
+### Tests
+- Backend: 331 passed (was 319). New `backend/tests/api/test_email_verification.py` (12 tests) covers the flag-off default, unverified registration, first-user exemption, login gating, the verify/resend endpoints, single-use + expiry + reissue invalidation, and anti-enumeration responses.
+
 ## v2.20.0 — F17 follow-ups: trend chart, top components, async cleanup, worker recycle
 
 ### Added

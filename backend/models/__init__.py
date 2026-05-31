@@ -58,6 +58,10 @@ from .password_reset import (
     PasswordResetToken,
 )
 
+from .email_verification import (
+    EmailVerificationToken,
+)
+
 from .reports import (
     ReportSchedule,
     ReportTemplate,
@@ -115,6 +119,7 @@ __all__ = [
     "PluginRunArtifactLink",
     "ExternalSourceState",
     "PasswordResetToken",
+    "EmailVerificationToken",
     "ReportSchedule",
     "ReportTemplate",
     "ReportArtifact",

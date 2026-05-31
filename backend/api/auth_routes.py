@@ -27,6 +27,12 @@ from ..services.password_reset import (
     consume_reset_token,
     send_reset_email,
 )
+from ..services.email_verification import (
+    create_verification_token,
+    validate_verification_token,
+    consume_verification_token,
+    send_verification_email,
+)
 from .validation import ValidationError, error_response, required_string
 
 bp = Blueprint("auth_api", __name__, url_prefix="/api/auth")
@@ -154,6 +160,12 @@ def login():
     user = authenticate_user(username, password)
     if not user:
         return error_response("Invalid credentials", status_code=401)
+
+    if current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False) and not user.email_verified:
+        return error_response(
+            "Email not verified. Check your inbox for the verification link.",
+            status_code=403,
+        )
 
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     refresh_token, _ = create_refresh_token(user)
@@ -462,12 +474,28 @@ def register():
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
-    role = "Admin" if User.query.count() == 0 else "Analyst"
+    is_first_user = User.query.count() == 0
+    role = "Admin" if is_first_user else "Analyst"
 
     try:
         user = create_user(username=username, email=email, password=password, role=role)
     except ValueError as e:
         return error_response(str(e), status_code=400)
+
+    # The very first user (bootstrap Admin) is always trusted and skips
+    # verification so an operator can never lock themselves out of a fresh
+    # install that has no working mail server yet.
+    if current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False) and not is_first_user:
+        user.email_verified = False
+        db.session.add(user)
+        raw_token = create_verification_token(user)
+        db.session.commit()
+        send_verification_email(user, raw_token)
+        return jsonify({
+            "ok": True,
+            "email_verification_required": True,
+            "message": "Account created. Check your email to verify your address before logging in.",
+        }), 201
 
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     refresh_token, _ = create_refresh_token(user)
@@ -584,6 +612,105 @@ def reset_password():
     db.session.commit()
 
     return jsonify({"ok": True, "message": "Password has been reset. You can now log in."})
+
+
+@bp.post("/verify-email")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="verify_email")
+def verify_email():
+    """Confirm a user's email address using a verification token.
+    ---
+    post:
+      summary: Verify an email address with a verification token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        200:
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkMessage'
+        400:
+          description: Invalid or expired verification token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return error_response("Verification token is required", field="token", status_code=400)
+
+    record = validate_verification_token(token)
+    if not record:
+        return error_response("Invalid or expired verification token", status_code=400)
+
+    user = db.session.get(User, record.user_id)
+    if not user or not user.is_active:
+        return error_response("Invalid or expired verification token", status_code=400)
+
+    user.email_verified = True
+    consume_verification_token(record)
+    record_audit("VERIFY_EMAIL", "users", user.id, old_values={"self_service": True})
+    db.session.commit()
+
+    return jsonify({"ok": True, "message": "Email verified. You can now log in."})
+
+
+@bp.post("/resend-verification")
+@rate_limit("RATE_LIMIT_SENSITIVE_LIMIT", "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS", identifier="resend_verification")
+def resend_verification():
+    """Request a fresh email-verification link. Always returns 200 to prevent email enumeration.
+    ---
+    post:
+      summary: Resend the email-verification link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        200:
+          description: Verification email sent if an unverified account exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkMessage'
+        400:
+          description: Email is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return error_response("Email is required", field="email", status_code=400)
+
+    # Always return 200 to prevent email enumeration
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    if user and user.is_active and not user.email_verified:
+        raw_token = create_verification_token(user)
+        db.session.commit()
+        send_verification_email(user, raw_token)
+
+    return jsonify({"ok": True, "message": "If an unverified account with that email exists, a verification link has been sent."})
 
 
 @bp.get("/csrf")
