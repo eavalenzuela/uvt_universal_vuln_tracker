@@ -9,6 +9,7 @@ def serialize_user(u):
         "full_name": full_name or None,
         "role": u.role,
         "is_active": u.is_active,
+        "email_verified": u.email_verified,
         "created_at": u.created_at.isoformat(),
         "updated_at": u.updated_at.isoformat(),
     }

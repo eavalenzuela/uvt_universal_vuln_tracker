@@ -39,6 +39,12 @@ _SQLITE_REPORT_ARTIFACT_BACKFILL = [
     ("celery_task_id", "VARCHAR(64)"),
 ]
 
+# F3: email verification. Existing users predate the feature and are treated as
+# already verified (DEFAULT 1) so backfilling never locks anyone out.
+_SQLITE_USER_COLUMN_BACKFILL = [
+    ("email_verified", "BOOLEAN NOT NULL DEFAULT 1"),
+]
+
 
 def init_database(app):
     db.init_app(app)
@@ -76,6 +82,15 @@ def _ensure_sqlite_schema(app):
                 if col_name not in existing_cols:
                     db.session.execute(
                         text(f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_def}")
+                    )
+                    added = True
+
+        if "users" in insp.get_table_names():
+            existing_cols = {c["name"] for c in insp.get_columns("users")}
+            for col_name, col_def in _SQLITE_USER_COLUMN_BACKFILL:
+                if col_name not in existing_cols:
+                    db.session.execute(
+                        text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
                     )
                     added = True
 

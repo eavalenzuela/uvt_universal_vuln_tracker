@@ -86,6 +86,7 @@ The app **refuses to start** if these are left at their dev defaults.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ALLOW_PUBLIC_REGISTRATION` | `false` | Set `true` only if you want open sign-ups. First registered user automatically becomes Admin. |
+| `REQUIRE_EMAIL_VERIFICATION` | `false` | When `true`, publicly-registered users must click an emailed verification link before they can log in. Requires a working email provider (see Email section). The bootstrap Admin (first user) is exempt. |
 | `REFRESH_TOKEN_LIFETIME_DAYS` | `30` | How long refresh tokens remain valid |
 | `AUTH_COOKIE_SECURE` | `true` (prod) | Set `false` only if not using HTTPS (not recommended) |
 | `AUTH_COOKIE_SAMESITE` | `Lax` | Cookie SameSite policy (`Lax`, `Strict`, or `None`) |

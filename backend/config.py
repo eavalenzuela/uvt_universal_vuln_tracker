@@ -115,6 +115,7 @@ class AppConfig:
     # Auth
     refresh_token_lifetime_days: int = 30
     allow_public_registration: bool = False
+    require_email_verification: bool = False
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "Lax"
     auth_cookie_domain: str | None = None
@@ -209,6 +210,7 @@ def load_config() -> AppConfig:
         jwt_secret=_str("JWT_SECRET", "dev-jwt-secret"),
         refresh_token_lifetime_days=_int("REFRESH_TOKEN_LIFETIME_DAYS", 30),
         allow_public_registration=_bool("ALLOW_PUBLIC_REGISTRATION", False),
+        require_email_verification=_bool("REQUIRE_EMAIL_VERIFICATION", False),
         auth_cookie_secure=_bool("AUTH_COOKIE_SECURE", auth_cookie_secure_default),
         auth_cookie_samesite=_cookie_samesite(),
         auth_cookie_domain=os.getenv("AUTH_COOKIE_DOMAIN") or None,
@@ -283,6 +285,7 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["JWT_SECRET"] = cfg.jwt_secret
     app.config["REFRESH_TOKEN_LIFETIME_DAYS"] = cfg.refresh_token_lifetime_days
     app.config["ALLOW_PUBLIC_REGISTRATION"] = cfg.allow_public_registration
+    app.config["REQUIRE_EMAIL_VERIFICATION"] = cfg.require_email_verification
 
     app.config["OIDC_ENABLED"] = cfg.oidc_enabled
     app.config["OIDC_ISSUER"] = cfg.oidc_issuer

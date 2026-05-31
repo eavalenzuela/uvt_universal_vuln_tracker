@@ -12,8 +12,8 @@ Removed `flask_migrate` and `alembic` from setup scripts. Replaced migration com
 ### ~~F2. Self-Service Password Reset~~ ✅ Done (v2.2.x)
 `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` with single-use, 60-minute, SHA-256-hashed tokens. Forgot-password and reset-password pages linked from login. Rate-limited under `RATE_LIMIT_SENSITIVE_LIMIT`. New `PasswordResetToken` model and `FRONTEND_URL` config var.
 
-### F3. Email Verification on Registration
-This feature requires too much additional configuration (and relies on the external email service), and will not be implemented.
+### ~~F3. Email Verification on Registration~~ ✅ Done (v2.21.0)
+Opt-in via `REQUIRE_EMAIL_VERIFICATION` (default `false`, so behavior is unchanged until enabled). When on, publicly-registered users are created unverified and emailed a tokenized link (`EmailVerificationToken`, 24 h expiry, single-use, mirrors the F2 password-reset machinery); login is blocked with `403` until they confirm. Endpoints: `POST /api/auth/verify-email` and `POST /api/auth/resend-verification` (anti-enumeration `200`). The bootstrap Admin (first user) is exempt so a fresh install can never lock itself out before mail is configured. Re-uses the existing `email_delivery` service — no new external dependency.
 
 ### ~~F4. OpenAPI / Swagger Documentation~~ ✅ Done (v2.4.0)
 Added `apispec` with Flask plugin for OpenAPI 3.0.3 spec generation, Swagger UI at `/api/docs`, spec at `/api/openapi.json`. All 100 paths (140 operations) documented with YAML docstrings, 32 component schemas, and security schemes.
@@ -82,7 +82,7 @@ Added `/api/v1/*` alias via WSGI middleware (`_V1AliasMiddleware` in `backend/ap
 |----|----------|--------|-------------|
 | ~~F1~~ | ~~P0~~ | ~~Small~~ | ~~Remove Alembic references~~ ✅ |
 | ~~F2~~ | ~~P0~~ | ~~Medium~~ | ~~Self-service password reset~~ ✅ |
-| F3 | P0 | Medium | Email verification on registration *(won't do — see F3)* |
+| ~~F3~~ | ~~P0~~ | ~~Medium~~ | ~~Email verification on registration~~ ✅ |
 | ~~F4~~ | ~~P0~~ | ~~Medium~~ | ~~OpenAPI / Swagger documentation~~ ✅ |
 | ~~F5~~ | ~~P0~~ | ~~Small~~ | ~~Structured logging~~ ✅ |
 | ~~F6~~ | ~~P0~~ | ~~Small~~ | ~~Production deployment guide~~ ✅ |
@@ -101,4 +101,4 @@ Added `/api/v1/*` alias via WSGI middleware (`_V1AliasMiddleware` in `backend/ap
 | ~~F19~~ | ~~P2~~ | ~~Medium~~ | ~~Bulk scanner import~~ ✅ |
 | ~~F20~~ | ~~P2~~ | ~~Small~~ | ~~Keyboard shortcuts~~ ✅ |
 
-**Roadmap status: complete.** All P0/P1/P2 items shipped except F3 (email verification on registration), which was explicitly descoped. New work is tracked in `docs/CHANGELOG.md` and per-feature plans in `docs/plans/`.
+**Roadmap status: complete.** All 20 P0/P1/P2 items (F1–F20) have shipped. New work is tracked in `docs/CHANGELOG.md` and per-feature plans in `docs/plans/`.
