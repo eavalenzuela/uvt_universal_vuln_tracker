@@ -41,7 +41,10 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
       - name: Run dependency vulnerability scan
-        run: pip-audit
+        # Audit the project's declared dependencies (and their transitive deps)
+        # rather than the whole runner environment, so the result reflects what
+        # we actually ship — not the runner's ambient pip/setuptools.
+        run: pip-audit -r requirements.txt
 
   frontend-tests:
     runs-on: ubuntu-latest

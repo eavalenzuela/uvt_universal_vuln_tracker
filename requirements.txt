@@ -37,6 +37,7 @@ celery[redis]>=5.3,<6.0
 redis>=5.0,<6.0
 
 # PDF report rendering (F17)
-WeasyPrint>=63.0,<66.0
+# >=68.0 picks up the CVE-2025-68616 fix; verified against the PDF test suite.
+WeasyPrint>=68.0,<69.0
 Jinja2>=3.1,<4.0
 matplotlib>=3.8,<4.0
