@@ -15,6 +15,7 @@ A repo-wide analysis (multi-agent code review + automated full-app screenshot re
 - **Team switcher didn't reload data** — `navigate(samePath)` is a no-op (no `hashchange`); it now calls the router directly (`ui/layout/header.js`).
 - **Malformed live-notification timestamps** — `sent_at` was `"…+00:00Z"` (double designator); normalized to a single `Z` (`live_notifications.py`).
 - **Unescaped LIKE wildcards in global search** — a query of `_` or `%` matched everything; user input is now escaped (`api/search.py`, shared `escape_like` helper).
+- **Celery beat crash-looped in Docker** — the container runs as the non-root `app` user, but `celery beat` tried to write its `celerybeat-schedule` state file into the root-owned `/app` workdir (`[Errno 13] Permission denied`), so the beat service never stayed up. It now writes to `/tmp/celerybeat-schedule` (`docker-compose.yml`).
 
 ### Security
 - **Rate limiter no longer trusts spoofable `X-Forwarded-For`** — it took the leftmost (client-controlled) IP, so an attacker could rotate the header to dodge login/auth throttles. It now trusts only the rightmost N proxy-appended hops, configurable via the new **`RATE_LIMIT_TRUSTED_PROXIES`** (default `1`; set `0` when running without a reverse proxy). (`rate_limiter.py`, `config.py`)

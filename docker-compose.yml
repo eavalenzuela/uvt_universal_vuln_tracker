@@ -84,7 +84,7 @@ services:
     build:
       context: .
       target: backend
-    command: celery -A backend.celery_app:celery beat --loglevel=info
+    command: celery -A backend.celery_app:celery beat --loglevel=info --schedule /tmp/celerybeat-schedule
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-uvt_user}:${POSTGRES_PASSWORD:-uvt_pass}@postgres:5432/${POSTGRES_DB:-uvt}
