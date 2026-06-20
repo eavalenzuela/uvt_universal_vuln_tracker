@@ -108,6 +108,7 @@ textarea.input {
 .badge-sla-breached  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
 .badge-sla-due-soon  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 .badge-sla-on-track  { background: #ecfeff; color: #155e75; border-color: #a5f3fc; }
+.badge-sla-met       { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 
 /* ── Layout Utilities ────────────────────────────────────── */
 .flex-col    { display: flex; flex-direction: column; }
@@ -508,4 +509,20 @@ textarea.input {
   border-radius: var(--radius-sm);
   padding: var(--spacing-sm);
   background: var(--color-inbox-bg);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────
+   Respect users who ask the OS to minimize animation. The spinner
+   stays visible (opacity preserved) but stops spinning, and the
+   skeleton shimmer and all transitions are neutralized. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton { animation: none !important; }
 }

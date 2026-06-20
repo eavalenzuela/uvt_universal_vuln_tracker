@@ -1,5 +1,48 @@
 # Changelog
 
+## v2.22.0 — Systematic analysis pass: PostgreSQL bug fixes, security & accessibility
+
+A repo-wide analysis (multi-agent code review + automated full-app screenshot review against the Docker/PostgreSQL stack) surfaced a set of correctness, security, performance, and accessibility issues. The most impactful were **PostgreSQL-only bugs that the SQLite test suite could not catch** — they were found by exercising the running app.
+
+### Fixed
+- **Component filter crashed on PostgreSQL (500)** — filtering vulnerabilities by component (ecosystem/name/depth) did `join(...).distinct()`, and `SELECT DISTINCT` over the `json` columns (`references_json`, `merge_metadata_json`) has no equality operator on PostgreSQL. This broke the entire "vulnerabilities by component" section of **every product detail page** and any component filter. Replaced with an `IN (subquery)` semi-join (`services/vulnerability_query.py`), which is portable and also avoids duplicate rows.
+- **Global search was dead (404)** — the blueprint had `url_prefix="/api"` *and* a `@bp.get("/api/search")` route, so it resolved at `/api/api/search` while the frontend called `/api/search`. The header search box never worked. Fixed the route (`api/search.py`).
+- **Dashboard summary & risk-trends crashed (500) for "Month to date" / "Quarter to date"** — `range_start()` returned naive datetimes that were then compared against timezone-aware `updated_at`, raising `TypeError`. `range_start()` and `parse_iso_datetime()` now always return aware UTC (`services/reporting_service.py`).
+- **Scheduled notifications dropped on transient failures** — the scan advanced the dedup checkpoint even when delivery failed, so a single Slack/Jira/webhook/email error suppressed all retries for the whole frequency window. The checkpoint now only advances on success (`services/notification_rules.py`).
+- **SLA state showed "breached" for Resolved/Closed vulns** — `compute_sla_state()` now returns a new `met` state for resolved/closed items, so they aren't counted in the dashboard breach widget or shown as breached (`services/sla.py`, with frontend badge/palette + CSS support).
+- **Vulnerability detail rendering** — removed a stray literal `"null"` (native `append()` coerces `null` ternaries to a text node); the SLA state now renders as a badge instead of the raw enum; and **Assigned to / Created by show the username** instead of the raw user id (new `assignee_username` / `creator_username` response fields).
+- **Default saved filter silently failed to apply** — the component controls were omitted from `applyFilterValues`, throwing a swallowed `TypeError` (`features/vulnerabilities/view/vulnListView.js`).
+- **Team switcher didn't reload data** — `navigate(samePath)` is a no-op (no `hashchange`); it now calls the router directly (`ui/layout/header.js`).
+- **Malformed live-notification timestamps** — `sent_at` was `"…+00:00Z"` (double designator); normalized to a single `Z` (`live_notifications.py`).
+- **Unescaped LIKE wildcards in global search** — a query of `_` or `%` matched everything; user input is now escaped (`api/search.py`, shared `escape_like` helper).
+
+### Security
+- **Rate limiter no longer trusts spoofable `X-Forwarded-For`** — it took the leftmost (client-controlled) IP, so an attacker could rotate the header to dodge login/auth throttles. It now trusts only the rightmost N proxy-appended hops, configurable via the new **`RATE_LIMIT_TRUSTED_PROXIES`** (default `1`; set `0` when running without a reverse proxy). (`rate_limiter.py`, `config.py`)
+- **Cross-team product-version linking blocked** — attaching versions to a vulnerability now verifies team access per version (non-admins can't link or probe another team's versions), and a non-existent id no longer 500s on the FK (`api/vuln_versions.py`).
+- **Last-admin lockout prevented** — demoting or deactivating the final active administrator (via `update_user` or `toggle-active`, including self) now returns `409` instead of locking everyone out of admin functions (`api/users_crud.py`).
+
+### Performance
+- **Removed N+1 queries** — the vulnerability list eager-loads `affected_components` (`api/vuln_crud.py`) and the audit-log list eager-loads its related user (`api/audit_logs.py`).
+- **Added an index on `Vulnerability.severity`**, a primary filter and sort field (`models/vulnerabilities.py`).
+
+### Accessibility & UX
+- **Login is now a real `<form>`** with associated `<label>`s — Enter submits and the inputs are announced (placeholders aren't labels).
+- **Modal dialogs trap focus** within the dialog and restore focus to the trigger on close (`ui/components/modal.js`).
+- **Sortable table headers are keyboard-operable** (Enter/Space) and expose `aria-sort` + `scope` (`ui/components/dataTable.js`).
+- **Animations honor `prefers-reduced-motion`** (`assets/styles/components.css`).
+- **Fixed two listener/timer leaks** — the dashboard risk-overview widget leaked a 30s `setInterval` poll and a store subscription on every render (now self-clean when detached); the global-search outside-click `document` listener was re-added on every header render (now bound once) (`features/dashboard/view/dashboardWidgets.js`, `ui/layout/header.js`).
+
+### Changed
+- Removed dead validation helpers (`optional_string`, `FieldSchema`, `schema_field`, `validate_schema`) and added a shared `escape_like` (`api/validation.py`).
+- `CLAUDE.md` brought current: route-module count (26 → 32), model bounded-context list, services list (added `team_scope`, data retention, scanner imports, webhook ingest), and the `flask purge-old-data` CLI command.
+
+### Tests
+- Backend: **341 passed** (was 331). New `backend/tests/test_v2_22_fixes.py` (9 tests: LIKE escaping, tz-aware ranges, SLA `met` state, live-notification timestamp, component filter incl. de-duplication, global-search route + wildcard escaping, last-admin guard both ways, and scheduled-scan retry-after-failure) plus a cross-team version-link test in `test_team_isolation.py`.
+- Frontend: 28 passed (unchanged).
+
+### Notes / deferred
+The analysis also flagged lower-priority items intentionally left for follow-up to keep this pass reviewable: broader replacement of native `window.confirm`/`prompt` with the in-app modal, an SSRF allowlist for notification webhook/Slack/Jira URLs, plugin `file_path` restriction, webhook HMAC secret-vs-hash verification, and scoped/short-lived impersonation tokens.
+
 ## v2.21.0 — F3: email verification on registration
 
 Closes the last open roadmap item. Previously descoped, F3 is now implemented by re-using the existing F2 password-reset machinery and the `email_delivery` service — no new external dependency.

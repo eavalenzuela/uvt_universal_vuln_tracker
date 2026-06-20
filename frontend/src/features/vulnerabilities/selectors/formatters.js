@@ -20,6 +20,7 @@ export function slaPalette(state) {
     breached: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "SLA breached" },
     due_soon: { bg: "#fffbeb", color: "#92400e", border: "#fde68a", label: "Due soon" },
     on_track: { bg: "#ecfeff", color: "#155e75", border: "#a5f3fc", label: "On track" },
+    met: { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0", label: "SLA met" },
   };
   return palette[state] || palette.on_track;
 }

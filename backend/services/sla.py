@@ -102,6 +102,10 @@ def recompute_vulnerability_sla(vulnerability, policy: dict | None = None):
 
 
 def compute_sla_state(vulnerability, policy: dict | None = None) -> str:
+    # Resolved/closed vulnerabilities are no longer subject to the SLA clock —
+    # they should not show as "breached" or be counted in breach metrics.
+    if getattr(vulnerability, "status", None) in ("Resolved", "Closed"):
+        return "met"
     if not vulnerability.sla_due_at:
         return "on_track"
     policy = normalize_sla_policy(policy) if policy is not None else get_sla_policy()

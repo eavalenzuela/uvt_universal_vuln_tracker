@@ -376,6 +376,15 @@ def run_scheduled_notification_scan(now: datetime | None = None, *, dry_run: boo
             db.session.add(log_row)
             logs.append(log_row)
 
+            if not success:
+                # Delivery failed — do not advance the checkpoint, otherwise this
+                # rule+vuln is treated as "already notified" for the whole
+                # frequency window and the alert is silently dropped on transient
+                # errors. Leaving the checkpoint untouched lets the next scan retry.
+                # (In dry-run mode _deliver reports success, so checkpoint
+                # bookkeeping is exercised as before.)
+                continue
+
             if step > 0:
                 user_ids = {vulnerability.created_by}
                 if vulnerability.assigned_to:

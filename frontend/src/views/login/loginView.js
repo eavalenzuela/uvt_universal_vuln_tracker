@@ -21,12 +21,13 @@ export async function LoginView() {
     // not authenticated yet
   }
 
-  const usernameInput = el("input", { class: "input", type: "text", autocomplete: "username", placeholder: "Username" });
-  const passwordInput = el("input", { class: "input", type: "password", autocomplete: "current-password", placeholder: "Password" });
+  const usernameInput = el("input", { class: "input", id: "login-username", type: "text", autocomplete: "username", placeholder: "Username", required: true });
+  const passwordInput = el("input", { class: "input", id: "login-password", type: "password", autocomplete: "current-password", placeholder: "Password", required: true });
 
-  const btn = el("button", { class: "btn primary" }, "Log in");
+  const btn = el("button", { class: "btn primary", type: "submit" }, "Log in");
 
-  btn.addEventListener("click", async () => {
+  async function handleSubmit(event) {
+    if (event) event.preventDefault();
     btn.disabled = true;
     btn.textContent = "Logging in\u2026";
     try {
@@ -62,7 +63,7 @@ export async function LoginView() {
       btn.disabled = false;
       btn.textContent = "Log in";
     }
-  });
+  }
 
   let showSso = false;
   try {
@@ -73,17 +74,24 @@ export async function LoginView() {
   }
 
   const ssoButton = showSso
-    ? el("button", { class: "btn", onclick: () => (window.location.href = "/api/auth/oidc/login?next=/") }, "Continue with SSO")
+    ? el("button", { class: "btn", type: "button", onclick: () => (window.location.href = "/api/auth/oidc/login?next=/") }, "Continue with SSO")
     : null;
+
+  // Use a real <form> with associated <label>s so Enter submits and the inputs
+  // are announced to assistive tech (placeholders are not labels).
+  const form = el(
+    "form",
+    { class: "form-grid" },
+    el("label", { class: "flex-col", style: "gap:4px" }, el("span", { class: "muted" }, "Username"), usernameInput),
+    el("label", { class: "flex-col", style: "gap:4px" }, el("span", { class: "muted" }, "Password"), passwordInput),
+    el("div", { class: "form-actions" }, btn),
+  );
+  form.addEventListener("submit", handleSubmit);
 
   const card = el("div", { class: "card", style: "max-width: 420px; margin: 40px auto;" },
     el("h1", { class: "page-title", text: "Log in" }),
     el("p", { class: "muted", text: "Use your UVT credentials." }),
-    el("div", { class: "form-grid" },
-      usernameInput,
-      passwordInput,
-      el("div", { class: "form-actions" }, btn)
-    ),
+    form,
     el("div", { style: "margin-top: 12px; text-align: center;" },
       el("a", { href: "#/forgot-password", class: "link", text: "Forgot password?" })
     ),

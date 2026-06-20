@@ -421,9 +421,7 @@ def test_search_results_scoped_by_team(app, client, user_factory, auth_header, a
     user = user_factory(role="Analyst")
     _add_to_team(app, user.id, team_a.id)
 
-    # NB: blueprint double-prefix in search.py is a pre-existing quirk
-    # — route lives at /api/api/search today.
-    resp = client.get("/api/api/search?q=Searchable", headers=auth_header(user))
+    resp = client.get("/api/search?q=Searchable", headers=auth_header(user))
     body = resp.get_json()
     product_names = {p["name"] for p in body["products"]}
     vuln_cves = {v["cve_id"] for v in body["vulnerabilities"]}
@@ -432,6 +430,46 @@ def test_search_results_scoped_by_team(app, client, user_factory, auth_header, a
     assert "SearchableBravo" not in product_names
     assert "CVE-2099-1111" in vuln_cves
     assert "CVE-2099-2222" not in vuln_cves
+
+
+def test_attach_cross_team_product_version_is_blocked(app, client, user_factory, auth_header, two_teams, admin_user):
+    """A non-admin must not link (or probe) a product version from another team."""
+    from backend.models import ProductVersion, VulnerabilityVersion
+
+    team_a, team_b = two_teams
+    pid_b = _seed_product(app, team_id=team_b.id, name="BravoProduct", admin_user=admin_user)
+    with app.app_context():
+        pv = ProductVersion(product_id=pid_b, version="9.9")
+        db.session.add(pv)
+        db.session.commit()
+        pv_id = pv.id
+
+    # Shared-pool vuln (team_id IS NULL) is visible to every authenticated user.
+    vid = _seed_vuln(app, team_id=None, title="SharedVuln", cve_id="CVE-2099-7777")
+
+    analyst = user_factory(role="Analyst")
+    _add_to_team(app, analyst.id, team_a.id)
+
+    resp = client.post(
+        f"/api/vulnerabilities/{vid}/versions",
+        headers=auth_header(analyst),
+        json={"product_version_ids": [pv_id]},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["added"] == 0  # cross-team version silently skipped
+    with app.app_context():
+        assert VulnerabilityVersion.query.filter_by(
+            vulnerability_id=vid, product_version_id=pv_id,
+        ).first() is None
+
+    # Admins bypass team scoping and can still attach it.
+    resp_admin = client.post(
+        f"/api/vulnerabilities/{vid}/versions",
+        headers=auth_header(admin_user),
+        json={"product_version_ids": [pv_id]},
+    )
+    assert resp_admin.status_code == 200
+    assert resp_admin.get_json()["added"] == 1
 
 
 def test_vuln_comment_access_inherits_parent_visibility(app, client, user_factory, auth_header, two_teams):

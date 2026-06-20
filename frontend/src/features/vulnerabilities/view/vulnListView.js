@@ -563,6 +563,9 @@ export async function VulnListView(params = {}) {
         confidentialitySelect,
         integritySelect,
         availabilitySelect,
+        componentEcosystemInput,
+        componentNameInput,
+        componentDepthInput,
       });
     }
   } catch (_e) {

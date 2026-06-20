@@ -177,9 +177,23 @@ def _current_time():
 
 
 def _client_ip():
+    # Only trust the rightmost N hops of X-Forwarded-For, where N is the number
+    # of reverse proxies we actually run in front of the app. The leftmost
+    # entries are client-controlled, so taking them would let an attacker rotate
+    # a spoofed X-Forwarded-For to dodge per-IP login/auth throttles.
+    raw = current_app.config.get("RATE_LIMIT_TRUSTED_PROXIES", 1)
+    try:
+        trusted = int(raw)
+    except (TypeError, ValueError):
+        trusted = 1
+    if trusted < 0:
+        trusted = 0
+
     forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
+    if trusted and forwarded_for:
+        parts = [part.strip() for part in forwarded_for.split(",") if part.strip()]
+        if parts:
+            return parts[-min(trusted, len(parts))]
     return request.remote_addr or "unknown"
 
 

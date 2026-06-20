@@ -554,6 +554,20 @@ def update_user(user_id: int):
         changed = True
 
     if role_changed or is_active_changed:
+        # Block changes that would remove the last active Admin (including an
+        # admin demoting or deactivating themselves), which would lock everyone
+        # out of admin-only functions. u is already mutated in-memory here.
+        other_active_admins = User.query.filter(
+            User.id != u.id, User.role == "Admin", User.is_active.is_(True)
+        ).count()
+        u_still_active_admin = u.role == "Admin" and bool(u.is_active)
+        if other_active_admins == 0 and not u_still_active_admin:
+            db.session.rollback()
+            return error_response(
+                "Cannot demote or deactivate the last active administrator",
+                field="role" if role_changed else "is_active",
+                status_code=409,
+            )
         revoke_tokens(u)
 
     if changed:
@@ -724,6 +738,17 @@ def toggle_active(user_id: int):
     """
     u = User.query.get_or_404(user_id)
     u.is_active = not u.is_active
+    if not u.is_active and u.role == "Admin":
+        other_active_admins = User.query.filter(
+            User.id != u.id, User.role == "Admin", User.is_active.is_(True)
+        ).count()
+        if other_active_admins == 0:
+            db.session.rollback()
+            return error_response(
+                "Cannot deactivate the last active administrator",
+                field="is_active",
+                status_code=409,
+            )
     revoke_tokens(u)
     record_audit("TOGGLE_ACTIVE", "users", u.id,
                  old_values={"is_active": not u.is_active},
