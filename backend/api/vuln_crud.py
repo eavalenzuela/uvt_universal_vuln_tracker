@@ -1,5 +1,6 @@
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
+from sqlalchemy.orm import selectinload
 
 from sqlalchemy.exc import IntegrityError
 
@@ -333,6 +334,10 @@ def list_vulnerabilities():
     page = query_meta["page"]
     page_size = query_meta["page_size"]
 
+    # Eager-load affected_components so the per-row affected_components_count below
+    # is one extra query for the whole page instead of an N+1 lazy load per vuln.
+    q = q.options(selectinload(Vulnerability.affected_components))
+
     items = q.paginate(page=page, per_page=page_size, error_out=False)
     policy = get_sla_policy()
 
@@ -605,7 +610,9 @@ def get_vulnerability(vuln_id: int):
         "last_modified_date": v.last_modified_date.isoformat() if v.last_modified_date else None,
         "status": v.status,
         "created_by": v.created_by,
+        "creator_username": v.creator.username if v.creator else None,
         "assigned_to": v.assigned_to,
+        "assignee_username": v.assignee.username if v.assignee else None,
         "created_at": v.created_at.isoformat(),
         "updated_at": v.updated_at.isoformat(),
         "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,

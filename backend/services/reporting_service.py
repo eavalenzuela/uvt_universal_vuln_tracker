@@ -32,18 +32,24 @@ def parse_iso_datetime(value, *, field):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value))
+        parsed = datetime.fromisoformat(str(value))
     except ValueError as exc:
         raise ValueError(f"{field} must be ISO-8601 datetime") from exc
+    # Always return timezone-aware UTC so callers never mix naive/aware
+    # datetimes (which raises TypeError on comparison, and silently differs
+    # between SQLite and PostgreSQL).
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def range_start(range_value):
     now = datetime.now(timezone.utc)
     if range_value == "Month to date":
-        return datetime(now.year, now.month, 1)
+        return datetime(now.year, now.month, 1, tzinfo=timezone.utc)
     if range_value == "Quarter to date":
         quarter_start_month = (now.month - 1) // 3 * 3 + 1
-        return datetime(now.year, quarter_start_month, 1)
+        return datetime(now.year, quarter_start_month, 1, tzinfo=timezone.utc)
     if range_value:
         import re
 

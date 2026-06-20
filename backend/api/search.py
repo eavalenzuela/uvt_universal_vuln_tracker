@@ -7,6 +7,7 @@ from ..auth import login_required
 from ..database import db
 from ..models import Vulnerability, Product, VulnerabilityComment, User
 from ..services.team_scope import team_ids_for_user, team_scope
+from .validation import error_response, escape_like
 
 bp = Blueprint("search_api", __name__, url_prefix="/api")
 
@@ -41,7 +42,7 @@ def _comment_hit(c, author_name):
     }
 
 
-@bp.get("/api/search")
+@bp.get("/search")
 @login_required
 def global_search():
     """Search across vulnerabilities, products, and comments.
@@ -83,18 +84,20 @@ def global_search():
     """
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
-        return jsonify({"error": "Search query must be at least 2 characters"}), 400
+        return error_response("Search query must be at least 2 characters", field="q")
 
-    like = f"%{q}%"
+    # Escape LIKE wildcards so a query of "_" or "%" matches literally instead
+    # of matching every row.
+    like = f"%{escape_like(q)}%"
     user = request.user
 
     # Vulnerabilities: title, cve_id, description (scoped, shared-pool included)
     vulns = (
         team_scope(Vulnerability.query, Vulnerability, user, allow_null_team=True)
         .filter(or_(
-            Vulnerability.title.ilike(like),
-            Vulnerability.cve_id.ilike(like),
-            Vulnerability.description.ilike(like),
+            Vulnerability.title.ilike(like, escape="\\"),
+            Vulnerability.cve_id.ilike(like, escape="\\"),
+            Vulnerability.description.ilike(like, escape="\\"),
         ))
         .order_by(Vulnerability.updated_at.desc())
         .limit(MAX_RESULTS_PER_TYPE)
@@ -105,8 +108,8 @@ def global_search():
     products = (
         team_scope(Product.query, Product, user)
         .filter(or_(
-            Product.name.ilike(like),
-            Product.description.ilike(like),
+            Product.name.ilike(like, escape="\\"),
+            Product.description.ilike(like, escape="\\"),
         ))
         .order_by(Product.name)
         .limit(MAX_RESULTS_PER_TYPE)
@@ -117,7 +120,7 @@ def global_search():
     comment_query = (
         db.session.query(VulnerabilityComment, User.username)
         .join(User, VulnerabilityComment.author_id == User.id)
-        .filter(VulnerabilityComment.body.ilike(like))
+        .filter(VulnerabilityComment.body.ilike(like, escape="\\"))
     )
     if user and user.role != "Admin":
         ids = team_ids_for_user(user)

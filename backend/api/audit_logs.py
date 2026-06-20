@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from sqlalchemy.orm import joinedload
 
 from ..models import AuditLog
 from ..auth import role_required
@@ -72,7 +73,8 @@ def list_audit_logs():
     action = (request.args.get("action") or "").strip()
     table = (request.args.get("table") or "").strip()
 
-    query = AuditLog.query
+    # Eager-load the related user to avoid an N+1 lazy load per row below.
+    query = AuditLog.query.options(joinedload(AuditLog.user))
     if action:
         query = query.filter(AuditLog.action == action)
     if table:

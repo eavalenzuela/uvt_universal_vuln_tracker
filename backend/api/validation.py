@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import re
-from typing import Any, Callable, Iterable
+from typing import Any, Iterable
 
 from flask import jsonify, request
 
@@ -28,19 +28,20 @@ def invalid(field: str, error: str, *, details: Any = None) -> ValidationError:
     return ValidationError(error=error, field=field, details=details)
 
 
+def escape_like(term: str) -> str:
+    r"""Escape SQL LIKE/ILIKE wildcards so user input is matched literally.
+
+    Without this, a query containing ``%`` or ``_`` is treated as a wildcard
+    (e.g. a lone ``_`` matches every row). Use together with the ``escape``
+    argument: ``column.ilike(f"%{escape_like(term)}%", escape="\\")``.
+    """
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def required_string(data: dict[str, Any], field: str) -> str:
     value = data.get(field)
     if not isinstance(value, str) or not value.strip():
         raise invalid(field, f"{field} is required")
-    return value.strip()
-
-
-def optional_string(data: dict[str, Any], field: str) -> str | None:
-    value = data.get(field)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise invalid(field, f"{field} must be a string")
     return value.strip()
 
 
@@ -143,30 +144,6 @@ def parse_float(value: Any, *, field: str, minimum: float | None = None, maximum
     if maximum is not None and parsed > maximum:
         raise invalid(field, f"{field} must be <= {maximum}")
     return parsed
-
-
-@dataclass(frozen=True)
-class FieldSchema:
-    parser: Callable[[Any], Any]
-    required: bool = False
-    default: Any = None
-
-
-def schema_field(parser: Callable[[Any], Any], *, required: bool = False, default: Any = None) -> FieldSchema:
-    return FieldSchema(parser=parser, required=required, default=default)
-
-
-def validate_schema(data: dict[str, Any], schema: dict[str, FieldSchema]) -> dict[str, Any]:
-    validated: dict[str, Any] = {}
-    for field, config in schema.items():
-        raw_value = data.get(field)
-        if raw_value in (None, ""):
-            if config.required:
-                raise invalid(field, f"{field} is required")
-            validated[field] = config.default
-            continue
-        validated[field] = config.parser(raw_value)
-    return validated
 
 
 DEFAULT_PAGE_SIZE = 50

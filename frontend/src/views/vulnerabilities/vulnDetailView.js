@@ -1,6 +1,7 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 import { promptModal } from "../../ui/components/modal.js";
+import { slaBadge } from "../../features/vulnerabilities/view/vulnShared.js";
 import { withLoading } from "../../ui/components/loading.js";
 import { navigate } from "../../router/router.js";
 import { getState } from "../../state/store.js";
@@ -30,7 +31,9 @@ function formatDateTime(value) {
 }
 
 function field(label, value) {
-  return el("div", {}, el("div", { class: "muted", text: label }), el("div", { text: value ?? "-" }));
+  // Accept either a rendered node (e.g. a badge) or a scalar to display as text.
+  const valueEl = value instanceof Node ? value : el("div", { text: value ?? "-" });
+  return el("div", {}, el("div", { class: "muted", text: label }), valueEl);
 }
 
 function renderList(title, items, renderItem) {
@@ -169,7 +172,7 @@ export async function VulnDetailView(params = {}) {
       });
 
       container.innerHTML = "";
-      container.append(
+      const sections = [
         el(
           "div",
           { class: "row flex-between items-center mb-8" },
@@ -188,7 +191,7 @@ export async function VulnDetailView(params = {}) {
             { class: "row gap-12 flex-wrap" },
             field("Severity", vuln.severity),
             field("Status", vuln.status),
-            field("SLA state", vuln.sla_state),
+            field("SLA state", slaBadge(vuln.sla_state)),
             field("SLA due", formatDateTime(vuln.sla_due_at)),
             field("CVSS", vuln.cvss_score ?? "-"),
             field("Attack complexity", vuln.attack_complexity),
@@ -197,8 +200,8 @@ export async function VulnDetailView(params = {}) {
             field("Availability impact", vuln.availability_impact),
             field("Published", formatDate(vuln.published_date)),
             field("Last modified", formatDate(vuln.last_modified_date)),
-            field("Assigned to", vuln.assigned_to ?? "Unassigned"),
-            field("Created by", vuln.created_by ?? "-"),
+            field("Assigned to", vuln.assignee_username || (vuln.assigned_to != null ? `User ${vuln.assigned_to}` : "Unassigned")),
+            field("Created by", vuln.creator_username || (vuln.created_by != null ? `User ${vuln.created_by}` : "-")),
             field(
               "Team",
               vuln.team_name || (vuln.team_id == null ? "Shared (global)" : `Team ${vuln.team_id}`),
@@ -265,7 +268,10 @@ export async function VulnDetailView(params = {}) {
         ),
         renderList("History", history, renderHistoryItem),
         renderList("Activity timeline", activity, renderActivityItem),
-      );
+      ];
+      // Native append() coerces null/false into stray "null"/"false" text nodes,
+      // so drop falsy entries from the conditional sections before appending.
+      container.append(...sections.filter(Boolean));
     } catch (err) {
       toast({ title: "Failed to load vulnerability", message: err?.message || "Unable to fetch vulnerability detail" });
       container.innerHTML = "";

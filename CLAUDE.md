@@ -25,6 +25,7 @@ flask seed-admin --username admin --email admin@example.com --password changeme
 # Run plugins / notification scan
 flask run-plugins [--plugin-id ID] [--include-disabled] [--only-due]
 flask run-notification-scan [--dry-run]
+flask purge-old-data [--dry-run]   # data-retention purge of old audit/delivery/plugin/report rows
 ```
 
 ### Frontend
@@ -98,15 +99,17 @@ Screenshots land in `screenshots/` (gitignored). Use `--save-as <label>` to copy
 
 **Three-layer design:** Blueprints → Services → Models
 
-- **`/backend/api/`** — Flask blueprints (26 route modules: auth, products, vulnerabilities, vuln_comments/versions/bulk, reports (exports/templates/schedules), plugins, notifications (rules/delivery/live), users, users_tokens, audit_logs, controls, components, attack_vectors, terminal_impacts, sla_policy, vulnerability_filters, dashboard_layout_presets, tasks, search) plus `validation.py` (input parsers)
-- **`/backend/services/`** — Business logic (auth, notifications, SBOM ingest, CVE enrichment, deduplication, Jira sync, email, Slack, reporting, SLA tracking)
+- **`/backend/api/`** — Flask blueprints (32 route modules: auth, products, vulnerabilities, vuln_comments/versions/bulk, reports (exports/templates/schedules), plugins, notifications (rules/delivery/live), users, users_tokens, audit_logs, controls, components, attack_vectors, terminal_impacts, sla_policy, vulnerability_filters, dashboard_layout_presets, tasks, search, webhooks, teams, branding, user_preferences) plus `validation.py` (input parsers)
+- **`/backend/services/`** — Business logic (auth, notifications, SBOM ingest, CVE enrichment, deduplication, Jira sync, email, Slack, reporting, SLA tracking, team scoping (`team_scope`), data retention, scanner imports, webhook ingest)
 - **`/backend/models/`** — SQLAlchemy models organized by bounded context:
   - `auth.py` — User, ApiToken, RefreshToken, AuditLog
+  - `teams.py` — Team, UserTeam
   - `products.py` — Product, ProductVersion, Control, SoftwareComponent, ComponentDependency
   - `vulnerabilities.py` — Vulnerability, VulnerabilityComment, AttackVector, SlaPolicy, SavedVulnerabilityFilter
   - `notifications.py` — Notification, NotificationRule, NotificationDeliveryLog
   - `plugins.py` — PluginConfig, PluginRun, PluginRunArtifact, ExternalSourceState
   - `reports.py` — ReportSchedule, ReportTemplate, ReportArtifact
+  - `webhooks.py`, `user_preferences.py`, `branding.py`, `email_verification.py`, `password_reset.py` — webhooks, per-user prefs, PDF branding, and email-verification / password-reset tokens
 - **`/backend/serializers/`** — JSON schema definitions
 - **`/backend/plugins/`** — Plugin execution framework
 - **`backend/auth.py`** — Token generation, password hashing, scope enforcement

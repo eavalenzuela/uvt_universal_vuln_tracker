@@ -3,13 +3,15 @@ import { logout } from "../../api/auth.js";
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from "../../api/notifications.js";
 import { getState, logoutSession, markAllNotificationsReadLocal, setCurrentTeam, setNotifications } from "../../state/store.js";
 import { isAuthed } from "../../state/permissions.js";
-import { navigate } from "../../router/router.js";
+import { navigate, route } from "../../router/router.js";
 import { toggleTheme } from "../../state/theme.js";
 import { globalSearch } from "../../api/search.js";
 
 let dropdownOpen = false;
 let searchTimer = null;
 let searchDropdownOpen = false;
+let searchOutsideClickBound = false;
+let currentSearchWrap = null;
 
 export function closeNotificationDropdown() {
   dropdownOpen = false;
@@ -82,10 +84,10 @@ export function renderHeader() {
           const val = Number(ev.target.value);
           if (Number.isInteger(val)) {
             setCurrentTeam(val);
-            // Re-trigger current route so data reloads under the new team.
-            const currentHash = window.location.hash || "#/";
-            const path = currentHash.slice(1) || "/";
-            navigate(path);
+            // Re-render the current route so data reloads under the new team.
+            // navigate() to the same hash is a no-op (no hashchange fires), so
+            // re-run the router directly.
+            route();
           }
         },
       });
@@ -293,10 +295,20 @@ export function renderHeader() {
       if (e.key === "Escape") closeSearchDropdown();
     });
 
-    // Close search results when clicking outside
-    document.addEventListener("click", (e) => {
-      if (searchDropdownOpen && !searchWrap.contains(e.target)) closeSearchDropdown();
-    }, { once: false });
+    // Close search results when clicking outside. Bind the document listener
+    // only once — renderHeader runs on every theme/team/route change, so adding
+    // a listener here each time leaked one per render. It reads the always-current
+    // search wrap via a module-level ref instead of closing over this render's.
+    currentSearchWrap = searchWrap;
+    if (!searchOutsideClickBound) {
+      searchOutsideClickBound = true;
+      document.addEventListener("click", (e) => {
+        if (searchDropdownOpen && currentSearchWrap && !currentSearchWrap.contains(e.target)) {
+          searchDropdownOpen = false;
+          currentSearchWrap.querySelector(".search-results-dropdown")?.classList.add("hidden");
+        }
+      });
+    }
 
     searchWrap.appendChild(searchInput);
     searchWrap.appendChild(resultsPanel);

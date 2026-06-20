@@ -144,6 +144,11 @@ class AppConfig:
     # Rate limiting
     rate_limit_enabled: bool = True
     rate_limit_backend: str = "memory"
+    # Number of trusted reverse-proxy hops in front of the app. The client IP for
+    # rate limiting is read from the right of X-Forwarded-For by this many hops,
+    # so client-supplied (leftmost) values can't spoof per-IP throttles. Set to 0
+    # when the app is exposed directly (no proxy) to ignore the header entirely.
+    rate_limit_trusted_proxies: int = 1
     redis_url: str = "redis://localhost:6379/0"
     rate_limit_auth_login_limit: int = 5
     rate_limit_auth_login_window_seconds: int = 60
@@ -231,6 +236,7 @@ def load_config() -> AppConfig:
         db_pool_pre_ping=_bool("DB_POOL_PRE_PING", True),
         rate_limit_enabled=_bool("RATE_LIMIT_ENABLED", True),
         rate_limit_backend=_str("RATE_LIMIT_BACKEND", "memory"),
+        rate_limit_trusted_proxies=_int("RATE_LIMIT_TRUSTED_PROXIES", 1),
         redis_url=_str("REDIS_URL", "redis://localhost:6379/0"),
         rate_limit_auth_login_limit=_int("RATE_LIMIT_AUTH_LOGIN_LIMIT", 5),
         rate_limit_auth_login_window_seconds=_int("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", 60),
@@ -303,6 +309,7 @@ def apply_config(app, cfg: AppConfig) -> None:
 
     app.config["RATE_LIMIT_ENABLED"] = cfg.rate_limit_enabled
     app.config["RATE_LIMIT_BACKEND"] = cfg.rate_limit_backend
+    app.config["RATE_LIMIT_TRUSTED_PROXIES"] = cfg.rate_limit_trusted_proxies
     app.config["REDIS_URL"] = cfg.redis_url
     app.config["RATE_LIMIT_AUTH_LOGIN_LIMIT"] = cfg.rate_limit_auth_login_limit
     app.config["RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS"] = cfg.rate_limit_auth_login_window_seconds

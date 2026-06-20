@@ -2,11 +2,13 @@ from flask import Blueprint, jsonify, request
 
 from ..database import db
 from ..models import (
+    Product,
+    ProductVersion,
     Vulnerability,
     VulnerabilityVersion,
 )
 from ..auth import role_required
-from ..services.team_scope import get_vulnerability_or_404
+from ..services.team_scope import get_vulnerability_or_404, user_can_access_team
 from ..services.audit import record_audit
 from ..services.notification_rules import NotificationEvent, trigger_notifications_for_event
 from .validation import error_response
@@ -66,10 +68,24 @@ def attach_versions(vuln_id: int):
     v = get_vulnerability_or_404(vuln_id)
     data = request.get_json(silent=True) or {}
     pv_ids = data.get("product_version_ids") or []
+    user = request.user
     added = 0
 
     for pv_id in pv_ids:
-        pv_id = int(pv_id)
+        try:
+            pv_id = int(pv_id)
+        except (TypeError, ValueError):
+            continue
+        pv = db.session.get(ProductVersion, pv_id)
+        if pv is None:
+            continue
+        product = db.session.get(Product, pv.product_id)
+        team_id = product.team_id if product is not None else None
+        if not user_can_access_team(user, team_id):
+            # Don't let a user link (or probe) product versions from teams they
+            # can't access — silently skip so the version's existence isn't
+            # revealed across the team boundary.
+            continue
         existing = VulnerabilityVersion.query.filter_by(vulnerability_id=v.id, product_version_id=pv_id).first()
         if existing:
             continue

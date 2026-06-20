@@ -37,23 +37,40 @@ export function createDataTable(options) {
 
   // Build header
   const headerCells = allColumns.map((col) => {
+    const isSortable = col.sortable !== false && col.key !== "__actions";
     const classes = [];
-    if (col.sortable !== false && col.key !== "__actions") classes.push("sortable");
+    if (isSortable) classes.push("sortable");
     if (sortKey === col.key) classes.push(sortDir === "asc" ? "sort-asc" : "sort-desc");
 
-    const indicator = (col.sortable !== false && col.key !== "__actions")
+    const indicator = isSortable
       ? el("span", { class: "sort-indicator", text: sortKey === col.key ? (sortDir === "asc" ? "\u25B2" : "\u25BC") : "\u25B2" })
       : null;
 
-    const th = el("th", {
+    const attrs = {
       class: classes.join(" ") || undefined,
       style: col.width ? `width:${col.width}` : undefined,
-    }, col.label, indicator);
+      scope: "col",
+    };
+    if (isSortable && onSort) {
+      // Make sortable headers operable by keyboard and announce sort state.
+      attrs.role = "button";
+      attrs.tabindex = "0";
+      attrs["aria-sort"] = sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none";
+    }
 
-    if (col.sortable !== false && col.key !== "__actions" && onSort) {
-      th.addEventListener("click", () => {
+    const th = el("th", attrs, col.label, indicator);
+
+    if (isSortable && onSort) {
+      const triggerSort = () => {
         const newDir = sortKey === col.key && sortDir === "asc" ? "desc" : "asc";
         onSort(col.key, newDir);
+      };
+      th.addEventListener("click", triggerSort);
+      th.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          triggerSort();
+        }
       });
     }
 

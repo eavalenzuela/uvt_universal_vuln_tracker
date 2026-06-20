@@ -31,7 +31,10 @@ class LiveNotificationHub:
 
     def publish(self, user_id: int, event: dict[str, Any]) -> None:
         payload = dict(event)
-        payload.setdefault("sent_at", datetime.now(timezone.utc).isoformat() + "Z")
+        # isoformat() already emits the "+00:00" offset for aware datetimes;
+        # appending "Z" produced a malformed "...+00:00Z". Normalize to a single
+        # "Z" designator instead.
+        payload.setdefault("sent_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
         with self._lock:
             queues = list(self._subscribers.get(user_id, ()))
         for queue in queues:

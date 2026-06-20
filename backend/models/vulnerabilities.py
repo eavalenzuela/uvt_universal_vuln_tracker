@@ -52,7 +52,7 @@ class Vulnerability(db.Model):
     title = db.Column(db.String(500), nullable=False, index=True)
     description = db.Column(db.Text)
 
-    severity = db.Column(db.String(20), default="Medium", nullable=False)  # Critical/High/Medium/Low/None
+    severity = db.Column(db.String(20), default="Medium", nullable=False, index=True)  # Critical/High/Medium/Low/None
     cvss_score = db.Column(db.Numeric(3, 1))
     cvss_vector = db.Column(db.String(255))
     cvss_version = db.Column(db.String(16))

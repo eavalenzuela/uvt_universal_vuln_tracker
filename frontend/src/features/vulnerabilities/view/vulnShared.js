@@ -27,8 +27,9 @@ export function severityBadge(severity) {
 }
 
 export function slaBadge(state) {
-  const cls = { breached: "badge-sla-breached", due_soon: "badge-sla-due-soon", on_track: "badge-sla-on-track" };
-  return el("span", { class: `badge ${cls[state] || "badge-sla-on-track"}` }, { breached: "SLA breached", due_soon: "Due soon", on_track: "On track" }[state] || "On track");
+  const cls = { breached: "badge-sla-breached", due_soon: "badge-sla-due-soon", on_track: "badge-sla-on-track", met: "badge-sla-met" };
+  const label = { breached: "SLA breached", due_soon: "Due soon", on_track: "On track", met: "SLA met" };
+  return el("span", { class: `badge ${cls[state] || "badge-sla-on-track"}` }, label[state] || "On track");
 }
 
 export function statusPill(status) {

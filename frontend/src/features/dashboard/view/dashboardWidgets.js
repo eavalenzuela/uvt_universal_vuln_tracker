@@ -211,7 +211,10 @@ export function renderRiskOverviewWidget(widgetSettings) {
     }
   };
 
-  subscribe((state) => {
+  const unsubscribe = subscribe((state) => {
+    // Skip work once this widget instance has been detached; the poll timer
+    // below performs the actual unsubscribe/clearInterval cleanup.
+    if (!container.isConnected) return;
     const events = state?.liveNotifications || [];
     for (const event of events) {
       const key = `${event.sent_at || ""}-${event.type || ""}-${event.payload?.vulnerability_id || ""}`;
@@ -227,7 +230,17 @@ export function renderRiskOverviewWidget(widgetSettings) {
   });
 
   load();
-  setInterval(load, DASHBOARD_SUMMARY_POLL_MS);
+  // The dashboard re-creates widgets on every layout change. Self-clean the poll
+  // loop and the store subscription once this instance leaves the DOM, otherwise
+  // each render leaks a 30s interval and a live-notification listener forever.
+  const pollTimer = setInterval(() => {
+    if (!container.isConnected) {
+      clearInterval(pollTimer);
+      unsubscribe();
+      return;
+    }
+    load();
+  }, DASHBOARD_SUMMARY_POLL_MS);
   return container;
 }
 
