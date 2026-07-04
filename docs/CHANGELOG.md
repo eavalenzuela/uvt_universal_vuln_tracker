@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.23.0 — v2.22 deferred security follow-ups + CISA KEV, watcher notifications, remediation metrics
+
+Lands the five items deferred from the v2.22.0 analysis pass plus five new features. Plan in `PLANNED_IMPROVEMENTS.md`.
+
+### Security (the v2.22.0 deferred list)
+- **Webhook ingest HMAC verified against the raw secret** — the server previously keyed the HMAC with the stored SHA-256 *hash* of the secret, a value external senders never receive (the tests were signing with a value read out of the DB), so real integrations could never produce a valid signature; and since the stored hash *was* the verification key, hashing provided no at-rest protection either. New/rotated endpoints now store the secret (`WebhookEndpoint.secret`, SQLite backfill) and verify raw-secret HMACs; pre-v2.23.0 endpoints keep legacy hash-keyed verification until rotated — rotation upgrades them (`api/webhooks.py`, `models/webhooks.py`).
+- **SSRF guard on outbound notification deliveries** — new `services/url_guard.py` validates Slack webhook, Jira base, and generic notification-webhook URLs: http/https only, and loopback/private/link-local/reserved IP literals plus local hostnames (`localhost`, `*.local`, `*.internal`, dotless) are refused. Syntactic-only (no DNS), so it is deterministic and worker-safe. Opt out for intranet targets with **`OUTBOUND_ALLOW_PRIVATE_URLS=true`**.
+- **Plugin `file_path` confinement** — feed/controls plugins read admin-supplied filesystem paths; with **`PLUGIN_DATA_DIR`** set, `file_path` must resolve inside it (`resolve_plugin_file_path` in `plugins/base.py`). Empty default preserves existing behavior, matching the F3/F15 opt-in gating posture.
+- **Short-lived, marked impersonation tokens** — impersonation minted a normal 12-hour JWT indistinguishable from a login token. It now expires after **`IMPERSONATION_TOKEN_MINUTES`** (default 15) and carries `impersonation: true` + `impersonated_by: <admin id>` claims; the response includes `expires_in_minutes` (`api/users_crud.py`, `auth.generate_token` gained `expires_in`/`extra_claims`).
+- **Password policy beyond bare length** — passwords containing the username or the email local-part, and a small worst-passwords denylist, are rejected (`auth.validate_password`, applied at register/create/invite/admin-reset/token-reset).
+
+### Added
+- **CISA KEV integration (`vuln-feed-kev` plugin)** — maps the Known Exploited Vulnerabilities catalog; new `Vulnerability.known_exploited` + `kev_date_added` columns (SQLite backfill), exposed in list/detail JSON, filterable via `?known_exploited=true`, and badged (dark-red "KEV") in the vulnerability list card and detail views. Defaults to *annotation mode* (`only_flag_existing: true`) so a catalog sync flags tracked CVEs instead of importing ~1000 unrelated rows.
+- **Watched-vulnerability notifications** — the `notify_on_watched_vuln_update` preference existed end-to-end but nothing ever fired. Watchers now get in-app notifications (+ live `watched_vulnerability_updated` events) on update/status/assignment events, excluding the actor and opted-out users (`notify_watchers_for_event` in `services/notification_rules.py`).
+- **Audit-log CSV export** — `GET /api/audit-logs/export.csv` (Admin-only, rate-limited, honors the `action`/`table` filters, capped at 10 000 rows) plus an **Export CSV** button on Admin → Logs.
+- **Remediation metrics** — new `Vulnerability.resolved_at` stamped on the transition into Resolved/Closed and cleared on reopen (single-update, bulk-update, and create paths); `GET /api/reports/remediation-metrics?range=...` returns MTTR (avg/median days, by severity) and open-age buckets (0-7/8-30/31-90/90+), team-scoped.
+- **Global search covers software components** — name/ecosystem/purl matching with product-team scoping; the header search dropdown gained a Components group linking to the owning product (`api/search.py`, `ui/layout/header.js`).
+
+### Changed
+- **Feed ingest stops discarding CVSS vector / CWE / references** — `NormalizedVuln` gained `cvss_vector`, `cvss_version`, `cwe_id`, `references` (deduped merge into `references_json`), and the NVD mapper extracts them (metrics accepted at payload level and under `cve` for the NVD 2.0 shape).
+- **All native `window.confirm` / `window.prompt` dialogs replaced** with the in-app modal (new `confirmModal()` beside `promptModal()`: theme-aware, focus-trapped, Escape/backdrop cancel, `alertdialog` semantics, destructive styling) — 17 call sites across teams, tokens, delivery, branding, products, versions, saved filters, mappings, merge, and delete flows.
+- **Webhook ingest honors `RATE_LIMIT_TRUSTED_PROXIES`** — the ingest rate-limit key and delivery-log `client_ip` now use the trusted-proxy-aware resolver (new public `rate_limiter.get_client_ip()`) instead of raw `remote_addr`.
+- Removed the dead `backend/middleware.py.txt` stub file.
+
+### Tests
+- Backend: suite grows 341 → **377** (+36): rewritten `test_webhooks.py` signs like a real external client (+ legacy-fallback and hash-rejection cases) and new `backend/tests/test_v2_23_features.py` (34 tests) covers the URL guard, path confinement, impersonation claims/lifetime, password policy, NVD mapper fidelity, KEV mapper/plugin/filter, watcher notifications (incl. opt-out and actor exclusion), audit CSV export, `resolved_at` lifecycle + metrics endpoint, and component search. 357 passed locally; the 20 PDF-rendering tests could not run in the dev environment (Pillow/WeasyPrint C extensions built for Python 3.13 vs. the system's 3.14 — venv needs a rebuild) and are untouched by this pass.
+- Frontend: 28 passed (unchanged).
+
 ## v2.22.0 — Systematic analysis pass: PostgreSQL bug fixes, security & accessibility
 
 A repo-wide analysis (multi-agent code review + automated full-app screenshot review against the Docker/PostgreSQL stack) surfaced a set of correctness, security, performance, and accessibility issues. The most impactful were **PostgreSQL-only bugs that the SQLite test suite could not catch** — they were found by exercising the running app.

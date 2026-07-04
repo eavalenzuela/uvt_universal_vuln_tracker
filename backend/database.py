@@ -30,6 +30,10 @@ _SQLITE_VULN_COLUMN_BACKFILL = [
     ("confidentiality_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
     ("integrity_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
     ("availability_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
+    # v2.23.0: CISA KEV flag + remediation timestamp.
+    ("known_exploited", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("kev_date_added", "DATE"),
+    ("resolved_at", "DATETIME"),
 ]
 
 # F17 Slice 2: report artifact lifecycle columns.
@@ -43,6 +47,12 @@ _SQLITE_REPORT_ARTIFACT_BACKFILL = [
 # already verified (DEFAULT 1) so backfilling never locks anyone out.
 _SQLITE_USER_COLUMN_BACKFILL = [
     ("email_verified", "BOOLEAN NOT NULL DEFAULT 1"),
+]
+
+# v2.23.0: raw webhook signing secret. NULL for pre-existing endpoints, which
+# keep legacy hash-keyed HMAC verification until their secret is rotated.
+_SQLITE_WEBHOOK_ENDPOINT_BACKFILL = [
+    ("secret", "VARCHAR(128)"),
 ]
 
 
@@ -104,6 +114,15 @@ def _ensure_sqlite_schema(app):
                     added = True
             # storage_path was NOT NULL pre-Slice-2; SQLite ALTER cannot drop NOT NULL,
             # but new artifacts use INSERT-then-UPDATE so existing rows remain valid.
+
+        if "webhook_endpoints" in insp.get_table_names():
+            existing_cols = {c["name"] for c in insp.get_columns("webhook_endpoints")}
+            for col_name, col_def in _SQLITE_WEBHOOK_ENDPOINT_BACKFILL:
+                if col_name not in existing_cols:
+                    db.session.execute(
+                        text(f"ALTER TABLE webhook_endpoints ADD COLUMN {col_name} {col_def}")
+                    )
+                    added = True
 
         if added:
             db.session.commit()

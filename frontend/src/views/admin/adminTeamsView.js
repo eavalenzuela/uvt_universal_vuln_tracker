@@ -1,5 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal, promptModal } from "../../ui/components/modal.js";
 import { createDataTable } from "../../ui/components/dataTable.js";
 import {
   addTeamMember,
@@ -70,7 +71,14 @@ export async function AdminTeamsView() {
   });
 
   async function onRenameTeam(team) {
-    const nextName = window.prompt(`Rename team "${team.name}" to:`, team.name);
+    const nextName = await promptModal({
+      title: "Rename team",
+      message: `Rename team "${team.name}" to:`,
+      defaultValue: team.name,
+      inputLabel: "Team name",
+      confirmText: "Rename",
+      required: true,
+    });
     if (!nextName || nextName.trim() === team.name) return;
     try {
       await updateTeam(team.id, { name: nextName.trim() });
@@ -83,9 +91,12 @@ export async function AdminTeamsView() {
   }
 
   async function onDeleteTeam(team) {
-    const ok = window.confirm(
-      `Delete team "${team.name}"? This cannot be undone. Products in this team must be reassigned first.`,
-    );
+    const ok = await confirmModal({
+      title: "Delete team",
+      message: `Delete team "${team.name}"? This cannot be undone. Products in this team must be reassigned first.`,
+      confirmText: "Delete",
+      danger: true,
+    });
     if (!ok) return;
     try {
       await deleteTeam(team.id);
@@ -144,7 +155,12 @@ export async function AdminTeamsView() {
         : (row) => {
             const btn = el("button", { class: "btn" }, "Remove");
             btn.addEventListener("click", async () => {
-              const ok = window.confirm(`Remove ${row.username} from ${selectedTeam.name}?`);
+              const ok = await confirmModal({
+                title: "Remove member",
+                message: `Remove ${row.username} from ${selectedTeam.name}?`,
+                confirmText: "Remove",
+                danger: true,
+              });
               if (!ok) return;
               try {
                 await removeTeamMember(selectedTeam.id, row.user_id);

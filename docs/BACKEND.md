@@ -105,7 +105,8 @@ Helpers: `validation.py` — `ValidationError`, `error_response()`, request pars
 | `oidc.py` | OIDC authorization flow, user creation from claims |
 | `oidc_mapping.py` | Maps OIDC group claims to UVT roles |
 | `password_reset.py` | Forgot-password / reset-password token lifecycle |
-| `reporting_service.py` | Aggregates vulnerability data for reports — `dashboard_aggregate()`, `risk_trends()`, `executive_summary()` (KPIs + severity + SLA buckets) |
+| `reporting_service.py` | Aggregates vulnerability data for reports — `dashboard_aggregate()`, `risk_trends()`, `executive_summary()` (KPIs + severity + SLA buckets), `remediation_metrics()` (MTTR + open aging) |
+| `url_guard.py` | SSRF guard for operator-supplied delivery URLs (Slack/Jira/notification webhooks); syntactic-only, `OUTBOUND_ALLOW_PRIVATE_URLS` opt-out |
 | `pdf_renderer.py` | F17 Slice 1: WeasyPrint + Jinja2 renderer. Auto-loads `OrganizationBranding` row, exposes `render_pdf(layout_name, context) -> bytes` |
 | `pdf_charts.py` | F17 Slice 2: Matplotlib (`Agg` backend) chart helpers — `severity_donut()`, `sla_bar()` returning base64 PNG data URIs |
 | `team_scope.py` | F15: `team_scope(query, model, user, allow_null_team=False)` filters every query site to the user's team membership; Admin and Default-team posture handled centrally |

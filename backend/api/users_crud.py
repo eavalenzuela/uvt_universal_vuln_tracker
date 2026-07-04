@@ -3,7 +3,7 @@ import io
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, current_app, jsonify, request, Response
 from sqlalchemy import or_
 
 from ..database import db
@@ -238,7 +238,7 @@ def create_user_admin():
     if not username or not email or not password:
         return error_response("Required field missing", field="username", details="username, email, password are required")
     try:
-        validate_password(password)
+        validate_password(password, username=username, email=email)
     except PasswordTooWeakError as exc:
         return error_response(str(exc), field="password")
     if role not in _ALLOWED_ROLES:
@@ -331,7 +331,7 @@ def invite_user():
         return error_response("Required field missing", field="username", details="username and email are required")
     if user_supplied_password:
         try:
-            validate_password(user_supplied_password)
+            validate_password(user_supplied_password, username=username, email=email)
         except PasswordTooWeakError as exc:
             return error_response(str(exc), field="password")
     if role not in _ALLOWED_ROLES:
@@ -628,7 +628,7 @@ def reset_password(user_id: int):
     if not password:
         return error_response("password is required", field="password")
     try:
-        validate_password(password)
+        validate_password(password, username=u.username, email=u.email)
     except PasswordTooWeakError as exc:
         return error_response(str(exc), field="password")
 
@@ -699,12 +699,24 @@ def impersonate(user_id: int):
     if not reason:
         return error_response("reason is required to impersonate", field="reason")
 
-    token = generate_token(target.id, target.username, target.role, target.token_version, target.last_revoked_at)
+    # Impersonation tokens are deliberately short-lived (IMPERSONATION_TOKEN_MINUTES,
+    # default 15) and carry impersonation claims so they are distinguishable from
+    # ordinary login tokens in logs and downstream checks.
+    lifetime_minutes = int(current_app.config.get("IMPERSONATION_TOKEN_MINUTES", 15))
+    token = generate_token(
+        target.id,
+        target.username,
+        target.role,
+        target.token_version,
+        target.last_revoked_at,
+        expires_in=timedelta(minutes=lifetime_minutes),
+        extra_claims={"impersonation": True, "impersonated_by": request.user.id},
+    )
     record_audit("IMPERSONATE", "users", target.id,
                  old_values={"actor": request.user.username},
                  new_values={"impersonated": target.username, "reason": reason})
     db.session.commit()
-    return jsonify({"token": token, "user": _user_json(target)})
+    return jsonify({"token": token, "user": _user_json(target), "expires_in_minutes": lifetime_minutes})
 
 
 @bp.post("/users/<int:user_id>/toggle-active")

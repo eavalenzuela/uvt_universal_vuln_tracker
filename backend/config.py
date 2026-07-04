@@ -119,6 +119,9 @@ class AppConfig:
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "Lax"
     auth_cookie_domain: str | None = None
+    # Lifetime of Admin impersonation tokens (minutes). Impersonation tokens
+    # are deliberately short-lived and carry impersonation claims.
+    impersonation_token_minutes: int = 15
 
     # OIDC / SSO
     oidc_enabled: bool = False
@@ -188,8 +191,18 @@ class AppConfig:
     # Frontend
     frontend_url: str = "http://127.0.0.1:5173"
 
+    # Outbound deliveries (Slack / Jira / notification webhooks). When false
+    # (default), delivery URLs pointing at loopback/private/link-local targets
+    # are rejected to prevent SSRF via admin-editable delivery config. Set to
+    # true for deployments that deliver to intranet services.
+    outbound_allow_private_urls: bool = False
+
     # Plugins
     plugin_import_paths: list[str] = field(default_factory=list)
+    # When set, plugin `file_path` config values must resolve inside this
+    # directory. Empty (default) keeps the legacy unrestricted behavior so
+    # existing installs are unaffected until an operator opts in.
+    plugin_data_dir: str = ""
 
     @property
     def is_production(self) -> bool:
@@ -219,6 +232,7 @@ def load_config() -> AppConfig:
         auth_cookie_secure=_bool("AUTH_COOKIE_SECURE", auth_cookie_secure_default),
         auth_cookie_samesite=_cookie_samesite(),
         auth_cookie_domain=os.getenv("AUTH_COOKIE_DOMAIN") or None,
+        impersonation_token_minutes=_int("IMPERSONATION_TOKEN_MINUTES", 15),
         oidc_enabled=_bool("OIDC_ENABLED", False),
         oidc_issuer=_str("OIDC_ISSUER"),
         oidc_client_id=_str("OIDC_CLIENT_ID"),
@@ -265,7 +279,9 @@ def load_config() -> AppConfig:
         celery_task_soft_timeout=_int("CELERY_TASK_SOFT_TIMEOUT", 3300),
         celery_worker_max_tasks_per_child=_int("CELERY_WORKER_MAX_TASKS_PER_CHILD", 100),
         frontend_url=_str("FRONTEND_URL", "http://127.0.0.1:5173"),
+        outbound_allow_private_urls=_bool("OUTBOUND_ALLOW_PRIVATE_URLS", False),
         plugin_import_paths=_parse_plugin_paths(),
+        plugin_data_dir=_str("PLUGIN_DATA_DIR", ""),
     )
 
     # Fail fast: production must not use dev defaults for secrets
@@ -306,6 +322,7 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["AUTH_COOKIE_SECURE"] = cfg.auth_cookie_secure
     app.config["AUTH_COOKIE_SAMESITE"] = cfg.auth_cookie_samesite
     app.config["AUTH_COOKIE_DOMAIN"] = cfg.auth_cookie_domain
+    app.config["IMPERSONATION_TOKEN_MINUTES"] = cfg.impersonation_token_minutes
 
     app.config["RATE_LIMIT_ENABLED"] = cfg.rate_limit_enabled
     app.config["RATE_LIMIT_BACKEND"] = cfg.rate_limit_backend
@@ -342,6 +359,7 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["CELERY_WORKER_MAX_TASKS_PER_CHILD"] = cfg.celery_worker_max_tasks_per_child
 
     app.config["FRONTEND_URL"] = cfg.frontend_url
+    app.config["OUTBOUND_ALLOW_PRIVATE_URLS"] = cfg.outbound_allow_private_urls
 
     app.config["SQLALCHEMY_DATABASE_URI"] = cfg.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -355,3 +373,4 @@ def apply_config(app, cfg: AppConfig) -> None:
             "pool_pre_ping": cfg.db_pool_pre_ping,
         }
     app.config["PLUGIN_IMPORT_PATHS"] = cfg.plugin_import_paths
+    app.config["PLUGIN_DATA_DIR"] = cfg.plugin_data_dir

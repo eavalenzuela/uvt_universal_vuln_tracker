@@ -24,14 +24,44 @@ def revoke_tokens(user: User):
 
 MIN_PASSWORD_LENGTH = 12
 
+# Worst offenders long enough to clear the length check (compared lowercased).
+_COMMON_PASSWORDS = frozenset({
+    "password1234",
+    "password12345",
+    "password123456",
+    "administrator",
+    "changemeplease",
+    "letmeinplease",
+    "qwertyuiop12",
+    "1234567890ab",
+    "123456789012",
+    "iloveyou1234",
+    "welcome12345",
+    "adminadmin12",
+    "passw0rd1234",
+    "qwerty123456",
+})
+
 
 class PasswordTooWeakError(ValueError):
     pass
 
 
-def validate_password(password: str) -> None:
+def validate_password(password: str, *, username: str | None = None, email: str | None = None) -> None:
     if not password or len(password) < MIN_PASSWORD_LENGTH:
         raise PasswordTooWeakError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+
+    lowered = password.lower()
+    if lowered in _COMMON_PASSWORDS:
+        raise PasswordTooWeakError("Password is too common; choose something less guessable")
+
+    if username and len(username) >= 4 and username.lower() in lowered:
+        raise PasswordTooWeakError("Password must not contain your username")
+
+    if email:
+        local_part = email.split("@", 1)[0]
+        if len(local_part) >= 4 and local_part.lower() in lowered:
+            raise PasswordTooWeakError("Password must not contain your email address")
 
 
 def hash_password(password: str) -> str:
@@ -42,7 +72,22 @@ def verify_password(password: str, hashed_password: str) -> bool:
     return check_password_hash(hashed_password, password)
 
 
-def generate_token(user_id: int, username: str, role: str, token_version: int = 1, last_revoked_at=None) -> str:
+def generate_token(
+    user_id: int,
+    username: str,
+    role: str,
+    token_version: int = 1,
+    last_revoked_at=None,
+    *,
+    expires_in: datetime.timedelta | None = None,
+    extra_claims: dict | None = None,
+) -> str:
+    """Mint an access JWT.
+
+    ``expires_in`` overrides the default 12-hour lifetime (used for
+    short-lived impersonation tokens); ``extra_claims`` are merged into the
+    payload for traceability (e.g. ``impersonated_by``).
+    """
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": str(user_id),
@@ -51,8 +96,10 @@ def generate_token(user_id: int, username: str, role: str, token_version: int = 
         "token_version": int(token_version or 1),
         "last_revoked_at": int(last_revoked_at.timestamp()) if last_revoked_at else None,
         "iat": now,
-        "exp": now + datetime.timedelta(hours=12),
+        "exp": now + (expires_in if expires_in is not None else datetime.timedelta(hours=12)),
     }
+    if extra_claims:
+        payload.update(extra_claims)
     return jwt.encode(payload, current_app.config["JWT_SECRET"], algorithm="HS256")
 
 
@@ -381,7 +428,7 @@ def create_user(username, email, password, role="Analyst"):
         raise ValueError("Username already exists")
     if User.query.filter_by(email=email).first():
         raise ValueError("Email already exists")
-    validate_password(password)
+    validate_password(password, username=username, email=email)
 
     user = User(username=username, email=email, password_hash=hash_password(password), role=role)
     db.session.add(user)

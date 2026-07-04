@@ -37,6 +37,14 @@ export function statusPill(status) {
   return el("span", { class: `badge ${cls[status] || "pill-open"}` }, status || "-");
 }
 
+export function kevBadge(vuln) {
+  if (!vuln?.known_exploited) return null;
+  const title = vuln.kev_date_added
+    ? `In the CISA Known Exploited Vulnerabilities catalog since ${vuln.kev_date_added}`
+    : "In the CISA Known Exploited Vulnerabilities catalog";
+  return el("span", { class: "badge badge-kev", title }, "KEV");
+}
+
 export async function ensureProductVersions() {
   if (cachedProductVersions && Date.now() - cachedProductVersionsAt < CACHE_TTL_MS) return cachedProductVersions;
   try {

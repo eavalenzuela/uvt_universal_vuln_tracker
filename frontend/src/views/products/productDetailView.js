@@ -3,6 +3,7 @@ import { navigate } from "../../router/router.js";
 import { getState } from "../../state/store.js";
 import { canWrite, isAdmin } from "../../state/permissions.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal } from "../../ui/components/modal.js";
 import { getProduct, updateProduct, createProductVersion, deleteProduct } from "../../api/products.js";
 import { listComponents } from "../../api/components.js";
 import { listVulnerabilities } from "../../api/vulnerabilities.js";
@@ -198,7 +199,7 @@ export async function ProductDetailView(params = {}) {
       const deleteBtn = el("button", { class: "btn text-danger", type: "button" }, "Delete product");
       if (adminUser) {
         deleteBtn.addEventListener("click", async () => {
-          if (!window.confirm(`Delete ${product.name}? This cannot be undone.`)) return;
+          if (!(await confirmModal({ title: "Delete product", message: `Delete ${product.name}? This cannot be undone.`, confirmText: "Delete", danger: true }))) return;
           try {
             await deleteProduct(productId);
             toast({ title: "Product deleted", message: `${product.name} removed.` });

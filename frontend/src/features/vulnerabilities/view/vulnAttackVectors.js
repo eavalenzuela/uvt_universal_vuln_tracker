@@ -1,5 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
+import { confirmModal } from "../../../ui/components/modal.js";
 import {
   updateVulnerabilityAttackVector,
   deleteVulnerabilityAttackVector,
@@ -48,7 +49,7 @@ function renderAttackVectorRow(mapping, vulnId, reloadDetails, canEdit) {
     });
 
     deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Remove this attack vector mapping?")) return;
+      if (!(await confirmModal({ title: "Remove mapping", message: "Remove this attack vector mapping?", confirmText: "Remove", danger: true }))) return;
       saveBtn.disabled = true;
       deleteBtn.disabled = true;
       try {

@@ -1,7 +1,7 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
-import { promptModal } from "../../ui/components/modal.js";
-import { slaBadge } from "../../features/vulnerabilities/view/vulnShared.js";
+import { confirmModal, promptModal } from "../../ui/components/modal.js";
+import { kevBadge, slaBadge } from "../../features/vulnerabilities/view/vulnShared.js";
 import { withLoading } from "../../ui/components/loading.js";
 import { navigate } from "../../router/router.js";
 import { getState } from "../../state/store.js";
@@ -191,6 +191,7 @@ export async function VulnDetailView(params = {}) {
             { class: "row gap-12 flex-wrap" },
             field("Severity", vuln.severity),
             field("Status", vuln.status),
+            vuln.known_exploited ? field("Exploited", kevBadge(vuln)) : null,
             field("SLA state", slaBadge(vuln.sla_state)),
             field("SLA due", formatDateTime(vuln.sla_due_at)),
             field("CVSS", vuln.cvss_score ?? "-"),
@@ -237,10 +238,12 @@ export async function VulnDetailView(params = {}) {
                     { class: "flex-col-8" },
                     ...mergeCandidates.map((candidate) =>
                       renderMergeCandidateRow(candidate, async (choice) => {
-                        const confirm = window.confirm(
-                          `Merge vulnerability #${choice.id} into #${vuln.id}? This will move versions, components, comments, and watchers.`,
-                        );
-                        if (!confirm) return;
+                        const ok = await confirmModal({
+                          title: "Merge vulnerabilities",
+                          message: `Merge vulnerability #${choice.id} into #${vuln.id}? This will move versions, components, comments, and watchers.`,
+                          confirmText: "Merge",
+                        });
+                        if (!ok) return;
                         const reason = (await promptModal({ title: "Merge reason", message: "Optionally provide a reason for this merge.", inputLabel: "Reason", placeholder: "Reason (optional)" })) || undefined;
                         await mergeVulnerability(vuln.id, choice.id, reason);
                         toast({ title: "Vulnerabilities merged", message: `Merged #${choice.id} into #${vuln.id}` });

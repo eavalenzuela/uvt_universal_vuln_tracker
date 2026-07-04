@@ -2,7 +2,35 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+
+
+def resolve_plugin_file_path(path: str) -> Path:
+    """Resolve a plugin ``file_path`` config value, enforcing ``PLUGIN_DATA_DIR``.
+
+    Plugin config is admin-editable, so an unrestricted ``file_path`` lets an
+    Admin (or a compromised Admin account) read arbitrary server files through
+    feed/controls import plugins. When the ``PLUGIN_DATA_DIR`` config value is
+    set, the resolved path must live inside that directory; when it is empty
+    (the default) the legacy unrestricted behavior is preserved so existing
+    installs are unaffected until an operator opts in.
+    """
+    resolved = Path(path).resolve()
+
+    allowed_root = ""
+    from flask import current_app, has_app_context
+
+    if has_app_context():
+        allowed_root = current_app.config.get("PLUGIN_DATA_DIR") or ""
+
+    if allowed_root:
+        root = Path(allowed_root).resolve()
+        if not resolved.is_relative_to(root):
+            raise ValueError(
+                f"Plugin file_path {path!r} is outside PLUGIN_DATA_DIR ({allowed_root!r})."
+            )
+    return resolved
 
 
 @dataclass(slots=True)

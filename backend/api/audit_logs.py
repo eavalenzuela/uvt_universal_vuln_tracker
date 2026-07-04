@@ -1,11 +1,20 @@
-from flask import Blueprint, jsonify, request
+import csv
+import io
+import json
+
+from flask import Blueprint, jsonify, request, Response
 from sqlalchemy.orm import joinedload
 
 from ..models import AuditLog
 from ..auth import role_required
+from ..rate_limiter import rate_limit
 from .validation import ValidationError, error_response, parse_int
 
 bp = Blueprint("audit_logs_api", __name__, url_prefix="/api")
+
+# Hard cap on CSV export size to keep response times and memory bounded;
+# narrow the window with action/table filters for larger histories.
+EXPORT_MAX_ROWS = 10000
 
 
 @bp.get("/audit-logs")
@@ -106,3 +115,86 @@ def list_audit_logs():
         "page": page,
         "page_size": page_size,
     })
+
+
+@bp.get("/audit-logs/export.csv")
+@role_required("Admin")
+@rate_limit("RATE_LIMIT_VULN_EXPORT_LIMIT", "RATE_LIMIT_VULN_EXPORT_WINDOW_SECONDS", identifier="audit_export")
+def export_audit_logs_csv():
+    """Export audit logs as a CSV file.
+    ---
+    get:
+      summary: Export audit logs as CSV
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: action
+          schema:
+            type: string
+          description: Filter by exact action (e.g. UPDATE, IMPERSONATE)
+        - in: query
+          name: table
+          schema:
+            type: string
+          description: Filter by table name (e.g. vulnerabilities)
+      responses:
+        200:
+          description: CSV file download (most recent 10000 rows matching the filters)
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=audit-logs.csv
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    action = (request.args.get("action") or "").strip()
+    table = (request.args.get("table") or "").strip()
+
+    query = AuditLog.query.options(joinedload(AuditLog.user))
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if table:
+        query = query.filter(AuditLog.table_name == table)
+
+    logs = query.order_by(AuditLog.created_at.desc()).limit(EXPORT_MAX_ROWS).all()
+
+    def _json_cell(value):
+        if value in (None, {}):
+            return ""
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["id", "created_at", "action", "table_name", "record_id", "username", "user_email", "old_values", "new_values"],
+    )
+    writer.writeheader()
+    for log in logs:
+        writer.writerow({
+            "id": log.id,
+            "created_at": log.created_at.isoformat() if log.created_at else "",
+            "action": log.action,
+            "table_name": log.table_name,
+            "record_id": log.record_id if log.record_id is not None else "",
+            "username": log.user.username if log.user else "",
+            "user_email": log.user.email if log.user else "",
+            "old_values": _json_cell(log.old_values),
+            "new_values": _json_cell(log.new_values),
+        })
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=audit-logs.csv"},
+    )

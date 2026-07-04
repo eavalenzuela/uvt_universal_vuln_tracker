@@ -147,7 +147,10 @@ The app **refuses to start** if these are left at their dev defaults.
 |----------|---------|-------------|
 | `FLASK_ENV` | `production` | Set to `development` for dev mode. Controls secret validation and cookie defaults. |
 | `FRONTEND_URL` | `http://127.0.0.1:5173` | Used in password reset emails. Set to your actual frontend URL. |
+| `IMPERSONATION_TOKEN_MINUTES` | `15` | Lifetime of Admin impersonation tokens. Tokens carry `impersonation` / `impersonated_by` claims. |
+| `OUTBOUND_ALLOW_PRIVATE_URLS` | `false` | Allow Slack/Jira/notification-webhook deliveries to loopback/private/link-local targets (SSRF guard opt-out for intranet deployments). |
 | `PLUGIN_IMPORT_PATHS` | — | Comma-separated Python module paths for custom plugins |
+| `PLUGIN_DATA_DIR` | — | When set, plugin `file_path` config values must resolve inside this directory. Empty keeps the legacy unrestricted behavior. |
 
 ---
 

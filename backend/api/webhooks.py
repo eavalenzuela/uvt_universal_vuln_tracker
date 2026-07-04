@@ -1,9 +1,14 @@
 """Inbound webhook endpoints (F14).
 
 External systems POST to ``/api/webhooks/ingest/<endpoint_id>`` with an
-``X-UVT-Signature`` header containing an HMAC-SHA256 of the raw body signed
-with the endpoint secret. The raw secret is returned exactly once at creation;
-only its SHA-256 is persisted.
+``X-UVT-Signature`` header containing an HMAC-SHA256 of the raw body keyed
+with the endpoint secret (the ``uvtwh_...`` value returned exactly once at
+creation or rotation).
+
+v2.23.0: signatures are verified against the **raw secret**, which is what
+external senders actually hold. Endpoints created before v2.23.0 only have the
+SHA-256 of their secret on record, so they fall back to the legacy hash-keyed
+verification until their secret is rotated (rotation upgrades them).
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ from sqlalchemy import desc
 from ..auth import admin_required
 from ..database import db
 from ..models import WebhookDeliveryLog, WebhookEndpoint
-from ..rate_limiter import rate_limit
+from ..rate_limiter import get_client_ip, rate_limit
 from ..services.audit import record_audit as _audit
 from ..services.team_scope import team_scope, user_can_access_team, current_team_id
 from ..services.webhook_ingest import WebhookPayloadError, ingest_webhook_payload
@@ -89,7 +94,9 @@ def _log_delivery(
         payload_bytes=payload_bytes,
         vulnerabilities_ingested=vulnerabilities_ingested,
         error_message=error_message,
-        client_ip=(request.remote_addr or "")[:64],
+        # Trusted-proxy-aware client IP (honors RATE_LIMIT_TRUSTED_PROXIES)
+        # instead of the proxy's own address.
+        client_ip=(get_client_ip() or "")[:64],
     )
     db.session.add(log)
 
@@ -141,6 +148,7 @@ def create_webhook():
         name=name,
         source_type=source_type,
         secret_hash=_hash_secret(raw_secret),
+        secret=raw_secret,
         product_version_id=product_version_id,
         owner_id=getattr(request.user, "id", None),
         team_id=req_team,
@@ -205,6 +213,8 @@ def rotate_webhook_secret(endpoint_id: int):
     endpoint = _get_endpoint_or_404(endpoint_id)
     raw_secret = _generate_secret()
     endpoint.secret_hash = _hash_secret(raw_secret)
+    # Rotation also upgrades pre-v2.23.0 endpoints to raw-secret HMAC verification.
+    endpoint.secret = raw_secret
     db.session.commit()
     _audit("webhook.rotate_secret", "webhook_endpoints", endpoint.id)
     db.session.commit()
@@ -244,7 +254,7 @@ def list_webhook_deliveries(endpoint_id: int):
 
 def _ingest_rate_key() -> str:
     view_args = request.view_args or {}
-    return f"webhook_ingest:{request.remote_addr or 'unknown'}:{view_args.get('endpoint_id', '0')}"
+    return f"webhook_ingest:{get_client_ip() or 'unknown'}:{view_args.get('endpoint_id', '0')}"
 
 
 @bp.post("/webhooks/ingest/<int:endpoint_id>")
@@ -274,8 +284,12 @@ def ingest_webhook(endpoint_id: int):
         db.session.commit()
         return error_response("missing X-UVT-Signature header", status_code=401)
 
+    # Prefer the raw secret as the HMAC key — that's what external senders
+    # hold. Endpoints created before v2.23.0 only have the hash on record and
+    # keep the legacy hash-keyed scheme until their secret is rotated.
+    hmac_key = endpoint.secret or endpoint.secret_hash
     expected = hmac.new(
-        key=endpoint.secret_hash.encode("utf-8"),
+        key=hmac_key.encode("utf-8"),
         msg=raw_body,
         digestmod=hashlib.sha256,
     ).hexdigest()

@@ -1,6 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
-import { listAuditLogs } from "../../api/auditLogs.js";
+import { exportAuditLogsCsv, listAuditLogs } from "../../api/auditLogs.js";
 import { createDataTable, createDensityToggle, createTablePagination } from "../../ui/components/dataTable.js";
 
 export async function AdminLogsView() {
@@ -8,6 +8,7 @@ export async function AdminLogsView() {
   const actionInput = el("input", { class: "input", placeholder: "Action (optional)", "aria-label": "Filter by action" });
   const tableInput = el("input", { class: "input", placeholder: "Table (optional)", "aria-label": "Filter by table" });
   const refreshBtn = el("button", { class: "btn" }, "Refresh logs");
+  const exportBtn = el("button", { class: "btn" }, "Export CSV");
   const tableContainer = el("div", { class: "flex-col-8" });
   const paginationContainer = el("div");
 
@@ -121,6 +122,27 @@ export async function AdminLogsView() {
     load();
   });
 
+  exportBtn.addEventListener("click", async () => {
+    exportBtn.disabled = true;
+    try {
+      const blob = await exportAuditLogsCsv({
+        action: actionInput.value.trim() || undefined,
+        table: tableInput.value.trim() || undefined,
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = el("a", { href: objectUrl, download: "audit-logs.csv" });
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast({ title: "Export ready", message: "audit-logs.csv downloaded (current filters applied)." });
+    } catch (e) {
+      toast({ title: "Export failed", message: e?.message || "Unable to export audit logs" });
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
   await load();
 
   return el("div", { class: "flex-col-12" },
@@ -139,6 +161,7 @@ export async function AdminLogsView() {
         pageSizeInput,
         densityToggle,
         refreshBtn,
+        exportBtn,
       ),
       tableContainer,
       paginationContainer,

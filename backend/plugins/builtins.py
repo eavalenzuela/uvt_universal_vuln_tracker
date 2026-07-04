@@ -11,7 +11,11 @@ from .controls_import_plugins import (
     PciDssControlsImportPlugin,
     StigControlsImportPlugin,
 )
-from .vuln_feed_plugins import ExploitDbVulnerabilityFeedPlugin, NvdVulnerabilityFeedPlugin
+from .vuln_feed_plugins import (
+    ExploitDbVulnerabilityFeedPlugin,
+    KevVulnerabilityFeedPlugin,
+    NvdVulnerabilityFeedPlugin,
+)
 
 
 class SlackAlertsPlugin(BasePlugin):
@@ -190,6 +194,7 @@ BUILTIN_PLUGINS: tuple[type[BasePlugin], ...] = (
     JiraSyncPlugin,
     NvdVulnerabilityFeedPlugin,
     ExploitDbVulnerabilityFeedPlugin,
+    KevVulnerabilityFeedPlugin,
     CisControlsImportPlugin,
     PciDssControlsImportPlugin,
     StigControlsImportPlugin,

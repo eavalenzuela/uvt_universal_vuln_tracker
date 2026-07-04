@@ -1,5 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
+import { confirmModal } from "../../../ui/components/modal.js";
 import {
   updateVulnerabilityTerminalImpact,
   deleteVulnerabilityTerminalImpact,
@@ -48,7 +49,7 @@ function renderTerminalImpactRow(mapping, vulnId, reloadDetails, canEdit) {
     });
 
     deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Remove this terminal impact mapping?")) return;
+      if (!(await confirmModal({ title: "Remove mapping", message: "Remove this terminal impact mapping?", confirmText: "Remove", danger: true }))) return;
       saveBtn.disabled = true;
       deleteBtn.disabled = true;
       try {

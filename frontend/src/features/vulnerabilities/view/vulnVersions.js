@@ -1,5 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
+import { confirmModal } from "../../../ui/components/modal.js";
 import {
   updateVulnerabilityVersion,
   deleteVulnerabilityVersion,
@@ -45,7 +46,7 @@ function renderVersionRow(mapping, vulnId, reloadDetails, canEdit) {
     });
 
     deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Remove this product version from the vulnerability?")) return;
+      if (!(await confirmModal({ title: "Detach version", message: "Remove this product version from the vulnerability?", confirmText: "Remove", danger: true }))) return;
       saveBtn.disabled = true;
       deleteBtn.disabled = true;
       try {

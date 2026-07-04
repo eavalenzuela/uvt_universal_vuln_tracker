@@ -27,7 +27,7 @@ def _scoped_vuln_base():
     )
 from .validation import ValidationError, error_response
 from ..services.vulnerability_query import build_vulnerability_query
-from ..services.reporting_service import dashboard_aggregate, risk_trends
+from ..services.reporting_service import dashboard_aggregate, remediation_metrics, risk_trends
 from ..services.slack_alerts import SlackWebhookClient, SlackWebhookError
 from ..services.email_delivery import EmailDeliveryError, send_email
 
@@ -983,6 +983,58 @@ def report_risk_trends():
     """
     try:
         payload = _risk_trends(request.args)
+    except ValueError as exc:
+        return error_response(str(exc), status_code=400)
+    return jsonify(payload)
+
+
+@bp.get("/reports/remediation-metrics")
+@login_required
+@rate_limit("RATE_LIMIT_VULN_LIST_LIMIT", "RATE_LIMIT_VULN_LIST_WINDOW_SECONDS", identifier="remediation_metrics")
+def report_remediation_metrics():
+    """Get remediation-velocity metrics (MTTR and open-vulnerability aging).
+    ---
+    get:
+      summary: Get remediation metrics (MTTR + open aging)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: range
+          required: false
+          schema:
+            type: string
+            default: Last 90 days
+          description: Range expression (e.g. "Last 30 days", "Month to date")
+      responses:
+        200:
+          description: MTTR by severity and open-age buckets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  range:
+                    type: string
+                  resolved:
+                    type: object
+                  open:
+                    type: object
+        400:
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    try:
+        payload = remediation_metrics(request.args, base_query=_scoped_vuln_base())
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     return jsonify(payload)

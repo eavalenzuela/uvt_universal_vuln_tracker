@@ -19,6 +19,7 @@ from ..services.vulnerability_service import (
     SEVERITY_OPTIONS,
     STATUS_OPTIONS,
     parse_sla_due_at,
+    stamp_resolution,
 )
 from ..serializers.vulnerability_serializers import serialize_watcher
 
@@ -287,6 +288,9 @@ def _bulk_update_vulnerabilities():
             with db.session.begin_nested():
                 for field, value in parsed_updates.items():
                     setattr(vuln, field, value)
+
+                if "status" in parsed_updates:
+                    stamp_resolution(vuln)
 
                 if "sla_due_at" not in parsed_updates:
                     recompute_vulnerability_sla(vuln)

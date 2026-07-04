@@ -249,6 +249,12 @@ def list_vulnerabilities():
             minimum: 0
           description: Filter by maximum transitive dependency depth
         - in: query
+          name: known_exploited
+          required: false
+          schema:
+            type: boolean
+          description: Filter by CISA KEV known-exploited flag
+        - in: query
           name: sort
           required: false
           schema:
@@ -352,6 +358,8 @@ def list_vulnerabilities():
             "cvss_version": v.cvss_version,
             "cwe_id": v.cwe_id,
             "references_json": v.references_json or [],
+            "known_exploited": bool(v.known_exploited),
+            "kev_date_added": v.kev_date_added.isoformat() if v.kev_date_added else None,
             "attack_complexity": v.attack_complexity,
             "confidentiality_impact": v.confidentiality_impact,
             "integrity_impact": v.integrity_impact,
@@ -364,6 +372,7 @@ def list_vulnerabilities():
             "updated_at": v.updated_at.isoformat(),
             "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
             "sla_state": compute_sla_state(v, policy),
+            "resolved_at": v.resolved_at.isoformat() if v.resolved_at else None,
             "affected_components_count": len(v.affected_components or []),
             "is_merged": bool(v.is_merged),
             "merged_into_id": v.merged_into_id,
@@ -602,6 +611,8 @@ def get_vulnerability(vuln_id: int):
         "cvss_version": v.cvss_version,
         "cwe_id": v.cwe_id,
         "references_json": v.references_json or [],
+        "known_exploited": bool(v.known_exploited),
+        "kev_date_added": v.kev_date_added.isoformat() if v.kev_date_added else None,
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,
@@ -617,6 +628,7 @@ def get_vulnerability(vuln_id: int):
         "updated_at": v.updated_at.isoformat(),
         "sla_due_at": v.sla_due_at.isoformat() if v.sla_due_at else None,
         "sla_state": compute_sla_state(v),
+        "resolved_at": v.resolved_at.isoformat() if v.resolved_at else None,
         "team_id": getattr(v, "team_id", None),
         "team_name": v.team.name if getattr(v, "team", None) else None,
         "affected_versions": version_rows,

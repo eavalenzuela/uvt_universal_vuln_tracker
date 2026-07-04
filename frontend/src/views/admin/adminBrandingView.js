@@ -1,5 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal } from "../../ui/components/modal.js";
 import {
   deleteBrandingLogo,
   getBranding,
@@ -88,7 +89,7 @@ export async function AdminBrandingView() {
   });
 
   removeBtn.addEventListener("click", async () => {
-    if (!window.confirm("Remove the current logo?")) return;
+    if (!(await confirmModal({ title: "Remove logo", message: "Remove the current logo?", confirmText: "Remove", danger: true }))) return;
     removeBtn.disabled = true;
     try {
       await deleteBrandingLogo();

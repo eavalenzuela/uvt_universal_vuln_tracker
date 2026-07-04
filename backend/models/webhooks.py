@@ -16,6 +16,13 @@ class WebhookEndpoint(db.Model):
     name = db.Column(db.String(120), nullable=False)
     source_type = db.Column(db.String(40), default="generic", nullable=False, index=True)
     secret_hash = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    # HMAC signing key. Ingest signatures are verified against the raw secret,
+    # which is what external senders actually hold. NULL for endpoints created
+    # before v2.23.0 — those fall back to legacy hash-keyed verification until
+    # the secret is rotated. (An HMAC shared secret must be recoverable
+    # server-side to verify; hashing it provided no protection because the
+    # stored hash WAS the verification key.)
+    secret = db.Column(db.String(128))
     is_enabled = db.Column(db.Boolean, default=True, nullable=False, index=True)
 
     product_version_id = db.Column(

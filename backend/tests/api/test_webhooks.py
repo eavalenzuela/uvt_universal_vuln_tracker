@@ -6,8 +6,9 @@ from backend.database import db
 from backend.models import Vulnerability, WebhookDeliveryLog, WebhookEndpoint
 
 
-def _sign(secret_hash: str, body: bytes) -> str:
-    return hmac.new(secret_hash.encode("utf-8"), body, hashlib.sha256).hexdigest()
+def _sign(secret: str, body: bytes) -> str:
+    """Sign the way an external sender does: HMAC keyed with the raw secret."""
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 def _create_endpoint(client, auth_header, admin_user, *, source_type="generic"):
@@ -67,10 +68,6 @@ def test_ingest_rejects_bad_signature(client, admin_user, auth_header):
 def test_ingest_generic_creates_vulnerabilities(app, client, admin_user, auth_header):
     created = _create_endpoint(client, auth_header, admin_user)
 
-    with app.app_context():
-        endpoint = db.session.get(WebhookEndpoint, created["id"])
-        secret_hash = endpoint.secret_hash
-
     payload = {
         "vulnerabilities": [
             {
@@ -87,7 +84,9 @@ def test_ingest_generic_creates_vulnerabilities(app, client, admin_user, auth_he
         ]
     }
     body = json.dumps(payload).encode("utf-8")
-    signature = _sign(secret_hash, body)
+    # Sign with the raw secret returned at creation — the only value an
+    # external sender ever holds.
+    signature = _sign(created["secret"], body)
 
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
@@ -105,10 +104,43 @@ def test_ingest_generic_creates_vulnerabilities(app, client, admin_user, auth_he
         assert endpoint.failure_count == 0
 
 
-def test_ingest_trivy_format(app, client, admin_user, auth_header):
-    created = _create_endpoint(client, auth_header, admin_user, source_type="trivy")
+def test_ingest_rejects_hash_keyed_signature_for_new_endpoints(app, client, admin_user, auth_header):
+    """The pre-v2.23.0 hash-keyed scheme must not verify for endpoints that
+    have the raw secret on record."""
+    created = _create_endpoint(client, auth_header, admin_user)
     with app.app_context():
         secret_hash = db.session.get(WebhookEndpoint, created["id"]).secret_hash
+
+    body = json.dumps({"vulnerabilities": []}).encode("utf-8")
+    response = client.post(
+        f"/api/webhooks/ingest/{created['id']}",
+        data=body,
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
+    )
+    assert response.status_code == 401
+
+
+def test_legacy_endpoint_verifies_hash_keyed_signature(app, client, admin_user, auth_header):
+    """Endpoints created before v2.23.0 have no raw secret stored; they keep
+    working with the legacy hash-keyed HMAC until rotated."""
+    created = _create_endpoint(client, auth_header, admin_user)
+    with app.app_context():
+        endpoint = db.session.get(WebhookEndpoint, created["id"])
+        endpoint.secret = None  # simulate a pre-v2.23.0 row
+        secret_hash = endpoint.secret_hash
+        db.session.commit()
+
+    body = json.dumps({"vulnerabilities": []}).encode("utf-8")
+    response = client.post(
+        f"/api/webhooks/ingest/{created['id']}",
+        data=body,
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
+    )
+    assert response.status_code == 202, response.get_json()
+
+
+def test_ingest_trivy_format(app, client, admin_user, auth_header):
+    created = _create_endpoint(client, auth_header, admin_user, source_type="trivy")
 
     payload = {
         "Results": [
@@ -129,7 +161,7 @@ def test_ingest_trivy_format(app, client, admin_user, auth_header):
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
     )
     assert response.status_code == 202
     with app.app_context():
@@ -138,8 +170,6 @@ def test_ingest_trivy_format(app, client, admin_user, auth_header):
 
 def test_rotate_secret_invalidates_old_signature(app, client, admin_user, auth_header):
     created = _create_endpoint(client, auth_header, admin_user)
-    with app.app_context():
-        old_hash = db.session.get(WebhookEndpoint, created["id"]).secret_hash
 
     response = client.post(
         f"/api/webhooks/{created['id']}/rotate-secret",
@@ -150,15 +180,23 @@ def test_rotate_secret_invalidates_old_signature(app, client, admin_user, auth_h
     assert rotated["secret"].startswith("uvtwh_")
     assert rotated["secret"] != created["secret"]
 
-    # Signing with the old secret hash should now fail.
     body = json.dumps({"vulnerabilities": []}).encode("utf-8")
-    old_sig = _sign(old_hash, body)
+
+    # Signing with the old secret should now fail...
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": old_sig},
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
     )
     assert response.status_code == 401
+
+    # ...while the rotated secret verifies.
+    response = client.post(
+        f"/api/webhooks/ingest/{created['id']}",
+        data=body,
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(rotated["secret"], body)},
+    )
+    assert response.status_code == 202
 
 
 def test_disabled_endpoint_rejects_ingest(app, client, admin_user, auth_header):
@@ -168,13 +206,11 @@ def test_disabled_endpoint_rejects_ingest(app, client, admin_user, auth_header):
         json={"is_enabled": False},
         headers=auth_header(admin_user),
     )
-    with app.app_context():
-        secret_hash = db.session.get(WebhookEndpoint, created["id"]).secret_hash
 
     body = json.dumps({"vulnerabilities": []}).encode("utf-8")
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
+        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
     )
     assert response.status_code == 404

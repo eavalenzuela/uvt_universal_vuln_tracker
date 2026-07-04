@@ -5,6 +5,7 @@ import {
 } from "../../api/notificationDelivery.js";
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal } from "../../ui/components/modal.js";
 import { createDataTable, createDensityToggle } from "../../ui/components/dataTable.js";
 
 function formatDate(value) {
@@ -31,14 +32,14 @@ export async function AdminNotificationDeliveryView() {
       toast({ title: "Retry blocked", message: "Only failed delivery attempts can be retried." });
       return;
     }
-    if (!window.confirm(`Retry failed delivery attempt #${attempt.id}?`)) return;
+    if (!(await confirmModal({ title: "Retry delivery", message: `Retry failed delivery attempt #${attempt.id}?`, confirmText: "Retry" }))) return;
     const result = await retryNotificationDeliveryAttempt(attempt.id);
     toast({ title: "Retry submitted", message: `New attempts: ${result.attempts || 0}` });
     await refresh();
   }
 
   async function onReplay(attempt) {
-    if (!window.confirm(`Replay delivery attempt #${attempt.id}? This triggers the original rule again.`)) return;
+    if (!(await confirmModal({ title: "Replay delivery", message: `Replay delivery attempt #${attempt.id}? This triggers the original rule again.`, confirmText: "Replay" }))) return;
     const result = await replayNotificationDeliveryAttempt(attempt.id);
     toast({ title: "Replay submitted", message: `New attempts: ${result.attempts || 0}` });
     await refresh();

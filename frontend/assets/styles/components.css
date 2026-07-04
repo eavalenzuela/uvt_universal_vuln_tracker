@@ -110,6 +110,9 @@ textarea.input {
 .badge-sla-on-track  { background: #ecfeff; color: #155e75; border-color: #a5f3fc; }
 .badge-sla-met       { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 
+/* CISA KEV (known exploited) badge */
+.badge-kev           { background: #7f1d1d; color: #fef2f2; border-color: #991b1b; font-weight: 600; }
+
 /* ── Layout Utilities ────────────────────────────────────── */
 .flex-col    { display: flex; flex-direction: column; }
 .flex-col-2  { display: flex; flex-direction: column; gap: 2px; }

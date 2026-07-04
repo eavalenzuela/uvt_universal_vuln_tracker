@@ -17,12 +17,15 @@ from ..models import (
     ProductVersion,
     Notification,
     User,
+    UserPreferences,
     Vulnerability,
     VulnerabilityVersion,
+    VulnerabilityWatcher,
 )
 from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
 from .email_delivery import EmailDeliveryError, send_email
+from .url_guard import UnsafeOutboundUrlError, validate_outbound_url
 from ..live_notifications import publish_user_event
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
@@ -135,6 +138,10 @@ def _slack_send(config: dict[str, Any], text: str) -> dict[str, Any]:
     webhook_url = config.get("webhook_url")
     if not webhook_url:
         raise SlackWebhookError("Missing webhook_url")
+    try:
+        validate_outbound_url(webhook_url, purpose="Slack webhook")
+    except UnsafeOutboundUrlError as exc:
+        raise SlackWebhookError(str(exc)) from exc
     client = SlackWebhookClient(webhook_url)
     response = client.send_message(
         text=text,
@@ -151,6 +158,10 @@ def _jira_send(config: dict[str, Any], vulnerability: Vulnerability, text: str) 
     project_key = config.get("project_key")
     if not base_url or not api_token or not project_key:
         raise JiraApiError("Missing Jira configuration (base_url, api_token, project_key)")
+    try:
+        validate_outbound_url(base_url, purpose="Jira base")
+    except UnsafeOutboundUrlError as exc:
+        raise JiraApiError(str(exc)) from exc
 
     client = JiraClient(base_url=base_url, api_token=api_token, user_email=config.get("user_email"))
     issue_key = client.create_issue(fields={
@@ -166,6 +177,7 @@ def _webhook_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, 
     webhook_url = config.get("webhook_url")
     if not webhook_url:
         raise ValueError("Missing webhook_url")
+    validate_outbound_url(webhook_url, purpose="notification webhook")
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     req = urllib_request.Request(webhook_url, data=body, method="POST")
     req.add_header("Content-Type", "application/json; charset=utf-8")
@@ -277,12 +289,79 @@ def _publish_rule_trigger_event(event: NotificationEvent, vulnerability: Vulnera
         publish_user_event(user_id=user_id, event_type="rule_triggered", payload=payload)
 
 
+_WATCHER_EVENT_TYPES = {"updated", "status_change", "assignment_change", "version_link_change"}
+
+
+def notify_watchers_for_event(event: NotificationEvent, vulnerability: Vulnerability) -> list[Notification]:
+    """Create in-app notifications for watchers of an updated vulnerability.
+
+    Watchers opted out via the ``notify_on_watched_vuln_update`` preference are
+    skipped (a missing preferences row means "use defaults" = opted in), as is
+    the acting user.
+    """
+    if event.event_type not in _WATCHER_EVENT_TYPES:
+        return []
+
+    rows = (
+        db.session.query(VulnerabilityWatcher, User, UserPreferences)
+        .join(User, VulnerabilityWatcher.user_id == User.id)
+        .outerjoin(UserPreferences, UserPreferences.user_id == User.id)
+        .filter(
+            VulnerabilityWatcher.vulnerability_id == vulnerability.id,
+            User.is_active.is_(True),
+        )
+        .all()
+    )
+
+    notifications: list[Notification] = []
+    for _watcher, user, prefs in rows:
+        if event.actor_id is not None and user.id == event.actor_id:
+            continue
+        if prefs is not None and not prefs.notify_on_watched_vuln_update:
+            continue
+
+        if event.event_type == "status_change":
+            detail = f"status changed to {vulnerability.status}"
+        elif event.event_type == "assignment_change":
+            detail = "assignment changed"
+        else:
+            detail = "was updated"
+        row = Notification(
+            user_id=user.id,
+            vulnerability_id=vulnerability.id,
+            message=f"Watched vulnerability #{vulnerability.id} ({vulnerability.title}) {detail}.",
+        )
+        db.session.add(row)
+        db.session.flush()
+        notifications.append(row)
+        publish_user_event(
+            user_id=user.id,
+            event_type="watched_vulnerability_updated",
+            payload={
+                "notification": {
+                    "id": row.id,
+                    "user_id": user.id,
+                    "vulnerability_id": vulnerability.id,
+                    "message": row.message,
+                    "is_read": False,
+                    "event_type": event.event_type,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                }
+            },
+        )
+
+    return notifications
+
+
 def trigger_notifications_for_event(event: NotificationEvent, *, dry_run_rule_id: int | None = None) -> list[NotificationDeliveryLog]:
     vulnerability = db.session.get(Vulnerability, event.vulnerability_id)
     if not vulnerability:
         return []
 
     _publish_rule_trigger_event(event, vulnerability)
+
+    if dry_run_rule_id is None:
+        notify_watchers_for_event(event, vulnerability)
 
     query = NotificationRule.query.filter_by(is_enabled=True)
     if dry_run_rule_id is not None:

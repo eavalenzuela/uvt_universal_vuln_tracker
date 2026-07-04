@@ -58,6 +58,10 @@ class Vulnerability(db.Model):
     cvss_version = db.Column(db.String(16))
     cwe_id = db.Column(db.String(32), index=True)
     references_json = db.Column(db.JSON, default=list, nullable=False)
+    # CISA KEV (Known Exploited Vulnerabilities): set by the vuln-feed-kev
+    # plugin when the CVE appears in the KEV catalog.
+    known_exploited = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    kev_date_added = db.Column(db.Date)
     attack_complexity = db.Column(db.String(20), default="Not Defined", nullable=False)
     confidentiality_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
     integrity_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
@@ -68,6 +72,9 @@ class Vulnerability(db.Model):
 
     status = db.Column(db.String(20), default="Open", nullable=False, index=True)  # Open/In Progress/Resolved/Closed
     sla_due_at = db.Column(TZDateTime)
+    # Stamped when status transitions into Resolved/Closed; cleared on reopen.
+    # Basis for remediation (MTTR) metrics.
+    resolved_at = db.Column(TZDateTime)
 
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

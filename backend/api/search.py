@@ -1,11 +1,11 @@
-"""Global search API — search across vulnerabilities, products, and comments."""
+"""Global search API — search across vulnerabilities, products, components, and comments."""
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import or_
 
 from ..auth import login_required
 from ..database import db
-from ..models import Vulnerability, Product, VulnerabilityComment, User
+from ..models import Product, ProductVersion, SoftwareComponent, User, Vulnerability, VulnerabilityComment
 from ..services.team_scope import team_ids_for_user, team_scope
 from .validation import error_response, escape_like
 
@@ -42,10 +42,22 @@ def _comment_hit(c, author_name):
     }
 
 
+def _component_hit(component, product_id, product_name, version_label):
+    return {
+        "id": component.id,
+        "name": component.name,
+        "version": component.version,
+        "ecosystem": component.ecosystem,
+        "product_id": product_id,
+        "product_name": product_name,
+        "product_version": version_label,
+    }
+
+
 @bp.get("/search")
 @login_required
 def global_search():
-    """Search across vulnerabilities, products, and comments.
+    """Search across vulnerabilities, products, components, and comments.
     ---
     get:
       summary: Global search
@@ -72,6 +84,8 @@ def global_search():
                   vulnerabilities:
                     type: array
                   products:
+                    type: array
+                  components:
                     type: array
                   comments:
                     type: array
@@ -140,9 +154,40 @@ def global_search():
         .all()
     )
 
+    # Software components: name, ecosystem, purl. Visibility inherits from the
+    # owning product's team.
+    component_query = (
+        db.session.query(SoftwareComponent, Product.id, Product.name, ProductVersion.version)
+        .join(ProductVersion, SoftwareComponent.product_version_id == ProductVersion.id)
+        .join(Product, ProductVersion.product_id == Product.id)
+        .filter(or_(
+            SoftwareComponent.name.ilike(like, escape="\\"),
+            SoftwareComponent.ecosystem.ilike(like, escape="\\"),
+            SoftwareComponent.purl.ilike(like, escape="\\"),
+        ))
+    )
+    if user and user.role != "Admin":
+        ids = team_ids_for_user(user)
+        if ids:
+            component_query = component_query.filter(
+                or_(Product.team_id.in_(ids), Product.team_id.is_(None))
+            )
+        else:
+            component_query = component_query.filter(Product.team_id.is_(None))
+
+    component_rows = (
+        component_query.order_by(SoftwareComponent.name)
+        .limit(MAX_RESULTS_PER_TYPE)
+        .all()
+    )
+
     return jsonify({
         "query": q,
         "vulnerabilities": [_vuln_hit(v) for v in vulns],
         "products": [_product_hit(p) for p in products],
+        "components": [
+            _component_hit(component, product_id, product_name, version_label)
+            for component, product_id, product_name, version_label in component_rows
+        ],
         "comments": [_comment_hit(c, author) for c, author in comment_rows],
     })

@@ -592,11 +592,6 @@ def reset_password():
     if not password:
         return error_response("Password is required", field="password", status_code=400)
 
-    try:
-        validate_password(password)
-    except PasswordTooWeakError as exc:
-        return error_response(str(exc), field="password", status_code=400)
-
     record = validate_reset_token(token)
     if not record:
         return error_response("Invalid or expired reset token", status_code=400)
@@ -604,6 +599,11 @@ def reset_password():
     user = db.session.get(User, record.user_id)
     if not user or not user.is_active:
         return error_response("Invalid or expired reset token", status_code=400)
+
+    try:
+        validate_password(password, username=user.username, email=user.email)
+    except PasswordTooWeakError as exc:
+        return error_response(str(exc), field="password", status_code=400)
 
     user.password_hash = hash_password(password)
     revoke_tokens(user)

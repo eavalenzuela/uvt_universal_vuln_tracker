@@ -313,3 +313,91 @@ def risk_trends(filters):
         "items": trend_rows,
         "top_risk_products": top_risk,
     }
+
+
+def _mean(values):
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def _median(values):
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return round(ordered[mid], 1)
+    return round((ordered[mid - 1] + ordered[mid]) / 2, 1)
+
+
+OPEN_AGE_BUCKETS = (("0-7", 7), ("8-30", 30), ("31-90", 90), ("90+", None))
+
+
+def remediation_metrics(filters, *, base_query=None):
+    """Remediation-velocity metrics: MTTR and open-vulnerability aging.
+
+    MTTR is computed from ``resolved_at`` (stamped on the transition into
+    Resolved/Closed) minus ``created_at``, over vulns resolved inside the
+    requested range. Open aging buckets days-since-creation for currently
+    Open / In Progress vulns. ``base_query`` should already be team-scoped.
+    """
+    range_value = filters.get("range") or "Last 90 days"
+    start = range_start(range_value)
+    now = datetime.now(timezone.utc)
+
+    base = base_query if base_query is not None else Vulnerability.query
+
+    resolved = (
+        base.filter(
+            Vulnerability.resolved_at.isnot(None),
+            Vulnerability.resolved_at >= start,
+        )
+        .all()
+    )
+
+    resolved_days_all = []
+    resolved_by_severity = {}
+    for vuln in resolved:
+        if not vuln.created_at:
+            continue
+        days = max((vuln.resolved_at - vuln.created_at).total_seconds() / 86400.0, 0.0)
+        resolved_days_all.append(days)
+        resolved_by_severity.setdefault(vuln.severity, []).append(days)
+
+    open_vulns = base.filter(Vulnerability.status.in_(list(OPEN_STATUSES))).all()
+    open_age_buckets = {label: 0 for label, _ in OPEN_AGE_BUCKETS}
+    open_age_by_severity = {}
+    for vuln in open_vulns:
+        if not vuln.created_at:
+            continue
+        age_days = max((now - vuln.created_at).total_seconds() / 86400.0, 0.0)
+        for label, upper in OPEN_AGE_BUCKETS:
+            if upper is None or age_days <= upper:
+                open_age_buckets[label] += 1
+                severity_buckets = open_age_by_severity.setdefault(
+                    vuln.severity, {bucket_label: 0 for bucket_label, _ in OPEN_AGE_BUCKETS}
+                )
+                severity_buckets[label] += 1
+                break
+
+    return {
+        "range": range_value,
+        "start_date": start.isoformat(),
+        "resolved": {
+            "count": len(resolved_days_all),
+            "mttr_days_avg": _mean(resolved_days_all),
+            "mttr_days_median": _median(resolved_days_all),
+            "by_severity": {
+                severity: {
+                    "count": len(days),
+                    "mttr_days_avg": _mean(days),
+                    "mttr_days_median": _median(days),
+                }
+                for severity, days in sorted(resolved_by_severity.items())
+            },
+        },
+        "open": {
+            "count": len(open_vulns),
+            "age_buckets": open_age_buckets,
+            "age_buckets_by_severity": open_age_by_severity,
+        },
+    }

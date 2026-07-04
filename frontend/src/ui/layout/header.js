@@ -235,7 +235,8 @@ export function renderHeader() {
 
     function renderResults(data) {
       resultsPanel.innerHTML = "";
-      const total = data.vulnerabilities.length + data.products.length + data.comments.length;
+      const components = data.components || [];
+      const total = data.vulnerabilities.length + data.products.length + components.length + data.comments.length;
       if (!total) {
         resultsPanel.appendChild(el("div", { class: "muted p-10" }, "No results found."));
         return;
@@ -260,6 +261,22 @@ export function renderHeader() {
             style: "border-radius:0; display:block;",
             onclick: () => { closeSearchDropdown(); navigate(`/products/${p.id}`); },
           }, p.name));
+        });
+      }
+
+      if (components.length) {
+        resultsPanel.appendChild(el("div", { class: "text-label p-8" }, "Components"));
+        components.forEach((c) => {
+          const label = [
+            `${c.name}${c.version ? `@${c.version}` : ""}`,
+            c.ecosystem ? `(${c.ecosystem})` : "",
+            c.product_name ? `— ${c.product_name}` : "",
+          ].filter(Boolean).join(" ");
+          resultsPanel.appendChild(el("button", {
+            class: "btn w-full text-left",
+            style: "border-radius:0; display:block;",
+            onclick: () => { closeSearchDropdown(); navigate(`/products/${c.product_id}`); },
+          }, label));
         });
       }
 

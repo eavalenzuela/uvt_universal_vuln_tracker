@@ -17,6 +17,12 @@ class NormalizedVuln:
     description: str | None = None
     severity: str | None = None
     cvss_score: float | None = None
+    cvss_vector: str | None = None
+    cvss_version: str | None = None
+    cwe_id: str | None = None
+    references: tuple[str, ...] | None = None
+    known_exploited: bool | None = None
+    kev_date_added: date | None = None
     published_date: date | None = None
     last_modified_date: date | None = None
     raw_payload: Mapping[str, Any] | None = None
@@ -129,6 +135,24 @@ def _apply_normalized(vulnerability: Vulnerability, normalized: NormalizedVuln) 
         vulnerability.severity = normalized.severity
     if normalized.cvss_score is not None:
         vulnerability.cvss_score = normalized.cvss_score
+    if normalized.cvss_vector is not None:
+        vulnerability.cvss_vector = normalized.cvss_vector
+    if normalized.cvss_version is not None:
+        vulnerability.cvss_version = normalized.cvss_version
+    if normalized.cwe_id is not None:
+        vulnerability.cwe_id = normalized.cwe_id
+    if normalized.references:
+        existing = list(vulnerability.references_json or [])
+        seen = set(existing)
+        for reference in normalized.references:
+            if reference not in seen:
+                existing.append(reference)
+                seen.add(reference)
+        vulnerability.references_json = existing
+    if normalized.known_exploited is not None:
+        vulnerability.known_exploited = normalized.known_exploited
+    if normalized.kev_date_added is not None:
+        vulnerability.kev_date_added = normalized.kev_date_added
     if normalized.published_date is not None:
         vulnerability.published_date = normalized.published_date
     if normalized.last_modified_date is not None:

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Iterable, Mapping
 from urllib.request import Request, urlopen
 
-from .base import ControlsImportPlugin
+from .base import ControlsImportPlugin, resolve_plugin_file_path
 from .controls_import.cis import map_cis_record
 from .controls_import.pci_dss import map_pci_dss_record
 from .controls_import.stig import map_stig_record
@@ -172,7 +171,7 @@ def _load_json_from_url(url: str, *, auth_token: str | None, timeout_seconds: in
 
 
 def _load_json_from_file(path: str) -> Any:
-    payload = Path(path).read_text(encoding="utf-8")
+    payload = resolve_plugin_file_path(path).read_text(encoding="utf-8")
     return json.loads(payload)
 
 

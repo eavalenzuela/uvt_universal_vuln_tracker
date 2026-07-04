@@ -1,5 +1,6 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal } from "../../ui/components/modal.js";
 import { createMyApiToken, listMyApiTokens, revokeMyApiToken } from "../../api/users.js";
 import { getState } from "../../state/store.js";
 
@@ -141,7 +142,12 @@ export async function AdminApiTokensView() {
       }
       tokens.forEach((token) => {
         listRoot.appendChild(tokenCard(token, async (selectedToken) => {
-          const ok = window.confirm(`Revoke token "${selectedToken.name}"? This cannot be undone.`);
+          const ok = await confirmModal({
+            title: "Revoke token",
+            message: `Revoke token "${selectedToken.name}"? This cannot be undone.`,
+            confirmText: "Revoke",
+            danger: true,
+          });
           if (!ok) return;
           try {
             await revokeMyApiToken(selectedToken.id);

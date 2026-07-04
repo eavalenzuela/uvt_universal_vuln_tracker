@@ -10,6 +10,7 @@ import {
 import { listControls, createControl } from "../../api/controls.js";
 import { listActiveUsers } from "../../api/users.js";
 import { toast } from "../../ui/components/toast.js";
+import { confirmModal } from "../../ui/components/modal.js";
 
 function renderOwnerChip(owner) {
   const label = owner.full_name || owner.username || owner.email || `User ${owner.id}`;
@@ -125,7 +126,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
           });
 
           deleteBtn.addEventListener("click", async () => {
-            if (!confirm(`Delete version ${v.version}?`)) return;
+            if (!(await confirmModal({ title: "Delete version", message: `Delete version ${v.version}?`, confirmText: "Delete", danger: true }))) return;
             try {
               await deleteProductVersion(product.id, v.id);
               toast({ title: "Version removed", message: `${v.version} deleted.` });
@@ -278,7 +279,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
         const removeBtn = el("button", { class: "btn text-danger" }, "Remove");
         if (canEdit) {
           removeBtn.addEventListener("click", async () => {
-            if (!confirm(`Remove ${mapping.name} from this product?`)) return;
+            if (!(await confirmModal({ title: "Remove control", message: `Remove ${mapping.name} from this product?`, confirmText: "Remove", danger: true }))) return;
             removeBtn.disabled = true;
             try {
               const updated = mappings.filter((entry) => entry.id !== mapping.id);
@@ -560,7 +561,7 @@ export function renderProductCard(product, reloadList, { canEdit, isAdminUser })
     );
     if (isAdminUser) {
       deleteBtn.addEventListener("click", async () => {
-        if (!confirm(`Delete ${detailData.name}? This cannot be undone.`)) return;
+        if (!(await confirmModal({ title: "Delete product", message: `Delete ${detailData.name}? This cannot be undone.`, confirmText: "Delete", danger: true }))) return;
         try {
           await deleteProduct(product.id);
           toast({ title: "Product deleted", message: `${detailData.name} removed.` });

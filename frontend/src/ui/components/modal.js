@@ -136,3 +136,109 @@ export function promptModal({
     input.select();
   });
 }
+
+/**
+ * Show a confirmation dialog that replaces window.confirm patterns.
+ *
+ * Unlike the native dialog it is theme-aware, focus-trapped, and announced to
+ * assistive technology (see promptModal for the shared behaviors).
+ *
+ * @param {object} opts
+ * @param {string} opts.title         - Dialog heading
+ * @param {string} [opts.message]     - Descriptive text
+ * @param {string} [opts.confirmText] - Text for the confirm button (default "Confirm")
+ * @param {string} [opts.cancelText]  - Text for the cancel button (default "Cancel")
+ * @param {boolean} [opts.danger]     - Style the confirm button as destructive
+ * @returns {Promise<boolean>}        - Resolves true when confirmed, false otherwise
+ */
+export function confirmModal({
+  title = "Confirm",
+  message = "",
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  danger = false,
+} = {}) {
+  return new Promise((resolve) => {
+    const backdrop = el("div", {
+      class: "modal-backdrop",
+      role: "alertdialog",
+      "aria-modal": "true",
+      "aria-label": title,
+    });
+
+    const confirmBtn = el("button", { class: `btn ${danger ? "danger" : "primary"}`, type: "submit" }, confirmText);
+    const cancelBtn = el("button", { class: "btn", type: "button" }, cancelText);
+
+    // Remember the trigger so focus can be restored when the dialog closes.
+    const previouslyFocused = document.activeElement;
+
+    function close(value) {
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey);
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+      resolve(value);
+    }
+
+    function focusableNodes() {
+      return Array.from(
+        backdrop.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => node.offsetParent !== null);
+    }
+
+    function onKey(e) {
+      if (e.key === "Escape") {
+        close(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        // Trap focus inside the dialog so Tab can't escape to the page behind it.
+        const nodes = focusableNodes();
+        if (!nodes.length) return;
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || !backdrop.contains(active))) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (active === last || !backdrop.contains(active))) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    cancelBtn.addEventListener("click", () => close(false));
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) close(false);
+    });
+
+    const form = el(
+      "form",
+      {
+        class: "modal-panel modal-sm",
+        style: "min-width:340px;max-width:480px;",
+        onsubmit: (e) => {
+          e.preventDefault();
+          close(true);
+        },
+      },
+      el("h3", { class: "m-0" }, title),
+      message ? el("p", { class: "muted m-0" }, message) : null,
+      el(
+        "div",
+        { class: "row flex-end gap-8" },
+        cancelBtn,
+        confirmBtn,
+      ),
+    );
+
+    backdrop.appendChild(form);
+    document.body.appendChild(backdrop);
+    document.addEventListener("keydown", onKey);
+    cancelBtn.focus();
+  });
+}

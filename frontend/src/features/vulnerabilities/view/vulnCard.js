@@ -1,5 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
+import { confirmModal } from "../../../ui/components/modal.js";
 import {
   getVulnerability,
   updateVulnerability,
@@ -14,6 +15,7 @@ import {
   SEVERITY_OPTIONS,
   ATTACK_COMPLEXITY_OPTIONS,
   IMPACT_OPTIONS,
+  kevBadge,
   severityBadge,
   slaBadge,
   statusPill,
@@ -168,6 +170,7 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
       severityBadge(detailData.severity || "Unknown"),
       statusPill(detailData.status || "Open"),
       slaBadge(detailData.sla_state),
+      kevBadge(detailData),
       detailData.cvss_score !== null && detailData.cvss_score !== undefined
         ? el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: detailData.cvss_score }))
         : null,
@@ -194,7 +197,7 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
             ? (() => {
                 const delBtn = el("button", { class: "btn text-danger" }, "Delete");
                 delBtn.addEventListener("click", async () => {
-                  if (!confirm(`Delete ${detailData.title}? This cannot be undone.`)) return;
+                  if (!(await confirmModal({ title: "Delete vulnerability", message: `Delete ${detailData.title}? This cannot be undone.`, confirmText: "Delete", danger: true }))) return;
                   try {
                     await deleteVulnerability(vuln.id);
                     toast({ title: "Deleted", message: `${detailData.title} removed.` });
@@ -288,6 +291,7 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
       severityBadge(vuln.severity || "Medium"),
       statusPill(vuln.status || "Open"),
       slaBadge(vuln.sla_state),
+      kevBadge(vuln),
       el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: vuln.cvss_score ?? "-" })),
       el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: vuln.attack_complexity || "Not Defined" })),
       el("div", {}, el("div", { class: "muted", text: "Confidentiality impact" }), el("div", { text: vuln.confidentiality_impact || "Not Defined" })),

@@ -1,6 +1,6 @@
 import { el } from "../../../ui/dom/el.js";
 import { toast } from "../../../ui/components/toast.js";
-import { promptModal } from "../../../ui/components/modal.js";
+import { confirmModal, promptModal } from "../../../ui/components/modal.js";
 import {
   listVulnerabilities,
   createVulnerability,
@@ -379,7 +379,7 @@ export async function VulnListView(params = {}) {
       toast({ title: "Select filter", message: "Choose a saved filter first." });
       return;
     }
-    if (!window.confirm("Delete selected saved filter?")) return;
+    if (!(await confirmModal({ title: "Delete saved filter", message: "Delete selected saved filter?", confirmText: "Delete", danger: true }))) return;
     try {
       await deleteSavedVulnerabilityFilter(id);
       savedFiltersSelect.value = "";

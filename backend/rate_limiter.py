@@ -197,6 +197,16 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
+def get_client_ip():
+    """Trusted-proxy-aware client IP for the current request.
+
+    Public wrapper around the rate limiter's IP resolution so other modules
+    (e.g. webhook delivery logging) attribute requests to the real client
+    instead of the reverse proxy, honoring ``RATE_LIMIT_TRUSTED_PROXIES``.
+    """
+    return _client_ip()
+
+
 def _default_key(identifier=None):
     user = getattr(request, "user", None)
     user_component = f"user:{user.id}" if user is not None else "anon"
