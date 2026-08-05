@@ -87,6 +87,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      # The image's HEALTHCHECK polls http://localhost:5000/api/health, which
+      # these containers do not serve — they run Celery, not Gunicorn — so both
+      # reported "unhealthy" permanently while working fine. Ask Celery instead.
+      test: ["CMD-SHELL", "celery -A backend.celery_app:celery inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 
   celery-beat:
@@ -104,6 +113,14 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      # Beat has no inspect endpoint, and the slim image ships neither pgrep
+      # nor ps, so check the thing beat actually depends on: the broker.
+      test: ["CMD-SHELL", "python -c \"from backend.celery_app import celery; celery.broker_connection().ensure_connection(max_retries=1)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 
   redis:
