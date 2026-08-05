@@ -83,6 +83,33 @@ def run_plugin_task(self, *, run_id: int, plugin_id: str, config: dict[str, Any]
 # Notification scan
 # ---------------------------------------------------------------------------
 
+@celery.task(bind=True, name="uvt.run_due_plugins", max_retries=0)
+def run_due_plugins_task(self):
+    """Run every enabled plugin whose schedule says it is due.
+
+    Beat calls this hourly; each plugin's own ``interval_minutes`` /
+    ``schedule_cron`` decides whether it actually runs. Without it, a plugin's
+    schedule was configurable in the UI but nothing ever consulted it — the
+    only way to run a plugin was to press the button.
+    """
+    from flask import current_app
+
+    from .plugins.runner import run_plugins
+
+    registry = current_app.extensions.get("plugin_registry")
+    if registry is None:
+        logger.error("Plugin registry unavailable; skipping scheduled plugin run")
+        return {"status": "error", "detail": "Plugin registry unavailable"}
+
+    runs = run_plugins(registry, only_due=True)
+    db.session.commit()
+    return {
+        "status": "success",
+        "runs": len(runs),
+        "plugin_ids": [r.plugin_id for r in runs],
+    }
+
+
 @celery.task(bind=True, name="uvt.notification_scan", max_retries=0)
 def notification_scan_task(self, *, dry_run: bool = False):
     """Run the scheduled notification scan in the background."""

@@ -469,3 +469,69 @@ def test_request_body_size_is_bounded(app):
     assert app.config["MAX_CONTENT_LENGTH"] > 0
     # Generous enough for real scanner exports, which are tens of megabytes.
     assert app.config["MAX_CONTENT_LENGTH"] >= 32 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# Plugin config types were never enforced
+# ---------------------------------------------------------------------------
+
+def test_plugin_config_values_are_coerced_to_their_declared_types():
+    """An HTML form yields strings; the schema says integer.
+
+    Nothing coerced, so `timeout_seconds` was stored as "30" and the KEV feed
+    died on urlopen(timeout="30") with "'str' object cannot be interpreted as
+    an integer" — surfaced to the operator only as "artifact persistence
+    failed".
+    """
+    from backend.plugins.config import prepare_plugin_config
+
+    schema = {
+        "fields": [
+            {"name": "timeout_seconds", "type": "integer", "default": 30},
+            {"name": "ratio", "type": "number"},
+            {"name": "only_flag_existing", "type": "boolean"},
+            {"name": "feed_url", "type": "string"},
+        ]
+    }
+    prepared = prepare_plugin_config(
+        {"timeout_seconds": "45", "ratio": "0.5", "only_flag_existing": "false",
+         "feed_url": "https://example.com/f.json"},
+        schema,
+    )
+    assert prepared["timeout_seconds"] == 45 and isinstance(prepared["timeout_seconds"], int)
+    assert prepared["ratio"] == 0.5 and isinstance(prepared["ratio"], float)
+    assert prepared["only_flag_existing"] is False
+    assert prepared["feed_url"] == "https://example.com/f.json"
+
+
+def test_plugin_config_defaults_keep_their_declared_type():
+    from backend.plugins.config import prepare_plugin_config
+
+    prepared = prepare_plugin_config(
+        {}, {"fields": [{"name": "timeout_seconds", "type": "integer", "default": 30}]}
+    )
+    assert isinstance(prepared["timeout_seconds"], int)
+
+
+def test_uncoercible_plugin_config_value_is_reported_by_field():
+    """A bad value should be a named validation error, not a runtime crash."""
+    import pytest
+
+    from backend.plugins.config import prepare_plugin_config
+
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        prepare_plugin_config(
+            {"timeout_seconds": "half a minute"},
+            {"fields": [{"name": "timeout_seconds", "type": "integer"}]},
+        )
+
+
+def test_empty_optional_numeric_config_is_left_alone():
+    """A blank optional field must not become 0 or raise."""
+    from backend.plugins.config import prepare_plugin_config
+
+    prepared = prepare_plugin_config(
+        {"timeout_seconds": ""},
+        {"fields": [{"name": "timeout_seconds", "type": "integer"}]},
+    )
+    assert prepared["timeout_seconds"] == ""

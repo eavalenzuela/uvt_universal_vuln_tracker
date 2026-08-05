@@ -3,20 +3,31 @@
 Creates a Celery instance tied to the Flask app so that tasks run inside
 an application context with access to the database and config.
 
-Usage (worker)::
+Do **not** point the worker at this module. It defines the Celery instance but
+not the Flask app, so tasks would run without an application context. Use
+``backend.celery_worker`` instead::
 
-    celery -A backend.celery_app:celery worker --loglevel=info
-
-Usage (beat scheduler)::
-
-    celery -A backend.celery_app:celery beat --loglevel=info
+    celery -A backend.celery_worker:celery worker --loglevel=info
+    celery -A backend.celery_worker:celery beat --loglevel=info
 """
 
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
-celery = Celery("uvt")
+# ``include`` is what makes the worker import backend.tasks.
+#
+# Without it the worker started with an empty task registry: the web process
+# imports the task functions lazily at dispatch time
+# (``from ..tasks import run_plugin_task``), so *sending* worked, but
+# `celery -A backend.celery_app:celery worker` only ever imported this module.
+# Every message was answered with "Received unregistered task of type
+# 'uvt.run_plugin'. The message has been ignored and discarded." — so with
+# CELERY_ENABLED=true (the compose default) plugin runs, async PDF rendering,
+# notification scans and the retention purge were all dropped on the floor,
+# leaving their rows stuck in "running"/"pending" forever.
+celery = Celery("uvt", include=["backend.tasks"])
 
 # Sensible defaults — overridden by init_celery() when the Flask app boots.
 celery.config_from_object({
@@ -30,6 +41,32 @@ celery.config_from_object({
     "task_acks_late": True,
     "worker_prefetch_multiplier": 1,
 })
+
+# Recurring work. celery-beat previously ran with no schedule at all, so the
+# service was a no-op: nothing was ever scheduled, and the documented
+# "scheduled execution" of the retention purge and notification scan never
+# happened. Times are UTC.
+BEAT_SCHEDULE = {
+    "notification-scan": {
+        "task": "uvt.notification_scan",
+        # Every 15 minutes: SLA breaches and watched-vulnerability updates
+        # should surface within a working session, not once a day.
+        "schedule": crontab(minute="*/15"),
+    },
+    "run-due-plugins": {
+        "task": "uvt.run_due_plugins",
+        # Hourly; each plugin's own interval_minutes/schedule_cron decides
+        # whether it is actually due.
+        "schedule": crontab(minute=5),
+    },
+    "purge-old-data": {
+        "task": "uvt.purge_old_data",
+        # Nightly, off-peak. Retention windows are measured in days, so more
+        # frequent runs buy nothing and just hold locks.
+        "schedule": crontab(hour=3, minute=30),
+    },
+}
+celery.conf.beat_schedule = BEAT_SCHEDULE
 
 
 def init_celery(app) -> Celery:

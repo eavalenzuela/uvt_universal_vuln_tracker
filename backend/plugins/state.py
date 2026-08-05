@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
@@ -11,6 +12,8 @@ from ..models import (
     PluginRunArtifact,
     PluginRunArtifactLink,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_plugin_config(plugin_id: str) -> PluginConfig | None:
@@ -169,11 +172,15 @@ def save_plugin_run_result(
                     )
 
         db.session.commit()
-    except Exception:
+    except Exception as exc:
+        # Log the real exception. This used to be replaced wholesale with the
+        # string "artifact persistence failed", which told an operator nothing
+        # and left no trace anywhere of what actually went wrong.
+        logger.exception("Persisting artifacts for plugin run %s failed", run.id)
         db.session.rollback()
         run = db.session.get(PluginRun, run.id)
         run.status = "partial_failed"
         run.finished_at = finished_at
-        run.error = "artifact persistence failed"
+        run.error = f"artifact persistence failed: {type(exc).__name__}: {exc}"[:500]
         db.session.commit()
     return run

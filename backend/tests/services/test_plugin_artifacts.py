@@ -104,7 +104,11 @@ def test_plugin_artifact_save_failure_sets_partial_failed(app, client, admin_use
     status_resp = client.get(f"/api/plugins/runs/{run_id}", headers=auth_header(admin_user))
     payload = status_resp.get_json()
     assert payload["status"] == "partial_failed"
-    assert payload["error"] == "artifact persistence failed"
+    # The message now carries the underlying exception. It used to be replaced
+    # wholesale with the bare string, which told an operator nothing about what
+    # actually failed and left no trace of it anywhere.
+    assert payload["error"].startswith("artifact persistence failed")
+    assert ":" in payload["error"], "the real exception should be included"
 
     with app.app_context():
         assert PluginRunArtifact.query.filter_by(plugin_run_id=run_id).count() == 0

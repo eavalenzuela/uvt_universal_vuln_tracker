@@ -78,6 +78,49 @@ stack. This release fixes them.
   status-filtered count "Total". `range` is validated instead of silently
   falling back to 14 days.
 
+### Background jobs — the whole pipeline was dead in Docker
+
+Found by asking whether the plugins actually work. With `CELERY_ENABLED=true`
+(the compose default) **every** background task was silently dropped, so plugin
+runs, async PDF rendering, notification scans and the retention purge all hung
+forever with their rows stuck in "running"/"pending". Four separate causes:
+
+- The worker ran `celery -A backend.celery_app:celery worker`, which imports
+  only the module defining the Celery instance. `backend.tasks` was never
+  imported in the worker process, so its registry was empty and every message
+  was answered with "Received unregistered task ... ignored and discarded".
+  Fixed with `include=["backend.tasks"]`.
+- The worker never called `create_app()`, so `ContextTask` was never installed
+  and any task that got that far died on its first database access with
+  "Working outside of application context". Added `backend/celery_worker.py`
+  as the entrypoint, and pointed compose at it.
+- `celery-beat` ran with **no schedule at all** — the container was a no-op
+  despite the UI exposing per-plugin schedules. Added a beat schedule and a
+  `uvt.run_due_plugins` task that honours each plugin's own interval.
+- Plugin config values were never coerced to their declared types. An HTML
+  form yields strings, so `timeout_seconds` was stored as `"30"` and the KEV
+  feed died on `urlopen(timeout="30")`. `prepare_plugin_config` now coerces on
+  read and write, so configs already stored wrong repair themselves.
+
+Also: artifact-persistence failures were replaced wholesale with the string
+"artifact persistence failed", discarding the real exception and logging
+nothing. The cause is now logged and included in the message — that opacity is
+what hid the timeout bug.
+
+Verified end to end: the CISA KEV plugin fetches the live catalog (1,660
+entries) and correctly flags CVE-2021-44228 with its real KEV date.
+
+### Infrastructure
+
+- nginx re-resolves the backend per request (`resolver` + a variable in
+  `proxy_pass`). It cached the upstream IP at config load, so any backend
+  restart or rebuild left the whole app returning 502 until nginx was
+  restarted too — permanent downtime from a transient backend crash.
+- celery-worker, celery-beat and frontend now have healthchecks that reflect
+  their actual state. The celery services inherited the backend's HTTP
+  healthcheck and reported unhealthy forever; nginx listened IPv4-only while
+  `localhost` is `::1` in-container.
+
 ### Design and usability
 
 - Vulnerabilities page: compact filter bar with the seven advanced filters

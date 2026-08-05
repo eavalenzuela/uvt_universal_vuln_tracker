@@ -74,7 +74,7 @@ services:
     build:
       context: .
       target: backend
-    command: celery -A backend.celery_app:celery worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
+    command: celery -A backend.celery_worker:celery worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-uvt_user}:${POSTGRES_PASSWORD:-uvt_pass}@postgres:5432/${POSTGRES_DB:-uvt}
@@ -91,7 +91,7 @@ services:
       # The image's HEALTHCHECK polls http://localhost:5000/api/health, which
       # these containers do not serve — they run Celery, not Gunicorn — so both
       # reported "unhealthy" permanently while working fine. Ask Celery instead.
-      test: ["CMD-SHELL", "celery -A backend.celery_app:celery inspect ping -d celery@$$HOSTNAME || exit 1"]
+      test: ["CMD-SHELL", "celery -A backend.celery_worker:celery inspect ping -d celery@$$HOSTNAME || exit 1"]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -102,7 +102,7 @@ services:
     build:
       context: .
       target: backend
-    command: celery -A backend.celery_app:celery beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    command: celery -A backend.celery_worker:celery beat --loglevel=info --schedule /tmp/celerybeat-schedule
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-uvt_user}:${POSTGRES_PASSWORD:-uvt_pass}@postgres:5432/${POSTGRES_DB:-uvt}

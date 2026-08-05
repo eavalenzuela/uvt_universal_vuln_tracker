@@ -122,6 +122,68 @@ def apply_config_defaults(
     return updated
 
 
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+_FALSE_STRINGS = frozenset({"0", "false", "no", "off", ""})
+
+
+def coerce_config_types(
+    config: Mapping[str, Any],
+    schema: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Coerce config values to the types their schema fields declare.
+
+    Nothing used to enforce declared types. Every value written through the
+    admin UI arrives as a string — that is what an HTML form produces — so a
+    field declared ``type: integer`` happily stored ``"30"``, and the first
+    thing that used it as a number blew up. The KEV feed plugin died on
+    ``urlopen(timeout="30")`` with ``TypeError: 'str' object cannot be
+    interpreted as an integer``, reported only as "artifact persistence
+    failed".
+
+    Coercion runs on read as well as write, so configs already stored with the
+    wrong type are repaired rather than needing a migration.
+
+    Values that cannot be coerced raise ``ValueError`` naming the field, which
+    surfaces as a normal validation error instead of a runtime crash.
+    """
+    normalized = _normalize_fields(schema or {})
+    coerced: dict[str, Any] = dict(config)
+
+    for name, spec in normalized.items():
+        if name not in coerced:
+            continue
+        value = coerced[name]
+        declared = str(spec.get("type") or "string").lower()
+
+        # Empty optional fields and unresolved secrets stay as they are.
+        if value is None or (isinstance(value, str) and not value.strip() and declared != "string"):
+            continue
+        if spec.get("secret") and is_masked_value(value):
+            continue
+
+        try:
+            if declared == "integer" and not isinstance(value, bool):
+                coerced[name] = int(str(value).strip())
+            elif declared == "number" and not isinstance(value, bool):
+                coerced[name] = float(str(value).strip())
+            elif declared == "boolean":
+                if isinstance(value, bool):
+                    continue
+                text = str(value).strip().lower()
+                if text in _TRUE_STRINGS:
+                    coerced[name] = True
+                elif text in _FALSE_STRINGS:
+                    coerced[name] = False
+                else:
+                    raise ValueError(text)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Plugin config field '{name}' must be {declared}, got {value!r}"
+            ) from exc
+
+    return coerced
+
+
 def validate_required_config(
     config: Mapping[str, Any],
     schema: Mapping[str, Any] | None,
@@ -150,6 +212,9 @@ def prepare_plugin_config(
     current = dict(config or {})
     current = apply_config_defaults(current, validated_schema)
     current = resolve_config_secrets(current, validated_schema, env=env, secret_store=secret_store)
+    # After secret resolution, so a value pulled from the environment (always a
+    # string) is coerced too.
+    current = coerce_config_types(current, validated_schema)
     validate_required_config(current, validated_schema)
     return current
 
