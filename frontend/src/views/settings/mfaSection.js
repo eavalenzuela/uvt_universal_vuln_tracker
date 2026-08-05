@@ -10,7 +10,7 @@ import { toast } from "../../ui/components/toast.js";
  * This is the enrolment side of it.
  */
 export function renderMfaSection() {
-  const section = el("div", { class: "flex-col-10 card p-16 mt-12" });
+  const section = el("div", { class: "flex-col-10 card p-16 mt-12 mfa-section" });
   const body = el("div", { class: "flex-col-8" });
 
   section.append(

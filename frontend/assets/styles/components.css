@@ -789,6 +789,16 @@ input[type="radio"] {
 }
 
 /* ── MFA settings ───────────────────────────────────────────*/
+/* These live in a flex column, whose default align-items: stretch would make a
+   status pill and a button span the full card width. */
+.mfa-section .pill,
+.mfa-section .btn,
+.mfa-section .mfa-secret,
+.mfa-section a.link,
+.mfa-section .recovery-codes {
+  align-self: flex-start;
+  max-width: 100%;
+}
 .mfa-secret {
   display: inline-block;
   padding: 8px 12px;
