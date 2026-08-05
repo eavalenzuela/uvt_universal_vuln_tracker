@@ -3,15 +3,23 @@ import { toast } from "../../ui/components/toast.js";
 import { promptModal } from "../../ui/components/modal.js";
 import { getState, setSession } from "../../state/store.js";
 import { impersonateUser, inviteUser, listUsers, exportUsers, toggleUserActive } from "../../api/users.js";
-import { createFilterRow } from "../../ui/primitives/filters.js";
+import { createFilterBar } from "../../ui/primitives/filters.js";
 import { createDataTable, createDensityToggle, createTablePagination } from "../../ui/components/dataTable.js";
 
-function pill(label, color, subtle = false) {
-  const baseColor = color || "#1f2937";
-  const bg = subtle ? `${baseColor}15` : `${baseColor}22`;
+/**
+ * Status/role pill.
+ *
+ * This used to take a hex colour and use it for *both* the text and a 13%-alpha
+ * tint of itself as the background. Same hue, low separation: "Active" landed
+ * at 2.55:1 and "Analyst" at 2.67:1 — the elements whose whole job is to be
+ * readable at a glance were the least readable on the page, in both themes.
+ *
+ * Tones now resolve to CSS classes with foreground and background chosen
+ * independently per theme (see .pill-tone-* in components.css).
+ */
+function pill(label, tone = "neutral") {
   return el("span", {
-    class: "pill",
-    style: `display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:12px; font-size:12px; background:${bg}; color:${baseColor}; border:1px solid ${baseColor}33; font-weight:600;`,
+    class: `pill pill-tone-${tone}`,
     text: label,
   });
 }
@@ -57,9 +65,14 @@ export async function AdminUsersView() {
   const exportBtn = el("button", { class: "btn" }, "Export CSV");
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
 
-  const controls = createFilterRow({
-    controls: [searchInput, statusSelect, roleSelect, pageSizeSelect, applyBtn],
-    actions: [inviteBtn, exportBtn],
+  const controls = createFilterBar({
+    primary: [
+      { label: "Search", control: searchInput },
+      { label: "Status", control: statusSelect },
+      { label: "Role", control: roleSelect },
+      { label: "Per page", control: pageSizeSelect },
+    ],
+    actions: [applyBtn, inviteBtn, exportBtn],
   });
   controls.style.margin = "12px 0";
 
@@ -72,7 +85,7 @@ export async function AdminUsersView() {
 
   const inviteUsername = el("input", { class: "input", placeholder: "Username", required: "true", "aria-label": "Username" });
   const inviteEmail = el("input", { class: "input", placeholder: "Email", required: "true", "aria-label": "Email" });
-  const inviteRole = el("select", { class: "input" },
+  const inviteRole = el("select", { class: "input", "aria-label": "Role for the invited user" },
     el("option", { value: "Admin", text: "Admin" }),
     el("option", { value: "Analyst", text: "Analyst", selected: "true" }),
     el("option", { value: "Viewer", text: "Viewer" }),
@@ -112,14 +125,13 @@ export async function AdminUsersView() {
     { key: "username", label: "Username" },
     { key: "full_name", label: "Full Name", render: (user) => user.full_name || user.username },
     { key: "email", label: "Email" },
-    { key: "role", label: "Role", render: (user) => pill(user.role, "#2563eb") },
+    { key: "role", label: "Role", render: (user) => pill(user.role, "info") },
     {
       key: "status",
       label: "Status",
       render: (user) => {
         const statusLabel = user.is_active ? "Active" : "Disabled";
-        const statusColor = user.is_active ? "#16a34a" : "#dc2626";
-        return pill(statusLabel, statusColor, true);
+        return pill(statusLabel, user.is_active ? "success" : "danger");
       },
     },
     {
@@ -329,7 +341,7 @@ export async function AdminUsersView() {
       el("div", { class: "row gap-8 flex-between" },
         el("div", { class: "row gap-8" },
           el("div", { class: "font-bold", text: "User overview" }),
-          pill("Real-time", "#059669", true),
+          pill("Real-time", "success"),
         ),
         densityToggleContainer,
       ),

@@ -20,7 +20,7 @@ export FLASK_APP=backend.uvt_app
 flask run --debug
 
 # Seed admin user
-flask seed-admin --username admin --email admin@example.com --password changeme
+flask seed-admin --username admin --email admin@example.com --password 'CHOOSE-A-STRONG-PASSPHRASE'
 
 # Run plugins / notification scan
 flask run-plugins [--plugin-id ID] [--include-disabled] [--only-due]
@@ -60,16 +60,16 @@ pip install -r requirements-dev.txt
 playwright install chromium
 
 # Take screenshots of all pages
-python scripts/screenshot-pages.py --user admin --pass changeme
+python scripts/screenshot-pages.py --user admin --pass 'CHOOSE-A-STRONG-PASSPHRASE'
 
 # Custom URL (default: http://localhost:8080)
-python scripts/screenshot-pages.py --url http://localhost:5173 --user admin --pass changeme
+python scripts/screenshot-pages.py --url http://localhost:5173 --user admin --pass 'CHOOSE-A-STRONG-PASSPHRASE'
 
 # Specific pages only
-python scripts/screenshot-pages.py --pages dashboard,vulnerabilities --user admin --pass changeme
+python scripts/screenshot-pages.py --pages dashboard,vulnerabilities --user admin --pass 'CHOOSE-A-STRONG-PASSPHRASE'
 
 # Persist snapshots for changelog records
-python scripts/screenshot-pages.py --save-as v2.12.0-before --user admin --pass changeme
+python scripts/screenshot-pages.py --save-as v2.12.0-before --user admin --pass 'CHOOSE-A-STRONG-PASSPHRASE'
 ```
 
 Screenshots land in `screenshots/` (gitignored). Use `--save-as <label>` to copy them to `docs/images/<label>/` for permanent records.

@@ -24,6 +24,27 @@ import { renderVersionsSection } from "./vulnVersions.js";
 import { renderAttackVectorsSection } from "./vulnAttackVectors.js";
 import { renderTerminalImpactsSection } from "./vulnTerminalImpacts.js";
 
+function metaCell(label, value) {
+  return el("div", { class: "vuln-cell" },
+    el("div", { class: "vuln-cell-label", text: label }),
+    el("div", { class: "vuln-cell-value", text: value }),
+  );
+}
+
+/** Pad to one decimal so the column reads as numbers, not ragged text. */
+function formatCvss(score) {
+  if (score === null || score === undefined || score === "") return "—";
+  const n = Number(score);
+  return Number.isFinite(n) ? n.toFixed(1) : String(score);
+}
+
+function formatEpss(score) {
+  if (score === null || score === undefined || score === "") return "—";
+  const n = Number(score);
+  if (!Number.isFinite(n)) return "—";
+  return `${(n * 100).toFixed(1)}%`;
+}
+
 export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
   const { autoOpen = false, writable = false, selectedIds = null, onToggleSelect = null } = options;
   const detailContent = el("div", {});
@@ -276,28 +297,41 @@ export function renderVulnerabilityCard(vuln, reloadList, options = {}) {
           "div",
           {},
           el("div", { class: "muted", text: vuln.cve_id || `VULN-${vuln.id}` }),
-          el("div", { class: "font-semibold", text: vuln.title }),
+          el("a", {
+            class: "font-semibold vuln-title-link",
+            href: `#/vulnerabilities/${vuln.id}`,
+            text: vuln.title,
+          }),
         ),
       ),
+      // "Open page" and "View" were indistinguishable to anyone who had not
+      // read the code. The row title is now the link to the page; the row
+      // itself only expands and edits inline.
       el("div", { class: "row gap-6" },
-        el("button", { class: "btn", type: "button", onClick: () => navigate(`/vulnerabilities/${vuln.id}`) }, "Open page"),
         viewBtn,
         editBtn
       ),
     ),
+    // A fixed column grid, not a wrapping flex row.
+    //
+    // Every cell used to size to its own content, so "CVSS" started at a
+    // different x-position on each row and no column could be scanned
+    // vertically. The CVSS sub-scores are also dropped from the row when they
+    // carry no information — rendering "Not Defined" four times per row spent
+    // more than half the width saying nothing. They remain in the detail view.
     el(
       "div",
-      { class: "row flex-wrap gap-12", style: "margin-top:6px;" },
-      severityBadge(vuln.severity || "Medium"),
-      statusPill(vuln.status || "Open"),
-      slaBadge(vuln.sla_state),
-      kevBadge(vuln),
-      el("div", {}, el("div", { class: "muted", text: "CVSS" }), el("div", { text: vuln.cvss_score ?? "-" })),
-      el("div", {}, el("div", { class: "muted", text: "Attack complexity" }), el("div", { text: vuln.attack_complexity || "Not Defined" })),
-      el("div", {}, el("div", { class: "muted", text: "Confidentiality impact" }), el("div", { text: vuln.confidentiality_impact || "Not Defined" })),
-      el("div", {}, el("div", { class: "muted", text: "Integrity impact" }), el("div", { text: vuln.integrity_impact || "Not Defined" })),
-      el("div", {}, el("div", { class: "muted", text: "Availability impact" }), el("div", { text: vuln.availability_impact || "Not Defined" })),
-      el("div", {}, el("div", { class: "muted", text: "Updated" }), el("div", { text: formatDate(vuln.updated_at) })),
+      { class: "vuln-row-meta" },
+      el("div", { class: "vuln-cell vuln-cell-badges" },
+        severityBadge(vuln.severity || "Medium"),
+        statusPill(vuln.status || "Open"),
+        slaBadge(vuln.sla_state),
+        kevBadge(vuln),
+      ),
+      metaCell("CVSS", formatCvss(vuln.cvss_score)),
+      metaCell("CWE", vuln.cwe_id || "—"),
+      metaCell("EPSS", formatEpss(vuln.epss_score)),
+      metaCell("Updated", formatDate(vuln.updated_at)),
     ),
   );
 

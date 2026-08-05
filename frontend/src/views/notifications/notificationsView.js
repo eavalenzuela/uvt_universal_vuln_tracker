@@ -4,7 +4,7 @@ import { removeNotification, setNotifications } from "../../state/store.js";
 
 export function NotificationsView() {
   const root = el("div", { class: "stack" });
-  root.appendChild(el("h2", {}, "Notifications"));
+  root.appendChild(el("h1", { class: "page-title" }, "Notifications"));
 
   const actions = el("div", { class: "row gap-8" });
   const tableWrap = el("div", { class: "card" }, el("div", { class: "muted p-10" }, "Loading..."));

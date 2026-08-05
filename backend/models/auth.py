@@ -22,6 +22,22 @@ class User(db.Model):
 
     token_version = db.Column(db.Integer, default=1, nullable=False)
     last_revoked_at = db.Column(TZDateTime)
+
+    # Per-account brute-force protection. The IP-keyed rate limit alone left
+    # accounts open to a distributed attack while letting one user's typos
+    # throttle everyone behind the same NAT gateway.
+    failed_login_count = db.Column(db.Integer, default=0, nullable=False)
+    locked_until = db.Column(TZDateTime)
+    last_failed_login_at = db.Column(TZDateTime)
+
+    # TOTP multi-factor authentication. The secret is only meaningful once
+    # mfa_enabled is true — enrolment stores it first, then flips the flag when
+    # the user proves they can generate a valid code.
+    mfa_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    mfa_secret = db.Column(db.String(64))
+    mfa_recovery_codes = db.Column(db.JSON, default=list, nullable=False)
+    mfa_enrolled_at = db.Column(TZDateTime)
+
     refresh_tokens = db.relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     api_tokens = db.relationship("ApiToken", back_populates="owner", cascade="all, delete-orphan")
 

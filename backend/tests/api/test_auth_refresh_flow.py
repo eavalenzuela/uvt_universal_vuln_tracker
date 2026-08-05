@@ -46,7 +46,14 @@ def test_logout_revokes_refresh_token_and_blocks_future_refresh(client, admin_us
     login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     refresh_token = login.get_json()["refresh_token"]
 
-    logout = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    # Logout is CSRF-protected like every other state-changing route; the
+    # frontend attaches this header to all write requests automatically.
+    csrf = login.get_json()["csrf_token"]
+    logout = client.post(
+        "/api/auth/logout",
+        json={"refresh_token": refresh_token},
+        headers={"X-CSRF-Token": csrf},
+    )
     assert logout.status_code == 200
 
     refresh = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
@@ -57,14 +64,19 @@ def test_logout_clears_auth_cookie_with_or_without_refresh_token(client, admin_u
     login = client.post("/api/auth/login", json={"username": "admin", "password": "secret-pass-12"})
     refresh_token = login.get_json()["refresh_token"]
 
-    with_token = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    csrf = login.get_json()["csrf_token"]
+    with_token = client.post(
+        "/api/auth/logout",
+        json={"refresh_token": refresh_token},
+        headers={"X-CSRF-Token": csrf},
+    )
     assert with_token.status_code == 200
     with_token_cookie = "\n".join(with_token.headers.getlist("Set-Cookie"))
     assert "uvt_auth_token=" in with_token_cookie
     assert "uvt_csrf_token=" in with_token_cookie
     assert "Max-Age=0" in with_token_cookie
 
-    without_token = client.post("/api/auth/logout", json={})
+    without_token = client.post("/api/auth/logout", json={}, headers={"X-CSRF-Token": csrf})
     assert without_token.status_code == 200
     without_token_cookie = "\n".join(without_token.headers.getlist("Set-Cookie"))
     assert "uvt_auth_token=" in without_token_cookie

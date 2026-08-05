@@ -37,6 +37,7 @@ from .vulnerabilities import (
     VulnerabilityTerminalImpact,
     VulnerabilitySource,
     SlaPolicy,
+    VulnerabilityAttachment,
 )
 
 from .notifications import (
@@ -109,6 +110,7 @@ __all__ = [
     "VulnerabilityTerminalImpact",
     "VulnerabilitySource",
     "SlaPolicy",
+    "VulnerabilityAttachment",
     "Notification",
     "NotificationRule",
     "NotificationDeliveryLog",

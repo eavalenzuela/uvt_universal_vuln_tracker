@@ -6,10 +6,11 @@ Flask request latency, counts, and application-level gauges.
 
 from __future__ import annotations
 
-import time
+import hmac
 import logging
+import time
 
-from flask import Flask, request, Response
+from flask import Flask, current_app, request, Response
 from prometheus_client import (
     Counter,
     Gauge,
@@ -140,6 +141,19 @@ def init_metrics(app: Flask) -> None:
                   schema:
                     type: string
         """
+        # /metrics reports vulnerability counts by severity and active-user
+        # numbers — business-sensitive on its own, and a useful reconnaissance
+        # signal. It is unauthenticated by default because Prometheus scrapes
+        # it from inside the deployment network (the compose file no longer
+        # publishes the backend port). Setting METRICS_TOKEN requires a bearer
+        # token, for deployments that must expose it more widely.
+        expected = current_app.config.get("METRICS_TOKEN")
+        if expected:
+            provided = request.headers.get("Authorization", "")
+            token = provided[7:].strip() if provided.lower().startswith("bearer ") else ""
+            if not token or not hmac.compare_digest(token, expected):
+                return Response("Unauthorized", status=401, mimetype="text/plain")
+
         _refresh_app_gauges()
         return Response(generate_latest(registry), mimetype=CONTENT_TYPE_LATEST)
 

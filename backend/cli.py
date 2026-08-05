@@ -4,7 +4,7 @@ from flask.cli import with_appcontext
 
 from .database import db
 from .models import User
-from .auth import hash_password
+from .auth import PasswordTooWeakError, hash_password, validate_password
 from .plugins.runner import run_plugins
 from .services.notification_rules import run_scheduled_notification_scan
 from .services.data_retention import purge_old_records
@@ -22,7 +22,15 @@ def seed_admin(username, email, password):
     Create or update an Admin user.
     Safe to run multiple times.
     """
-    db.create_all()
+    # The bootstrap Admin is the account with the most authority and the
+    # longest life, so it gets the same policy as every other account. This
+    # used to call hash_password() directly, which let the documented
+    # '--password changeme' through.
+    try:
+        validate_password(password, username=username, email=email)
+    except PasswordTooWeakError as exc:
+        raise click.ClickException(f"{exc}. Choose a stronger password for the Admin account.") from exc
+
     user = User.query.filter(
         (User.username == username) | (User.email == email)
     ).first()

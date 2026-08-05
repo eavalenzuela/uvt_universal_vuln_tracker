@@ -162,8 +162,17 @@ export function renderRiskOverviewWidget(widgetSettings) {
     const kpiRow = el(
       "div",
       { class: "widget-kpi-grid" },
+      // The tile said "Total" while counting only the widget's status filter,
+      // so the dashboard reported 12 where the list reported 38. Name what is
+      // actually being counted; the server returns the applied scope.
       el("div", { class: "widget-surface" },
-        el("div", { class: "muted", text: "Total" }),
+        el("div", {
+          class: "muted",
+          text: summaryState.scope?.status ? `${summaryState.scope.status} total` : "Total",
+          title: summaryState.scope?.status
+            ? `Vulnerabilities with status ${summaryState.scope.status} (all time)`
+            : "All vulnerabilities",
+        }),
         el("div", { class: "kpi-value", text: summaryState.total ?? 0 }),
       ),
       el("div", { class: "widget-surface" },

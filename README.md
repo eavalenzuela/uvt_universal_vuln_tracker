@@ -1,4 +1,4 @@
-# Universal Vulnerability Tracker (UVT) — v2.23.0
+# Universal Vulnerability Tracker (UVT) — v2.24.0
 
 A full-stack vulnerability management platform with a Python/Flask API backend and vanilla JavaScript frontend. Track products, software components, vulnerabilities, SLA compliance, and risk trends across your organization.
 
@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 export FLASK_APP=backend.uvt_app
 flask run --debug          # http://127.0.0.1:5000
-flask seed-admin --username admin --email admin@example.com --password changeme
+flask seed-admin --username admin --email admin@example.com --password 'CHOOSE-A-STRONG-PASSPHRASE'
 ```
 
 ### Frontend

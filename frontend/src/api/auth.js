@@ -60,3 +60,28 @@ export async function resendVerification(email) {
     body: { email },
   });
 }
+
+// ── Multi-factor authentication ─────────────────────────────
+export async function mfaStatus() {
+  return apiFetch("/api/auth/mfa/status", { method: "GET" });
+}
+
+export async function mfaEnroll() {
+  return apiFetch("/api/auth/mfa/enroll", { method: "POST" });
+}
+
+export async function mfaConfirm(code) {
+  return apiFetch("/api/auth/mfa/confirm", { method: "POST", body: { code } });
+}
+
+export async function mfaDisable(password) {
+  return apiFetch("/api/auth/mfa/disable", { method: "POST", body: { password } });
+}
+
+/** Exchange the login challenge plus a code (or recovery code) for a session. */
+export async function mfaVerify({ mfaToken, code, recoveryCode }) {
+  return apiFetch("/api/auth/mfa/verify", {
+    method: "POST",
+    body: { mfa_token: mfaToken, code, recovery_code: recoveryCode },
+  });
+}

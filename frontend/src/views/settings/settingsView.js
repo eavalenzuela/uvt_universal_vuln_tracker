@@ -1,6 +1,7 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
 import { getMyPreferences, updateMyPreferences } from "../../api/userPreferences.js";
+import { renderMfaSection } from "./mfaSection.js";
 
 const THEMES = [
   { value: "auto", label: "Match system" },
@@ -55,7 +56,7 @@ function checkboxInput(id, label, checked) {
 
 export async function SettingsView() {
   const page = el("div", { class: "flex-col-10 p-16", style: "max-width:720px" });
-  page.appendChild(el("h2", { class: "m-0" }, "Settings"));
+  page.appendChild(el("h1", { class: "page-title m-0" }, "Settings"));
   page.appendChild(el("p", { class: "muted m-0" }, "Your personal preferences. Saved per account."));
 
   const status = el("div", { class: "muted" }, "Loading…");
@@ -124,5 +125,6 @@ export async function SettingsView() {
   });
 
   page.appendChild(form);
+  page.appendChild(renderMfaSection());
   return page;
 }

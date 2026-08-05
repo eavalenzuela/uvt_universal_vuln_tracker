@@ -428,7 +428,18 @@ services:
 
 ### Initial Setup
 
-Tables are created automatically on app startup (`db.create_all()`). For a fresh deployment:
+The schema is managed by Alembic migrations. On a completely empty database
+the app applies them itself at boot; anything else is an explicit
+`flask db upgrade` so it can be sequenced with a backup.
+
+If the database is behind the migrations, the app **refuses to serve**: every
+API route returns `503` and `/api/health` names the reason. That is deliberate.
+UVT used to call `db.create_all()`, which creates missing *tables* but never
+adds a column to an existing one — so any release that added a column left
+upgraded deployments 500-ing on the first page a user opened, with a health
+check that still said `ok`.
+
+For a fresh deployment:
 
 ```bash
 # Docker Compose
@@ -480,18 +491,39 @@ docker compose exec -T postgres pg_restore --clean --if-exists \
 
 ### Schema Upgrades
 
-The `scripts/update-db.sh` script handles migrations with automatic backup and rollback on failure:
-
 ```bash
-# From repo root
+# See what would be applied — changes nothing
+./scripts/update-db.sh --dry-run
+
+# Back up, then migrate
 ./scripts/update-db.sh
 ./scripts/update-db.sh --database-url "postgresql+psycopg://user:pass@host:5432/uvt"
 ```
 
-This script:
-1. Creates a backup (pg_dump for PostgreSQL, file copy for SQLite)
-2. Runs the migration
-3. Automatically restores from backup if the migration fails
+The script backs up (pg_dump for PostgreSQL, file copy for SQLite), runs
+`flask db upgrade`, and **stops on failure**, telling you where the backup is.
+It does not restore automatically: restoring a backup over a live database
+discards everything written since the dump, which is a decision for an
+operator looking at the actual error.
+
+Alembic runs each revision in a transaction, so a failed revision rolls itself
+back and the database stays on its previous version.
+
+Under Docker the container entrypoint runs `flask db upgrade` once before
+Gunicorn forks, so the workers never race to migrate. Set `RUN_MIGRATIONS=false`
+to manage migrations out of band.
+
+**Adding a schema change:**
+
+```bash
+flask db revision --autogenerate -m "describe the change"
+# Read the generated file. Autogenerate does not know about data, so a new
+# NOT NULL column needs a server_default or a backfill step.
+flask db upgrade
+```
+
+`backend/tests/test_migrations.py` fails the build if a model changes without a
+matching revision, so drift cannot reach a release.
 
 ---
 

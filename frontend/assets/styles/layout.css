@@ -127,3 +127,52 @@
   }
   .form-grid { gap: var(--spacing-sm); }
 }
+
+/* ── Header overflow ────────────────────────────────────────
+   At 390px the header's control row did not wrap, so the document scrolled to
+   504px — 114px past the viewport — and the Logout button sat off-screen while
+   the global search was crushed to a 40px box reading "Se".
+
+   On desktop the row must stay one line, so the search box shrinks rather than
+   the row wrapping (wrapping unconditionally doubled the header height at
+   1440px). Below 900px the search moves to its own full-width row instead of
+   competing with the buttons for what is left. */
+#app-header > .row {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.header-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#app-header .header-username {
+  white-space: nowrap;
+  /* The search box is the flexible element; the identity label keeps its
+     width so it never degrades to "ad…". */
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  #app-header > .row {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-xs);
+  }
+  .header-search {
+    order: 10;
+    flex-basis: 100%;
+    max-width: none;
+    margin: var(--spacing-xs) 0 0;
+  }
+}
+
+@media (max-width: 560px) {
+  #app-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  /* The username is already implied by the account controls; the label is the
+     first thing worth losing when space runs out. */
+  #app-header .header-username { display: none; }
+}
+
+/* Nothing may push the document wider than the viewport. */
+html, body { max-width: 100%; overflow-x: hidden; }

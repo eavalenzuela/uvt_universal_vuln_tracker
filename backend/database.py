@@ -1,8 +1,9 @@
 from datetime import timezone
+from pathlib import Path
 
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
-from sqlalchemy import inspect, text
 import sqlalchemy.types as sa_types
 
 
@@ -21,108 +22,43 @@ class TZDateTime(sa_types.TypeDecorator):
             value = value.replace(tzinfo=timezone.utc)
         return value
 
+
 db = SQLAlchemy()
+migrate = Migrate()
 
-# Columns to backfill on SQLite databases created before these existed.
-# Each tuple: (column_name, sql_type, default_value)
-_SQLITE_VULN_COLUMN_BACKFILL = [
-    ("attack_complexity", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
-    ("confidentiality_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
-    ("integrity_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
-    ("availability_impact", "VARCHAR(20) NOT NULL DEFAULT 'Not Defined'"),
-    # v2.23.0: CISA KEV flag + remediation timestamp.
-    ("known_exploited", "BOOLEAN NOT NULL DEFAULT 0"),
-    ("kev_date_added", "DATE"),
-    ("resolved_at", "DATETIME"),
-]
-
-# F17 Slice 2: report artifact lifecycle columns.
-_SQLITE_REPORT_ARTIFACT_BACKFILL = [
-    ("status", "VARCHAR(16) NOT NULL DEFAULT 'ready'"),
-    ("error", "TEXT"),
-    ("celery_task_id", "VARCHAR(64)"),
-]
-
-# F3: email verification. Existing users predate the feature and are treated as
-# already verified (DEFAULT 1) so backfilling never locks anyone out.
-_SQLITE_USER_COLUMN_BACKFILL = [
-    ("email_verified", "BOOLEAN NOT NULL DEFAULT 1"),
-]
-
-# v2.23.0: raw webhook signing secret. NULL for pre-existing endpoints, which
-# keep legacy hash-keyed HMAC verification until their secret is rotated.
-_SQLITE_WEBHOOK_ENDPOINT_BACKFILL = [
-    ("secret", "VARCHAR(128)"),
-]
+MIGRATIONS_DIR = str(Path(__file__).resolve().parent.parent / "migrations")
 
 
 def init_database(app):
-    db.init_app(app)
-    with app.app_context():
-        db.create_all()
-    _ensure_sqlite_schema(app)
+    """Bind SQLAlchemy and Alembic to the app.
 
+    Schema creation is *not* performed here — that belongs to Alembic, and
+    ``backend.schema_guard`` verifies the result at boot.
 
-def _ensure_sqlite_schema(app):
-    """Auto-create tables and backfill columns for SQLite dev databases.
-
-    For PostgreSQL the schema should be managed externally (e.g. via a
-    migration tool or ``db.create_all()`` in a one-off script).
+    The hand-rolled column backfill that used to live in this module is gone.
+    It only ever ran for SQLite, which is precisely why PostgreSQL deployments
+    drifted silently while the test suite stayed green.
     """
+    db.init_app(app)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIR, render_as_batch=True)
+
+
+def create_all_for_tests(app):
+    """Build the schema from model metadata, then stamp it at head.
+
+    Test databases are in-memory and rebuilt for every test, so replaying the
+    full revision history each time would dominate the suite's runtime.
+    Stamping afterwards keeps the schema guard satisfied.
+
+    ``backend/tests/test_migrations.py`` separately runs the real migrations
+    and asserts they produce this same schema, so the shortcut cannot hide
+    drift.
+    """
+    from flask_migrate import stamp
+
     with app.app_context():
-        if not db.engine.url.drivername.startswith("sqlite"):
-            return
-
-        insp = inspect(db.engine)
-        existing_tables = set(insp.get_table_names())
-
-        if not existing_tables:
-            db.create_all()
-            return  # fresh database — nothing to backfill
-
-        # Create any tables defined in models but missing from the DB.
         db.create_all()
-        insp = inspect(db.engine)
-
-        # Backfill columns that were added after initial schema.
-        added = False
-        if "vulnerabilities" in insp.get_table_names():
-            existing_cols = {c["name"] for c in insp.get_columns("vulnerabilities")}
-            for col_name, col_def in _SQLITE_VULN_COLUMN_BACKFILL:
-                if col_name not in existing_cols:
-                    db.session.execute(
-                        text(f"ALTER TABLE vulnerabilities ADD COLUMN {col_name} {col_def}")
-                    )
-                    added = True
-
-        if "users" in insp.get_table_names():
-            existing_cols = {c["name"] for c in insp.get_columns("users")}
-            for col_name, col_def in _SQLITE_USER_COLUMN_BACKFILL:
-                if col_name not in existing_cols:
-                    db.session.execute(
-                        text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-                    )
-                    added = True
-
-        if "report_artifacts" in insp.get_table_names():
-            existing_cols = {c["name"] for c in insp.get_columns("report_artifacts")}
-            for col_name, col_def in _SQLITE_REPORT_ARTIFACT_BACKFILL:
-                if col_name not in existing_cols:
-                    db.session.execute(
-                        text(f"ALTER TABLE report_artifacts ADD COLUMN {col_name} {col_def}")
-                    )
-                    added = True
-            # storage_path was NOT NULL pre-Slice-2; SQLite ALTER cannot drop NOT NULL,
-            # but new artifacts use INSERT-then-UPDATE so existing rows remain valid.
-
-        if "webhook_endpoints" in insp.get_table_names():
-            existing_cols = {c["name"] for c in insp.get_columns("webhook_endpoints")}
-            for col_name, col_def in _SQLITE_WEBHOOK_ENDPOINT_BACKFILL:
-                if col_name not in existing_cols:
-                    db.session.execute(
-                        text(f"ALTER TABLE webhook_endpoints ADD COLUMN {col_name} {col_def}")
-                    )
-                    added = True
-
-        if added:
-            db.session.commit()
+        try:
+            stamp()
+        except Exception:  # pragma: no cover - best-effort in tests
+            pass

@@ -4,7 +4,9 @@ import json
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from .url_guard import safe_urlopen
 
 
 class SlackWebhookError(RuntimeError):
@@ -49,7 +51,7 @@ class SlackWebhookClient:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with safe_urlopen(request, timeout=self.timeout, purpose="Slack webhook") as response:
                 status = response.getcode()
                 body = response.read().decode("utf-8")
         except HTTPError as exc:

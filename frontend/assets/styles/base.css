@@ -69,7 +69,8 @@
   --color-danger: #b91c1c;
   --color-error: #dc2626;
   --color-text-subtle: #e2e8f0;
-  --color-text-label: #64748b;
+  /* Was #64748b, which read 3.4–3.8:1 against the dark card backgrounds. */
+  --color-text-label: #96a3b4;
 
   /* Radii */
   --radius-sm: 8px;
@@ -101,7 +102,11 @@
   --color-border-subtle: rgba(0,0,0,0.15);
 
   --color-text: #1e293b;
-  --color-text-muted: rgba(30,41,59,0.6);
+  /* Was rgba(30,41,59,0.6), which composited to 3.86–4.06:1 against the card
+     and sidebar backgrounds — under the 4.5:1 WCAG AA threshold everywhere it
+     appeared. 0.74 clears 4.5:1 on every surface in this theme while staying
+     visibly secondary. */
+  --color-text-muted: rgba(30,41,59,0.74);
 
   --color-accent: #2563eb;
   --color-accent-subtle: rgba(37,99,235,0.1);
@@ -145,7 +150,9 @@
   --color-danger: #b91c1c;
   --color-error: #dc2626;
   --color-text-subtle: #475569;
-  --color-text-label: #64748b;
+  /* Was #64748b, which read 4.2–4.4:1 against the light card backgrounds —
+     just under AA for the 11px uppercase field labels it is used on. */
+  --color-text-label: #56626f;
 }
 
 /* ── Reset & Base ────────────────────────────────────────── */

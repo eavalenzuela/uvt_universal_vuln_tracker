@@ -31,8 +31,7 @@ def test_notification_stream_sends_sse_events(app, client, admin_user, auth_head
 
     monkeypatch.setattr("backend.api.live_notifications.queue_generator", _single_event)
 
-    token = auth_header(admin_user)["Authorization"].split(" ", 1)[1]
-    response = client.get(f"/api/notifications/stream?token={token}")
+    response = client.get("/api/notifications/stream", headers=auth_header(admin_user))
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert "event: connected" in body
@@ -157,3 +156,14 @@ def test_dashboard_metric_events_published_on_create_update_and_resolve(app, cli
         assert resolved_event["payload"]["status"] == "Resolved"
     finally:
         hub.unsubscribe(admin_user.id, queue)
+
+
+def test_notification_stream_rejects_token_in_query_string(client, admin_user, auth_header):
+    """Credentials must not be accepted from the URL.
+
+    Query strings are recorded in access logs, proxy logs, browser history and
+    Referer headers, so a JWT there leaks by design rather than by accident.
+    """
+    token = auth_header(admin_user)["Authorization"].split(" ", 1)[1]
+    response = client.get(f"/api/notifications/stream?token={token}")
+    assert response.status_code == 401

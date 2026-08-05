@@ -167,3 +167,27 @@ def paginate_query(query, *, default_per_page: int = DEFAULT_PAGE_SIZE, max_per_
         "total": total,
         "pages": (total + per_page - 1) // per_page if per_page else 0,
     }
+
+
+def parse_iso_datetime_field(value, *, field: str):
+    """Parse an ISO-8601 datetime into an aware UTC value.
+
+    Returns ``(datetime | None, error_response | None)``. Naive input is
+    treated as UTC so callers never end up comparing naive and aware datetimes
+    — a difference that behaves one way on SQLite and another on PostgreSQL.
+    """
+    from datetime import datetime, timezone
+
+    if value in (None, ""):
+        return None, None
+    if not isinstance(value, str):
+        return None, error_response(f"{field} must be an ISO-8601 datetime string", field=field)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None, error_response(
+            f"{field} must be an ISO-8601 datetime (e.g. 2026-09-01T00:00:00Z)", field=field
+        )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc), None

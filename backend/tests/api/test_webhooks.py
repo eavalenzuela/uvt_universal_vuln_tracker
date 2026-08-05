@@ -1,14 +1,32 @@
 import hashlib
 import hmac
 import json
+import time
 
 from backend.database import db
 from backend.models import Vulnerability, WebhookDeliveryLog, WebhookEndpoint
 
 
-def _sign(secret: str, body: bytes) -> str:
-    """Sign the way an external sender does: HMAC keyed with the raw secret."""
-    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+def _sign(secret: str, body: bytes, timestamp: str | None = None) -> tuple[str, str]:
+    """Sign the way an external sender does.
+
+    The sender holds the raw secret, derives the HMAC key as sha256(secret),
+    and signs "{timestamp}.{body}". Keying on the digest rather than the raw
+    value is what lets the server store only the digest.
+    """
+    ts = timestamp or str(int(time.time()))
+    key = hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    signed = ts.encode("utf-8") + b"." + body
+    return ts, hmac.new(key.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+
+
+def _signed_headers(secret: str, body: bytes, timestamp: str | None = None) -> dict:
+    ts, signature = _sign(secret, body, timestamp)
+    return {
+        "Content-Type": "application/json",
+        "X-UVT-Timestamp": ts,
+        "X-UVT-Signature": signature,
+    }
 
 
 def _create_endpoint(client, auth_header, admin_user, *, source_type="generic"):
@@ -60,7 +78,11 @@ def test_ingest_rejects_bad_signature(client, admin_user, auth_header):
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": "deadbeef"},
+        headers={
+            "Content-Type": "application/json",
+            "X-UVT-Timestamp": str(int(time.time())),
+            "X-UVT-Signature": "deadbeef",
+        },
     )
     assert response.status_code == 401
 
@@ -84,14 +106,10 @@ def test_ingest_generic_creates_vulnerabilities(app, client, admin_user, auth_he
         ]
     }
     body = json.dumps(payload).encode("utf-8")
-    # Sign with the raw secret returned at creation — the only value an
-    # external sender ever holds.
-    signature = _sign(created["secret"], body)
-
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": signature},
+        headers=_signed_headers(created["secret"], body),
     )
     assert response.status_code == 202, response.get_json()
     assert response.get_json()["vulnerabilities_ingested"] == 2
@@ -104,39 +122,60 @@ def test_ingest_generic_creates_vulnerabilities(app, client, admin_user, auth_he
         assert endpoint.failure_count == 0
 
 
-def test_ingest_rejects_hash_keyed_signature_for_new_endpoints(app, client, admin_user, auth_header):
-    """The pre-v2.23.0 hash-keyed scheme must not verify for endpoints that
-    have the raw secret on record."""
-    created = _create_endpoint(client, auth_header, admin_user)
-    with app.app_context():
-        secret_hash = db.session.get(WebhookEndpoint, created["id"]).secret_hash
-
-    body = json.dumps({"vulnerabilities": []}).encode("utf-8")
-    response = client.post(
-        f"/api/webhooks/ingest/{created['id']}",
-        data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
-    )
-    assert response.status_code == 401
-
-
-def test_legacy_endpoint_verifies_hash_keyed_signature(app, client, admin_user, auth_header):
-    """Endpoints created before v2.23.0 have no raw secret stored; they keep
-    working with the legacy hash-keyed HMAC until rotated."""
+def test_raw_secret_is_never_persisted(app, client, admin_user, auth_header):
+    """Only the digest is stored, so a database dump leaks no signing keys."""
     created = _create_endpoint(client, auth_header, admin_user)
     with app.app_context():
         endpoint = db.session.get(WebhookEndpoint, created["id"])
-        endpoint.secret = None  # simulate a pre-v2.23.0 row
-        secret_hash = endpoint.secret_hash
-        db.session.commit()
+        columns = {c.name for c in endpoint.__table__.columns}
+        assert "secret" not in columns, "raw webhook secret must not have a column"
+        assert endpoint.secret_hash == hashlib.sha256(
+            created["secret"].encode("utf-8")
+        ).hexdigest()
 
+
+def test_ingest_requires_timestamp_header(client, admin_user, auth_header):
+    created = _create_endpoint(client, auth_header, admin_user)
     body = json.dumps({"vulnerabilities": []}).encode("utf-8")
+    _ts, signature = _sign(created["secret"], body)
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(secret_hash, body)},
+        headers={"Content-Type": "application/json", "X-UVT-Signature": signature},
     )
-    assert response.status_code == 202, response.get_json()
+    assert response.status_code == 401
+    assert "X-UVT-Timestamp" in response.get_json()["error"]
+
+
+def test_ingest_rejects_replayed_stale_timestamp(client, admin_user, auth_header):
+    """A captured request stops verifying once it falls outside the window."""
+    created = _create_endpoint(client, auth_header, admin_user)
+    body = json.dumps({"vulnerabilities": []}).encode("utf-8")
+    stale = str(int(time.time()) - 3600)
+    response = client.post(
+        f"/api/webhooks/ingest/{created['id']}",
+        data=body,
+        headers=_signed_headers(created["secret"], body, timestamp=stale),
+    )
+    assert response.status_code == 401
+    assert "Timestamp" in response.get_json()["error"]
+
+
+def test_signature_is_bound_to_the_timestamp(client, admin_user, auth_header):
+    """Swapping in a fresh timestamp must invalidate a captured signature."""
+    created = _create_endpoint(client, auth_header, admin_user)
+    body = json.dumps({"vulnerabilities": []}).encode("utf-8")
+    _old_ts, signature = _sign(created["secret"], body, timestamp=str(int(time.time()) - 3600))
+    response = client.post(
+        f"/api/webhooks/ingest/{created['id']}",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-UVT-Timestamp": str(int(time.time())),
+            "X-UVT-Signature": signature,
+        },
+    )
+    assert response.status_code == 401
 
 
 def test_ingest_trivy_format(app, client, admin_user, auth_header):
@@ -161,7 +200,7 @@ def test_ingest_trivy_format(app, client, admin_user, auth_header):
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
+        headers=_signed_headers(created["secret"], body),
     )
     assert response.status_code == 202
     with app.app_context():
@@ -186,7 +225,7 @@ def test_rotate_secret_invalidates_old_signature(app, client, admin_user, auth_h
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
+        headers=_signed_headers(created["secret"], body),
     )
     assert response.status_code == 401
 
@@ -194,7 +233,7 @@ def test_rotate_secret_invalidates_old_signature(app, client, admin_user, auth_h
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(rotated["secret"], body)},
+        headers=_signed_headers(rotated["secret"], body),
     )
     assert response.status_code == 202
 
@@ -211,6 +250,6 @@ def test_disabled_endpoint_rejects_ingest(app, client, admin_user, auth_header):
     response = client.post(
         f"/api/webhooks/ingest/{created['id']}",
         data=body,
-        headers={"Content-Type": "application/json", "X-UVT-Signature": _sign(created["secret"], body)},
+        headers=_signed_headers(created["secret"], body),
     )
     assert response.status_code == 404

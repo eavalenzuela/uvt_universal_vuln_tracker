@@ -3,42 +3,31 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import jwt
-from flask import Blueprint, Response, current_app, request, stream_with_context
+from flask import Blueprint, Response, request, stream_with_context
 
-from ..auth import get_user_by_id
-from ..live_notifications import queue_generator
+from ..auth import authenticate_request
+from ..live_notifications import TooManyStreamsError, queue_generator
 
 bp = Blueprint("live_notifications", __name__, url_prefix="/api")
 
 
-def _resolve_token() -> str | None:
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.lower().startswith("bearer "):
-        return auth_header.split(" ", 1)[1].strip()
-    if request.args.get("token"):
-        return request.args.get("token")
-    return request.cookies.get("uvt_auth_token")
-
-
 def _authenticate_stream_user() -> tuple[Any | None, tuple[dict[str, str], int] | None]:
-    token = _resolve_token()
-    if not token:
-        return None, ({"error": "Missing Bearer token"}, 401)
-    try:
-        claims = jwt.decode(token, current_app.config["JWT_SECRET"], algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        return None, ({"error": "Token expired"}, 401)
-    except jwt.InvalidTokenError:
-        return None, ({"error": "Invalid token"}, 401)
+    """Authenticate an SSE subscriber.
 
-    user = get_user_by_id(int(claims["sub"]))
-    if not user or not user.is_active:
-        return None, ({"error": "User inactive or not found"}, 401)
+    This used to accept ``?token=<jwt>`` from the query string and reimplement
+    token validation locally, which meant credentials landed in access logs,
+    proxy logs, browser history and Referer headers — and that the
+    ``last_revoked_at`` check performed everywhere else was silently missing
+    here.
 
-    if int(claims.get("token_version", 0)) != int(user.token_version or 0):
-        return None, ({"error": "Token revoked"}, 401)
-
+    The browser sends the ``uvt_auth_token`` cookie with the SSE request
+    (``EventSource(..., {withCredentials: true})``), so delegating to the
+    shared ``authenticate_request`` costs nothing and keeps one code path.
+    """
+    user, _claims, error = authenticate_request()
+    if error:
+        body, status = error
+        return None, (body.get_json(), status)
     return user, None
 
 
@@ -49,15 +38,12 @@ def notification_stream():
     get:
       summary: SSE stream for live notifications
       description: >
-        Opens a persistent Server-Sent Events connection. Authentication
-        can be provided via Bearer token header, a `token` query parameter,
-        or a `uvt_auth_token` cookie.
-      parameters:
-        - in: query
-          name: token
-          schema:
-            type: string
-          description: JWT auth token (alternative to Authorization header)
+        Opens a persistent Server-Sent Events connection. Authentication uses
+        the `Authorization: Bearer` header or the `uvt_auth_token` cookie.
+        Credentials are never accepted from the query string, because URLs are
+        recorded in access logs, proxy logs and browser history.
+      security:
+        - BearerAuth: []
       responses:
         200:
           description: SSE event stream
@@ -78,10 +64,15 @@ def notification_stream():
         body, status = auth_error
         return body, status
 
+    try:
+        generator = queue_generator(user.id)
+    except TooManyStreamsError as exc:
+        return {"error": str(exc)}, 429
+
     @stream_with_context
     def _stream():
         yield "event: connected\ndata: {}\n\n"
-        for event in queue_generator(user.id):
+        for event in generator:
             event_type = event.get("type", "notification")
             payload = json.dumps(event, sort_keys=True)
             yield f"event: {event_type}\ndata: {payload}\n\n"

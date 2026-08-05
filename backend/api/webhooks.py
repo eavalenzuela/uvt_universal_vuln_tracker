@@ -1,14 +1,14 @@
 """Inbound webhook endpoints (F14).
 
 External systems POST to ``/api/webhooks/ingest/<endpoint_id>`` with an
-``X-UVT-Signature`` header containing an HMAC-SHA256 of the raw body keyed
-with the endpoint secret (the ``uvtwh_...`` value returned exactly once at
-creation or rotation).
+``X-UVT-Signature`` header. The endpoint secret (the ``uvtwh_...`` value
+returned exactly once at creation or rotation) is the shared credential.
 
-v2.23.0: signatures are verified against the **raw secret**, which is what
-external senders actually hold. Endpoints created before v2.23.0 only have the
-SHA-256 of their secret on record, so they fall back to the legacy hash-keyed
-verification until their secret is rotated (rotation upgrades them).
+Senders must also send ``X-UVT-Timestamp`` (unix seconds). The signed material
+is ``"{timestamp}.{raw_body}"`` and the HMAC key is ``sha256(secret)``, which
+the sender derives from the secret it holds. Signing the timestamp bounds
+replay to ``REPLAY_WINDOW_SECONDS``; keying on the digest keeps the raw secret
+out of the database entirely.
 """
 
 from __future__ import annotations
@@ -46,6 +46,11 @@ def _get_endpoint_or_404(endpoint_id: int):
 
 bp = Blueprint("webhooks_api", __name__, url_prefix="/api")
 
+# How far a sender's X-UVT-Timestamp may be from server time. Wide enough to
+# tolerate ordinary clock drift, narrow enough that a captured request stops
+# being useful quickly.
+REPLAY_WINDOW_SECONDS = 300
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,8 +78,17 @@ def _endpoint_json(endpoint: WebhookEndpoint, *, include_secret: str | None = No
         "created_at": endpoint.created_at.isoformat() if endpoint.created_at else None,
     }
     if include_secret is not None:
+        # Shown exactly once, at creation or rotation. Nothing else can
+        # retrieve it, because only its digest is stored.
         data["secret"] = include_secret
         data["ingest_url"] = f"/api/webhooks/ingest/{endpoint.id}"
+        data["signing"] = {
+            "algorithm": "HMAC-SHA256",
+            "key": "sha256(secret) as lowercase hex",
+            "signed_payload": "{X-UVT-Timestamp}.{raw_request_body}",
+            "headers": ["X-UVT-Timestamp", "X-UVT-Signature: sha256=<hex>"],
+            "max_clock_skew_seconds": REPLAY_WINDOW_SECONDS,
+        }
     return data
 
 
@@ -148,7 +162,6 @@ def create_webhook():
         name=name,
         source_type=source_type,
         secret_hash=_hash_secret(raw_secret),
-        secret=raw_secret,
         product_version_id=product_version_id,
         owner_id=getattr(request.user, "id", None),
         team_id=req_team,
@@ -213,8 +226,6 @@ def rotate_webhook_secret(endpoint_id: int):
     endpoint = _get_endpoint_or_404(endpoint_id)
     raw_secret = _generate_secret()
     endpoint.secret_hash = _hash_secret(raw_secret)
-    # Rotation also upgrades pre-v2.23.0 endpoints to raw-secret HMAC verification.
-    endpoint.secret = raw_secret
     db.session.commit()
     _audit("webhook.rotate_secret", "webhook_endpoints", endpoint.id)
     db.session.commit()
@@ -271,41 +282,53 @@ def ingest_webhook(endpoint_id: int):
 
     raw_body = request.get_data(cache=True) or b""
     signature_header = request.headers.get("X-UVT-Signature", "")
+    timestamp_header = request.headers.get("X-UVT-Timestamp", "")
 
-    if not signature_header:
+    def _reject(message: str, status_code: int = 401):
         endpoint.failure_count += 1
         _log_delivery(
             endpoint_id,
             status="rejected",
-            status_code=401,
+            status_code=status_code,
             payload_bytes=len(raw_body),
-            error_message="missing X-UVT-Signature header",
+            error_message=message,
         )
         db.session.commit()
-        return error_response("missing X-UVT-Signature header", status_code=401)
+        return error_response(message, status_code=status_code)
 
-    # Prefer the raw secret as the HMAC key — that's what external senders
-    # hold. Endpoints created before v2.23.0 only have the hash on record and
-    # keep the legacy hash-keyed scheme until their secret is rotated.
-    hmac_key = endpoint.secret or endpoint.secret_hash
+    if not signature_header:
+        return _reject("missing X-UVT-Signature header")
+
+    # Replay protection. Signing the body alone meant a captured request stayed
+    # valid forever; binding a timestamp into the signed material and refusing
+    # stale ones bounds the replay window to REPLAY_WINDOW_SECONDS.
+    if not timestamp_header:
+        return _reject("missing X-UVT-Timestamp header")
+    try:
+        sent_at = int(timestamp_header)
+    except ValueError:
+        return _reject("X-UVT-Timestamp must be a unix timestamp in seconds")
+
+    skew = abs(int(datetime.now(timezone.utc).timestamp()) - sent_at)
+    if skew > REPLAY_WINDOW_SECONDS:
+        return _reject(
+            f"X-UVT-Timestamp is {skew}s away from server time "
+            f"(maximum {REPLAY_WINDOW_SECONDS}s)"
+        )
+
+    # The HMAC key is sha256(secret), which the sender derives from the raw
+    # secret it holds. Keeping the raw secret out of the database costs
+    # nothing here and means a database dump leaks no signing keys.
+    signed_payload = timestamp_header.encode("utf-8") + b"." + raw_body
     expected = hmac.new(
-        key=hmac_key.encode("utf-8"),
-        msg=raw_body,
+        key=endpoint.secret_hash.encode("utf-8"),
+        msg=signed_payload,
         digestmod=hashlib.sha256,
     ).hexdigest()
     provided = signature_header.removeprefix("sha256=").strip()
 
     if not hmac.compare_digest(expected, provided):
-        endpoint.failure_count += 1
-        _log_delivery(
-            endpoint_id,
-            status="rejected",
-            status_code=401,
-            payload_bytes=len(raw_body),
-            error_message="signature mismatch",
-        )
-        db.session.commit()
-        return error_response("invalid signature", status_code=401)
+        return _reject("invalid signature")
 
     try:
         payload = json.loads(raw_body.decode("utf-8")) if raw_body else None

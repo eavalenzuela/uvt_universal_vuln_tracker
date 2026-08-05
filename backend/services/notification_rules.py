@@ -25,7 +25,7 @@ from ..models import (
 from .jira_sync import JiraApiError, JiraClient
 from .slack_alerts import SlackWebhookClient, SlackWebhookError
 from .email_delivery import EmailDeliveryError, send_email
-from .url_guard import UnsafeOutboundUrlError, validate_outbound_url
+from .url_guard import UnsafeOutboundUrlError, safe_urlopen, validate_outbound_url
 from ..live_notifications import publish_user_event
 
 SEVERITY_ORDER = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
@@ -177,13 +177,17 @@ def _webhook_send(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, 
     webhook_url = config.get("webhook_url")
     if not webhook_url:
         raise ValueError("Missing webhook_url")
-    validate_outbound_url(webhook_url, purpose="notification webhook")
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     req = urllib_request.Request(webhook_url, data=body, method="POST")
     req.add_header("Content-Type", "application/json; charset=utf-8")
     try:
-        with urllib_request.urlopen(req, timeout=10) as resp:
+        # safe_urlopen re-validates after DNS resolution and refuses redirects,
+        # so neither a rebound hostname nor a 302 can steer this at an
+        # internal address.
+        with safe_urlopen(req, timeout=10, purpose="notification webhook") as resp:
             return {"status": resp.status}
+    except UnsafeOutboundUrlError:
+        raise
     except urllib_error.URLError as exc:
         raise ValueError(f"webhook request failed: {exc}") from exc
 

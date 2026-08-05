@@ -29,9 +29,9 @@ export async function AdminTeamsView() {
   const membersSection = el("div", { class: "card mt-12", style: "display:none;" });
   let selectedTeam = null;
 
-  const nameInput = el("input", { class: "input", placeholder: "Team name", required: "true" });
-  const slugInput = el("input", { class: "input", placeholder: "team-slug (optional)" });
-  const descInput = el("input", { class: "input", placeholder: "Description (optional)" });
+  const nameInput = el("input", { class: "input", placeholder: "Team name", "aria-label": "Team name", required: "true" });
+  const slugInput = el("input", { class: "input", placeholder: "team-slug (optional)", "aria-label": "Team slug" });
+  const descInput = el("input", { class: "input", placeholder: "Description (optional)", "aria-label": "Team description" });
   const createBtn = el("button", { class: "btn primary", type: "submit" }, "Create team");
 
   const createForm = el(

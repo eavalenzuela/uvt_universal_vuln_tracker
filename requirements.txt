@@ -5,6 +5,9 @@ Werkzeug>=3.0,<4.0
 # DB / ORM
 SQLAlchemy>=2.0,<3.0
 Flask-SQLAlchemy>=3.1,<4.0
+# Schema migrations. Every model change must ship with a revision; the schema
+# guard refuses to serve when the database is behind head (see backend/schema_guard.py).
+Flask-Migrate>=4.0,<5.0
 
 # Headers
 Flask-CORS>=6.0.2
@@ -15,8 +18,13 @@ PyJWT>=2.8,<3.0
 # Logging
 python-json-logger>=3.0,<5.0
 
-# Production WSGI server
+# Production WSGI server. Run with --worker-class gthread: the SSE endpoint
+# holds a connection open per authenticated session, which pins a *sync*
+# worker for its entire lifetime. See the Dockerfile CMD for the reasoning.
 gunicorn>=22.0,<24.0
+
+# TOTP multi-factor authentication
+pyotp>=2.9,<3.0
 
 # Testing
 pytest>=8.3

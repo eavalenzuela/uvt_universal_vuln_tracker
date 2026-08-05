@@ -8,6 +8,7 @@ from .vuln_crud import bp as vulns_bp
 from .vuln_comments import bp as vuln_comments_bp
 from .vuln_versions import bp as vuln_versions_bp
 from .vuln_bulk import bp as vuln_bulk_bp
+from .vuln_risk import bp as vuln_risk_bp
 from .users_crud import bp as users_bp
 from .users_tokens import bp as users_tokens_bp
 from .audit_logs import bp as audit_logs_bp
@@ -42,6 +43,7 @@ _BLUEPRINTS = [
     vuln_comments_bp,
     vuln_versions_bp,
     vuln_bulk_bp,
+    vuln_risk_bp,
     users_bp,
     users_tokens_bp,
     audit_logs_bp,

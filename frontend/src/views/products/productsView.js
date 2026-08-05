@@ -32,8 +32,8 @@ export async function ProductsView() {
     }
   }
 
-  const nameInput = el("input", { class: "input", placeholder: "Product name", required: "true" });
-  const descInput = el("textarea", { class: "input", placeholder: "Description (optional)" });
+  const nameInput = el("input", { class: "input", placeholder: "Product name", "aria-label": "Product name", required: "true" });
+  const descInput = el("textarea", { class: "input", placeholder: "Description (optional)", "aria-label": "Product description" });
   const cancelBtn = el("button", { class: "btn", type: "button" }, "Cancel");
   const submitBtn = el("button", { class: "btn primary", type: "submit" }, "Save product");
 

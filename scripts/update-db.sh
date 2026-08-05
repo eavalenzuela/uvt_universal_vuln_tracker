@@ -1,160 +1,152 @@
 #!/usr/bin/env bash
-# update-db.sh
-# Usage examples:
+# update-db.sh — back up the database, then apply Alembic migrations.
+#
+# Usage:
 #   ./update-db.sh
 #   ./update-db.sh --database-url "postgresql+psycopg://uvt_user:uvt_pass@localhost:5432/uvt"
 #   ./update-db.sh --database-url "sqlite:///uvt.db"
+#   ./update-db.sh --dry-run          # show pending revisions, change nothing
 #
-# Notes:
-#   - Postgres backups use pg_dump and restores use pg_restore. Ensure PostgreSQL client tools
-#     are installed and on PATH. You can also rely on standard PG* env vars (PGHOST, PGPORT,
-#     PGUSER, PGPASSWORD, PGDATABASE) if you prefer not to embed credentials in DATABASE_URL.
+# On failure this script STOPS and tells you where the backup is. It does not
+# restore automatically.
+#
+# The previous version ran `flask db upgrade` — a command that did not exist,
+# because Flask-Migrate had been removed — and treated the resulting non-zero
+# exit as a failed migration, which sent it down a
+# `pg_restore --clean --if-exists` path against the live database. The
+# documented upgrade procedure therefore always failed and always dropped and
+# recreated every object, while migrating nothing. Restoring a backup over a
+# live database is a decision for an operator looking at the error, not
+# something a script should do on its own.
+#
+# Requirements: PostgreSQL client tools (pg_dump) for Postgres deployments.
 
 set -euo pipefail
 
 DATABASE_URL=""
 DEFAULT_FLASK_APP="backend.uvt_app:create_app"
 FLASK_APP_PARAM="$DEFAULT_FLASK_APP"
+DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --database-url)
-      DATABASE_URL="$2"
-      shift 2
-      ;;
-    --flask-app)
-      FLASK_APP_PARAM="$2"
-      shift 2
-      ;;
-    *)
-      echo "[UVT] Unknown argument: $1" >&2
-      exit 1
-      ;;
+    --database-url) DATABASE_URL="$2"; shift 2 ;;
+    --flask-app)    FLASK_APP_PARAM="$2"; shift 2 ;;
+    --dry-run)      DRY_RUN=true; shift ;;
+    -h|--help)      sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "[UVT] Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-write_info() { printf '[UVT] %s\n' "$1"; }
-write_warn() { printf '[UVT] %s\n' "$1" >&2; }
-write_err() { printf '[UVT] %s\n' "$1" >&2; }
+info() { printf '[UVT] %s\n' "$1"; }
+warn() { printf '[UVT] %s\n' "$1" >&2; }
+err()  { printf '[UVT] %s\n' "$1" >&2; }
 
 import_dotenv() {
   local path="$1"
   [[ -f "$path" ]] || return 0
-
-  write_info "Loading environment from $path ..."
+  info "Loading environment from $path ..."
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line## }"
-    line="${line%% }"
-    [[ -z "$line" ]] && continue
-    [[ "$line" == \#* ]] && continue
-
-    if [[ "$line" != *"="* ]]; then
-      continue
-    fi
-
-    local key="${line%%=*}"
-    local val="${line#*=}"
-
-    key="${key## }"
-    key="${key%% }"
-    val="${val## }"
-    val="${val%% }"
-
-    if [[ "$val" == "\""*"\"" ]] || [[ "$val" == "'"*"'" ]]; then
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$line" || "$line" == \#* || "$line" != *"="* ]] && continue
+    local key="${line%%=*}" val="${line#*=}"
+    key="${key//[[:space:]]/}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    if [[ "$val" == \"*\" || "$val" == \'*\' ]]; then
       val="${val:1:${#val}-2}"
     fi
-
     export "$key=$val"
   done < "$path"
 }
 
 if [[ ! -d "backend" ]]; then
-  write_err "Couldn't find ./backend. Run this script from the repo root."
+  err "Couldn't find ./backend. Run this script from the repo root."
   exit 1
 fi
 
 python_cmd=""
 for cmd in python3 python; do
-  if "$cmd" -c "import sys; print(sys.executable)" >/dev/null 2>&1; then
-    python_cmd="$cmd"
-    break
-  fi
+  if "$cmd" -c "import sys" >/dev/null 2>&1; then python_cmd="$cmd"; break; fi
 done
-
 if [[ -z "$python_cmd" ]]; then
-  write_err "Python not found. Install Python 3.11+ and ensure it's on PATH."
+  err "Python not found. Install Python 3.11+ and ensure it's on PATH."
   exit 1
 fi
 
-write_info "Using Python command: $python_cmd"
-write_info "Repo root: $(pwd)"
+import_dotenv "backend/dev.env"
+import_dotenv ".env"
 
-import_dotenv "dev.env"
-
-if [[ -z "${FLASK_APP:-}" ]]; then
-  export FLASK_APP="$FLASK_APP_PARAM"
-fi
-
-if [[ -n "$DATABASE_URL" ]]; then
-  export DATABASE_URL="$DATABASE_URL"
-fi
+export FLASK_APP="${FLASK_APP:-$FLASK_APP_PARAM}"
+[[ -n "$DATABASE_URL" ]] && export DATABASE_URL="$DATABASE_URL"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
-  write_err "DATABASE_URL not found (dev.env or param)."
+  err "DATABASE_URL not found (pass --database-url, or set it in .env)."
   exit 1
 fi
 
-write_info "FLASK_APP=$FLASK_APP"
-write_info "DATABASE_URL=$DATABASE_URL"
+info "FLASK_APP=$FLASK_APP"
+info "Database: ${DATABASE_URL%%:*}://…"
 
+info "Current revision:"
+"$python_cmd" -m flask db current 2>&1 | sed 's/^/  /' || true
+info "Target revision:"
+"$python_cmd" -m flask db heads 2>&1 | sed 's/^/  /' || true
+
+if [[ "$DRY_RUN" == true ]]; then
+  info "Dry run — no changes made."
+  exit 0
+fi
+
+# --- backup --------------------------------------------------------------
 backup_path=""
-current_db_url="$DATABASE_URL"
-
-if [[ "$current_db_url" =~ ^sqlite://(.+)$ ]]; then
+if [[ "$DATABASE_URL" =~ ^sqlite:///(.+)$ ]]; then
   sqlite_path="${BASH_REMATCH[1]}"
-  timestamp=$(date +"%Y%m%d-%H%M%S")
-  db_dir=$(dirname "$sqlite_path")
-  db_leaf=$(basename "$sqlite_path")
-  if [[ -z "$db_dir" ]]; then
-    db_dir="."
+  if [[ -f "$sqlite_path" ]]; then
+    backup_path="${sqlite_path}.$(date +%Y%m%d-%H%M%S).bak"
+    info "Backing up SQLite database to $backup_path ..."
+    cp -f "$sqlite_path" "$backup_path"
+  else
+    info "SQLite database does not exist yet; it will be created."
   fi
-
-  backup_path="$db_dir/$db_leaf.$timestamp.bak"
-  write_info "Backing up SQLite DB to $backup_path ..."
-  cp -f "$sqlite_path" "$backup_path"
-elif [[ "$current_db_url" == postgres* ]]; then
-  timestamp=$(date +"%Y%m%d-%H%M%S")
-  backup_path="$(pwd)/uvt-postgres-$timestamp.dump"
-  write_info "Backing up Postgres DB to $backup_path ..."
-  pg_dump -Fc -f "$backup_path" "$current_db_url"
-else
-  write_err "Unsupported DATABASE_URL scheme."
-  exit 1
-fi
-
-upgrade_succeeded=false
-if "$python_cmd" -m flask --app "$FLASK_APP" db upgrade; then
-  upgrade_succeeded=true
-  write_info "Migrations applied successfully."
-else
-  write_err "Migration failed."
-  if [[ -n "$backup_path" ]]; then
-    if [[ "$current_db_url" =~ ^sqlite://(.+)$ ]]; then
-      sqlite_path="${BASH_REMATCH[1]}"
-      write_warn "Restoring SQLite DB from $backup_path ..."
-      cp -f "$backup_path" "$sqlite_path"
-    elif [[ "$current_db_url" == postgres* ]]; then
-      write_warn "Restoring Postgres DB from $backup_path ..."
-      pg_restore --clean --if-exists -d "$current_db_url" "$backup_path"
-    fi
-    write_warn "Restore completed."
+elif [[ "$DATABASE_URL" == postgres* ]]; then
+  if ! command -v pg_dump >/dev/null 2>&1; then
+    err "pg_dump not found. Install the PostgreSQL client tools, or take a backup"
+    err "another way and re-run with the backup already in place."
+    exit 1
   fi
+  backup_path="$(pwd)/uvt-postgres-$(date +%Y%m%d-%H%M%S).dump"
+  info "Backing up PostgreSQL database to $backup_path ..."
+  # SQLAlchemy's +driver suffix is not valid libpq syntax.
+  pg_dump -Fc -f "$backup_path" "${DATABASE_URL/+psycopg/}"
+else
+  err "Unsupported DATABASE_URL scheme."
   exit 1
 fi
 
-if [[ "$upgrade_succeeded" != true ]]; then
-  write_err "Migration did not complete."
-  exit 1
+# --- migrate -------------------------------------------------------------
+info "Applying migrations ..."
+if "$python_cmd" -m flask db upgrade; then
+  info "Migrations applied successfully."
+  "$python_cmd" -m flask db current 2>&1 | sed 's/^/  /' || true
+  [[ -n "$backup_path" ]] && info "Backup retained at $backup_path"
+  exit 0
 fi
 
-write_info "Done."
+err ""
+err "Migration FAILED. The database has NOT been modified beyond whatever the"
+err "failed revision committed before erroring — Alembic runs each revision in"
+err "a transaction, so a failed revision is rolled back."
+err ""
+if [[ -n "$backup_path" ]]; then
+  err "A pre-migration backup is at:"
+  err "    $backup_path"
+  err ""
+  err "Inspect the error above first. Restore only if you have decided that is"
+  err "the right move — it discards everything written since the backup:"
+  if [[ "$DATABASE_URL" =~ ^sqlite:///(.+)$ ]]; then
+    err "    cp '$backup_path' '${BASH_REMATCH[1]}'"
+  else
+    err "    pg_restore --clean --if-exists -d '${DATABASE_URL/+psycopg/}' '$backup_path'"
+  fi
+fi
+exit 1

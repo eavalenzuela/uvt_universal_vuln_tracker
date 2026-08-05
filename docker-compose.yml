@@ -3,8 +3,14 @@ services:
     build:
       context: .
       target: backend
-    ports:
-      - "5000:5000"
+    # The backend is reached through the nginx frontend service. Publishing
+    # 5000 on the host also exposes /metrics — which reports vulnerability
+    # counts and user activity — outside the compose network. Uncomment only
+    # if you need to reach the API directly.
+    # ports:
+    #   - "5000:5000"
+    expose:
+      - "5000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-uvt_user}:${POSTGRES_PASSWORD:-uvt_pass}@postgres:5432/${POSTGRES_DB:-uvt}
@@ -14,7 +20,10 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       CELERY_ENABLED: ${CELERY_ENABLED:-true}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      # Secure cookies are the default. Session cookies would otherwise be
+      # sent in cleartext, and this flag also gates the HSTS header. Override
+      # to false only for local HTTP development.
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
     depends_on:
       postgres:
         condition: service_healthy

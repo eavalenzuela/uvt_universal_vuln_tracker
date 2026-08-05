@@ -101,4 +101,57 @@ Added `/api/v1/*` alias via WSGI middleware (`_V1AliasMiddleware` in `backend/ap
 | ~~F19~~ | ~~P2~~ | ~~Medium~~ | ~~Bulk scanner import~~ ✅ |
 | ~~F20~~ | ~~P2~~ | ~~Small~~ | ~~Keyboard shortcuts~~ ✅ |
 
-**Roadmap status: complete.** All 20 P0/P1/P2 items (F1–F20) have shipped. New work is tracked in `docs/CHANGELOG.md` and per-feature plans in `docs/plans/`.
+---
+
+## P0 — Reopened by the v2.24.0 review
+
+An adversarial review found that three "done" items were checkbox-complete but
+not functionally complete, and that the schema had no upgrade path at all.
+
+### ~~F21. Database Migrations~~ ✅ Done (v2.24.0)
+F1 removed Alembic in favour of `db.create_all()`, which creates missing
+*tables* but never adds a column to an existing one. Every release that added
+a column therefore left upgraded deployments 500-ing while `/api/health` still
+reported `ok`. Reinstated Flask-Migrate with a squashed `0001` baseline, added
+`backend/schema_guard.py` (refuses to serve and names the reason when the
+database is behind head), and `backend/tests/test_migrations.py`, which fails
+the build if a model changes without a revision. `scripts/update-db.sh` no
+longer runs a destructive `pg_restore --clean` on failure.
+
+### ~~F22. SSE Worker Exhaustion~~ ✅ Done (v2.24.0)
+`/api/notifications/stream` holds a connection per authenticated session and
+Gunicorn ran 4 *sync* workers, so four open tabs took the whole service offline
+— including the health check, which then restart-looped the container. Switched
+to `gthread` (4 x 25), added a per-user stream cap and a maximum stream
+lifetime, and taught the frontend to reconnect with backoff.
+
+### ~~F23. Real Scope Enforcement~~ ✅ Done (v2.24.0)
+API token scopes were checked only for paths matching a ten-entry prefix list;
+everything else — teams, webhooks, audit logs, search, scanner imports —
+skipped the check entirely, so a `products:read` token could create teams and
+webhook endpoints. `ROUTE_SCOPES` is now explicit and closed, unmapped routes
+fail closed, and `audit_route_scopes()` names any new endpoint at boot.
+
+### ~~F24. Security Headers on the Document~~ ✅ Done (v2.24.0)
+F10's headers were set by Flask, which only serves `/api/*` — so the strict CSP
+landed on JSON responses while the HTML that loads and executes the app had
+none. Moved to `docker/nginx.conf` with a policy the SPA can actually run
+under.
+
+### ~~F25. MFA~~ ✅ Done (v2.24.0)
+TOTP with two-phase enrolment, hashed single-use recovery codes, and a signed
+short-lived login challenge. The Admin → Users page had advertised "MFA
+posture" while no second factor existed anywhere in the codebase.
+
+### ~~F26. EPSS, Risk Acceptance, Attachments~~ ✅ Done (v2.24.0)
+EPSS enrichment from FIRST.org alongside the existing KEV flag; risk acceptance
+with a mandatory expiry, approver and reason (it was previously a bare status
+string that never came back for review); evidence attachments on findings; and
+severity/CVSS agreement checking.
+
+---
+
+## Summary
+
+**Roadmap status:** F1–F26 shipped. New work is tracked in `docs/CHANGELOG.md`
+and per-feature plans in `docs/plans/`.

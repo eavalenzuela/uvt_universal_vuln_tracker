@@ -1,8 +1,9 @@
 import { el } from "../../ui/dom/el.js";
 import { toast } from "../../ui/components/toast.js";
-import { authProviders, login, me } from "../../api/auth.js";
+import { authProviders, login, me, mfaVerify } from "../../api/auth.js";
 import { getState, setSession } from "../../state/store.js";
 import { navigate } from "../../router/router.js";
+import { promptModal } from "../../ui/components/modal.js";
 
 export async function LoginView() {
   const currentSession = getState()?.session || { token: null, user: null };
@@ -39,7 +40,31 @@ export async function LoginView() {
         return;
       }
 
-      const res = await login(username, password);
+      let res = await login(username, password);
+
+      // The password alone is not a session when 2FA is on: the server hands
+      // back a short-lived challenge that a code exchanges for real tokens.
+      if (res?.mfa_required) {
+        const code = await promptModal({
+          title: "Two-factor authentication",
+          message: "Enter the six-digit code from your authenticator app, or a recovery code.",
+          inputLabel: "Code",
+          placeholder: "123456",
+          required: true,
+        });
+        if (!code) {
+          toast({ title: "Sign-in cancelled", message: "A verification code is required." });
+          return;
+        }
+        const trimmed = String(code).trim();
+        // Recovery codes contain dashes; TOTP codes are six digits.
+        res = await mfaVerify({
+          mfaToken: res.mfa_token,
+          code: /^\d{6}$/.test(trimmed) ? trimmed : undefined,
+          recoveryCode: /^\d{6}$/.test(trimmed) ? undefined : trimmed,
+        });
+      }
+
       setSession({ token: res.token, refreshToken: res.refresh_token || null, user: res.user });
 
       try {

@@ -10,6 +10,17 @@ import { loadTheme, applyTheme } from "./state/theme.js";
 import { installKeybindings } from "./ui/keybindings.js";
 
 let liveStream = null;
+let liveStreamRetry = null;
+let liveStreamAttempt = 0;
+
+// EventSource reconnects on its own, but only while the connection object is
+// alive. The previous onerror handler closed it and nulled the reference, so a
+// single drop — a backend restart, a proxy timeout, a laptop waking from sleep
+// — turned live notifications off until some unrelated state change happened
+// to restart them. Reconnect explicitly instead, backing off so a server that
+// is down does not get hammered.
+const LIVE_RETRY_BASE_MS = 1000;
+const LIVE_RETRY_MAX_MS = 60_000;
 
 async function refreshNotifications() {
   try {
@@ -26,10 +37,25 @@ function handleLiveEvent(evt, onToast) {
   if (onToast) onToast(data?.payload || {});
 }
 
+function scheduleLiveStreamRetry() {
+  if (liveStreamRetry) return;
+  const delay = Math.min(LIVE_RETRY_BASE_MS * 2 ** liveStreamAttempt, LIVE_RETRY_MAX_MS);
+  liveStreamAttempt += 1;
+  liveStreamRetry = setTimeout(() => {
+    liveStreamRetry = null;
+    if (isAuthed(getState())) startLiveNotificationStream();
+  }, delay);
+}
+
 function startLiveNotificationStream() {
   if (liveStream) return;
 
   liveStream = new EventSource(`${CONFIG.API_BASE}/api/notifications/stream`, { withCredentials: true });
+
+  // A clean open means the last failure is history; reset the backoff.
+  liveStream.onopen = () => {
+    liveStreamAttempt = 0;
+  };
 
   liveStream.addEventListener("mention_notification_created", (evt) => {
     handleLiveEvent(evt, (payload) => {
@@ -60,10 +86,18 @@ function startLiveNotificationStream() {
       liveStream.close();
       liveStream = null;
     }
+    // The server closes streams periodically to reclaim worker threads, so a
+    // drop is expected and unremarkable — reconnect rather than reporting it.
+    if (isAuthed(getState())) scheduleLiveStreamRetry();
   };
 }
 
 function stopLiveNotificationStream() {
+  if (liveStreamRetry) {
+    clearTimeout(liveStreamRetry);
+    liveStreamRetry = null;
+  }
+  liveStreamAttempt = 0;
   if (!liveStream) return;
   liveStream.close();
   liveStream = null;

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import asc
 from sqlalchemy.orm import selectinload
@@ -31,6 +33,7 @@ from .validation import ValidationError, error_response, normalize_cve_id, parse
 from ..services.vulnerability_query import build_vulnerability_query
 from ..services.team_scope import get_vulnerability_or_404 as _get_vuln_or_404, team_scope
 from ..services.dedup import list_merge_candidates as get_merge_candidates, merge_vulnerabilities
+from ..services.severity_consistency import check_severity_consistency
 from ..services.dashboard_live_metrics import classify_vulnerability_metric_action, publish_vulnerability_metric_event
 from ..services.vulnerability_service import (
     ATTACK_COMPLEXITY_OPTIONS,
@@ -360,6 +363,10 @@ def list_vulnerabilities():
             "references_json": v.references_json or [],
             "known_exploited": bool(v.known_exploited),
             "kev_date_added": v.kev_date_added.isoformat() if v.kev_date_added else None,
+            "epss_score": float(v.epss_score) if v.epss_score is not None else None,
+            "epss_percentile": float(v.epss_percentile) if v.epss_percentile is not None else None,
+            "risk_accepted": bool(v.risk_accepted),
+            "risk_accepted_until": v.risk_accepted_until.isoformat() if v.risk_accepted_until else None,
             "attack_complexity": v.attack_complexity,
             "confidentiality_impact": v.confidentiality_impact,
             "integrity_impact": v.integrity_impact,
@@ -613,6 +620,20 @@ def get_vulnerability(vuln_id: int):
         "references_json": v.references_json or [],
         "known_exploited": bool(v.known_exploited),
         "kev_date_added": v.kev_date_added.isoformat() if v.kev_date_added else None,
+        "epss_score": float(v.epss_score) if v.epss_score is not None else None,
+        "epss_percentile": float(v.epss_percentile) if v.epss_percentile is not None else None,
+        "epss_updated_at": v.epss_updated_at.isoformat() if v.epss_updated_at else None,
+        "risk_accepted": bool(v.risk_accepted),
+        "risk_accepted_at": v.risk_accepted_at.isoformat() if v.risk_accepted_at else None,
+        "risk_accepted_until": v.risk_accepted_until.isoformat() if v.risk_accepted_until else None,
+        "risk_accepted_by": v.risk_accepted_by,
+        "risk_accepter_username": v.risk_accepter.username if v.risk_accepter else None,
+        "risk_acceptance_reason": v.risk_acceptance_reason,
+        "risk_acceptance_expired": bool(
+            v.risk_accepted and v.risk_accepted_until
+            and v.risk_accepted_until <= datetime.now(timezone.utc)
+        ),
+        "severity_consistency": check_severity_consistency(v.severity, v.cvss_score),
         "attack_complexity": v.attack_complexity,
         "confidentiality_impact": v.confidentiality_impact,
         "integrity_impact": v.integrity_impact,

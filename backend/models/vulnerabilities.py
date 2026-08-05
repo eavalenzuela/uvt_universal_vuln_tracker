@@ -62,6 +62,15 @@ class Vulnerability(db.Model):
     # plugin when the CVE appears in the KEV catalog.
     known_exploited = db.Column(db.Boolean, default=False, nullable=False, index=True)
     kev_date_added = db.Column(db.Date)
+
+    # EPSS (Exploit Prediction Scoring System, FIRST.org): probability the CVE
+    # will be exploited in the next 30 days, 0.0–1.0. KEV answers "is this
+    # being exploited now"; EPSS answers "how likely is it to be". Without
+    # both, prioritisation falls back to CVSS severity alone, which does not
+    # correlate well with real-world exploitation.
+    epss_score = db.Column(db.Numeric(6, 5), index=True)
+    epss_percentile = db.Column(db.Numeric(6, 5))
+    epss_updated_at = db.Column(TZDateTime)
     attack_complexity = db.Column(db.String(20), default="Not Defined", nullable=False)
     confidentiality_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
     integrity_impact = db.Column(db.String(20), default="Not Defined", nullable=False)
@@ -75,6 +84,22 @@ class Vulnerability(db.Model):
     # Stamped when status transitions into Resolved/Closed; cleared on reopen.
     # Basis for remediation (MTTR) metrics.
     resolved_at = db.Column(TZDateTime)
+
+    # Risk acceptance.
+    #
+    # "Accepted Risk" existed only as a status string with nothing behind it,
+    # so an acceptance never expired and never came back for review — the
+    # decision, who made it, and why were all unrecorded. An acceptance without
+    # an expiry is not a risk decision, it is a way of losing a finding.
+    # server_default matches migration 0002 — the drift test compares server
+    # defaults too, so declaring it only in the migration counts as drift.
+    risk_accepted = db.Column(
+        db.Boolean, default=False, server_default=db.false(), nullable=False, index=True
+    )
+    risk_accepted_at = db.Column(TZDateTime)
+    risk_accepted_until = db.Column(TZDateTime, index=True)
+    risk_accepted_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    risk_acceptance_reason = db.Column(db.Text)
 
     created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -92,6 +117,7 @@ class Vulnerability(db.Model):
 
     creator = db.relationship("User", foreign_keys=[created_by])
     assignee = db.relationship("User", foreign_keys=[assigned_to])
+    risk_accepter = db.relationship("User", foreign_keys=[risk_accepted_by])
     merged_into = db.relationship("Vulnerability", remote_side=[id], foreign_keys=[merged_into_id])
     team = db.relationship("Team", foreign_keys=[team_id])
 
@@ -269,3 +295,38 @@ class SlaPolicy(db.Model):
     updated_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     updater = db.relationship("User", foreign_keys=[updated_by])
+
+
+class VulnerabilityAttachment(db.Model):
+    """Evidence attached to a finding — scanner output, screenshots, proof of fix.
+
+    A vulnerability tracker without attachments pushes evidence into comment
+    bodies, ticket systems, or Slack threads, where it is not scoped, not
+    retained with the record, and not exported with it.
+
+    Files are stored on disk under the instance directory; only metadata and a
+    content hash live in the database. ``sha256`` lets duplicate uploads be
+    recognised and gives a tamper check for anything used as evidence.
+    """
+
+    __tablename__ = "vulnerability_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    vulnerability_id = db.Column(
+        db.Integer, db.ForeignKey("vulnerabilities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(120), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False, index=True)
+    storage_path = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.String(500))
+
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+
+    created_at = db.Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    vulnerability = db.relationship("Vulnerability", backref=db.backref("attachments", cascade="all, delete-orphan"))
+    uploader = db.relationship("User", foreign_keys=[uploaded_by])

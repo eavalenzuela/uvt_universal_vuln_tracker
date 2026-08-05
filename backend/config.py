@@ -143,6 +143,17 @@ class AppConfig:
     db_pool_max_overflow: int = 10
     db_pool_recycle: int = 1800
     db_pool_pre_ping: bool = True
+    # Apply migrations automatically when the database is completely empty.
+    # Safe (there is nothing to lose) and keeps first-run frictionless. A
+    # populated database is never migrated implicitly — that is an explicit
+    # 'flask db upgrade', so it can be sequenced with a backup.
+    db_auto_upgrade_fresh: bool = True
+
+    # Largest accepted request body. Scanner exports (.nessus, Qualys CSV,
+    # Trivy JSON) and SBOMs are routinely tens of megabytes, so this has to be
+    # generous — but unbounded meant any caller could exhaust worker memory.
+    # Keep docker/nginx.conf's client_max_body_size in step with this.
+    max_content_length_mb: int = 64
 
     # Rate limiting
     rate_limit_enabled: bool = True
@@ -187,6 +198,11 @@ class AppConfig:
     # Recycle worker after N tasks to release WeasyPrint/Matplotlib memory
     # held across PDF renders. 100 keeps RSS under ~500 MB on typical loads.
     celery_worker_max_tasks_per_child: int = 100
+
+    # Optional bearer token for GET /metrics. Unset (the default) leaves the
+    # endpoint open, which is fine when Prometheus scrapes it from inside the
+    # deployment network. Set it when the port is reachable more widely.
+    metrics_token: str = ""
 
     # Frontend
     frontend_url: str = "http://127.0.0.1:5173"
@@ -248,6 +264,8 @@ def load_config() -> AppConfig:
         db_pool_max_overflow=_int("DB_POOL_MAX_OVERFLOW", 10),
         db_pool_recycle=_int("DB_POOL_RECYCLE", 1800),
         db_pool_pre_ping=_bool("DB_POOL_PRE_PING", True),
+        db_auto_upgrade_fresh=_bool("DB_AUTO_UPGRADE_FRESH", True),
+        max_content_length_mb=_int("MAX_CONTENT_LENGTH_MB", 64),
         rate_limit_enabled=_bool("RATE_LIMIT_ENABLED", True),
         rate_limit_backend=_str("RATE_LIMIT_BACKEND", "memory"),
         rate_limit_trusted_proxies=_int("RATE_LIMIT_TRUSTED_PROXIES", 1),
@@ -278,6 +296,7 @@ def load_config() -> AppConfig:
         celery_task_timeout=_int("CELERY_TASK_TIMEOUT", 3600),
         celery_task_soft_timeout=_int("CELERY_TASK_SOFT_TIMEOUT", 3300),
         celery_worker_max_tasks_per_child=_int("CELERY_WORKER_MAX_TASKS_PER_CHILD", 100),
+        metrics_token=_str("METRICS_TOKEN", ""),
         frontend_url=_str("FRONTEND_URL", "http://127.0.0.1:5173"),
         outbound_allow_private_urls=_bool("OUTBOUND_ALLOW_PRIVATE_URLS", False),
         plugin_import_paths=_parse_plugin_paths(),
@@ -293,6 +312,17 @@ def load_config() -> AppConfig:
                     f"{env_key} is still set to its development default. "
                     f"Set the {env_key} environment variable before running in production."
                 )
+
+        # Not fatal — a deployment may terminate TLS somewhere this process
+        # cannot see — but it must never pass unnoticed, because it also
+        # disables HSTS.
+        if not cfg.auth_cookie_secure:
+            import logging
+            logging.getLogger(__name__).warning(
+                "AUTH_COOKIE_SECURE is false in a production environment: session "
+                "cookies will be sent over plaintext HTTP and HSTS is disabled. "
+                "Set AUTH_COOKIE_SECURE=true once TLS is in front of the app."
+            )
 
     return cfg
 
@@ -358,11 +388,14 @@ def apply_config(app, cfg: AppConfig) -> None:
     app.config["CELERY_TASK_SOFT_TIMEOUT"] = cfg.celery_task_soft_timeout
     app.config["CELERY_WORKER_MAX_TASKS_PER_CHILD"] = cfg.celery_worker_max_tasks_per_child
 
+    app.config["METRICS_TOKEN"] = cfg.metrics_token
     app.config["FRONTEND_URL"] = cfg.frontend_url
     app.config["OUTBOUND_ALLOW_PRIVATE_URLS"] = cfg.outbound_allow_private_urls
 
     app.config["SQLALCHEMY_DATABASE_URI"] = cfg.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["DB_AUTO_UPGRADE_FRESH"] = cfg.db_auto_upgrade_fresh
+    app.config["MAX_CONTENT_LENGTH"] = cfg.max_content_length_mb * 1024 * 1024
 
     # Connection pool tuning (applies to PostgreSQL; SQLite ignores pool settings)
     if not cfg.database_url.startswith("sqlite"):

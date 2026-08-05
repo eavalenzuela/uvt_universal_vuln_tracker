@@ -54,15 +54,15 @@ export async function DashboardView() {
 
   const container = el("div", { class: "card flex-col-16" });
 
-  const exportStatusSelect = el("select", { class: "input", style: "max-width: 180px;" },
+  const exportStatusSelect = el("select", { class: "input", style: "max-width: 180px;", "aria-label": "Filter export by status" },
     el("option", { value: "", text: "All statuses" }),
     ...STATUS_OPTIONS.map((status) => el("option", { value: status, text: status })),
   );
-  const exportSeveritySelect = el("select", { class: "input", style: "max-width: 180px;" },
+  const exportSeveritySelect = el("select", { class: "input", style: "max-width: 180px;", "aria-label": "Filter export by severity" },
     el("option", { value: "", text: "All severities" }),
     ...SEVERITY_OPTIONS.map((severity) => el("option", { value: severity, text: severity })),
   );
-  const exportFormatSelect = el("select", { class: "input", style: "max-width: 140px;" },
+  const exportFormatSelect = el("select", { class: "input", style: "max-width: 140px;", "aria-label": "Export format" },
     el("option", { value: "csv", text: "CSV" }),
     el("option", { value: "json", text: "JSON" }),
     el("option", { value: "pdf", text: "PDF" }),
@@ -113,11 +113,11 @@ export async function DashboardView() {
   const grid = el("div", { class: "widget-grid" });
   const hiddenList = el("div", { class: "flex-col-8" });
 
-  const presetSelect = el("select", { class: "input", style: "max-width: 260px;" });
-  const presetNameInput = el("input", { class: "input", type: "text", placeholder: "Preset name", style: "max-width: 220px;" });
+  const presetSelect = el("select", { class: "input", style: "max-width: 260px;", "aria-label": "Dashboard layout preset" });
+  const presetNameInput = el("input", { class: "input", type: "text", placeholder: "Preset name", style: "max-width: 220px;", "aria-label": "Preset name" });
   const presetVisibilitySelect = el(
     "select",
-    { class: "input", style: "max-width: 140px;" },
+    { class: "input", style: "max-width: 140px;", "aria-label": "Preset visibility" },
     el("option", { value: "private", text: "Private" }),
     el("option", { value: "team", text: "Team" }),
   );
@@ -426,7 +426,7 @@ export async function DashboardView() {
       });
 
       const dragHandle = el("button", {
-        class: "btn",
+        class: "btn btn-icon widget-drag",
         text: "\u2807",
         title: "Drag to reorder",
         "aria-label": `Drag ${widget.title} to reorder`,
@@ -442,20 +442,27 @@ export async function DashboardView() {
         },
       });
 
+      // Icon-only controls, sized not to compete with the title.
+      //
+      // These were five full-width bordered buttons laid out beside the title
+      // in a ~276px card, so they consumed more than half the header and
+      // squeezed "Risk Overview Summary" onto three lines. The title now owns
+      // its row and the controls sit under it as a compact icon strip.
       const actions = el(
         "div",
-        { class: "flex-row-6" },
+        { class: "widget-actions" },
         el("button", {
-          class: "btn",
-          text: "\u2699\uFE0F",
+          class: "btn btn-icon",
+          text: "\u2699",
           title: "Configure widget",
           "aria-label": `Configure ${widget.title}`,
           onClick: () => openModal(widgetId),
         }),
         el("button", {
-          class: "btn",
-          text: "Hide",
-          title: "Hide widget",
+          class: "btn btn-icon",
+          text: "\u2715",
+          title: `Hide ${widget.title}`,
+          "aria-label": `Hide ${widget.title}`,
           onClick: () => {
             layoutState.visibility[widgetId] = false;
             persistState();
@@ -463,14 +470,14 @@ export async function DashboardView() {
           },
         }),
         el("button", {
-          class: "btn",
+          class: "btn btn-icon",
           text: "\u2191",
           title: "Move up",
           "aria-label": `Move ${widget.title} up`,
           onClick: () => moveWidget(widgetId, -1),
         }),
         el("button", {
-          class: "btn",
+          class: "btn btn-icon",
           text: "\u2193",
           title: "Move down",
           "aria-label": `Move ${widget.title} down`,
@@ -478,16 +485,29 @@ export async function DashboardView() {
         }),
       );
 
+      // Every widget carries its own status filter and time range, and none of
+      // them were shown \u2014 so the dashboard displayed several different totals
+      // for one database with nothing to explain the difference. State the
+      // scope on the card.
+      const scopeParts = [];
+      if (widgetSettings.filter && widgetSettings.filter !== "All") {
+        scopeParts.push(widgetSettings.filter.split(",").join(", "));
+      }
+      if (widgetSettings.range) scopeParts.push(widgetSettings.range.toLowerCase());
+      const scopeText = scopeParts.length ? scopeParts.join(" \u00B7 ") : "all records";
+
       const headerRow = el(
         "div",
-        { class: "flex-between gap-8" },
-        el("div", { class: "flex-row-8" },
+        { class: "widget-header" },
+        el("div", { class: "widget-header-title" },
           dragHandle,
-          el("div", { class: "flex-col" },
-            el("strong", { text: widget.title }),
-            el("span", { class: "muted", text: widget.description }),
-          ),
+          el("strong", {
+            class: "widget-title",
+            text: widget.title,
+            title: widget.description || widget.title,
+          }),
         ),
+        el("div", { class: "widget-scope", text: scopeText, title: `Showing: ${scopeText}` }),
         actions,
       );
 

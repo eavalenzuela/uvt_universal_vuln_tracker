@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, current_app, redirect
 from ..database import db
 from ..models import User
 from ..auth import (
+    AccountLockedError,
     authenticate_user,
     create_refresh_token,
     create_user,
@@ -18,7 +19,7 @@ from ..auth import (
     validate_password,
     PasswordTooWeakError,
 )
-from ..rate_limiter import rate_limit
+from ..rate_limiter import get_client_ip, rate_limit
 from ..services.audit import record_audit
 from ..services.oidc import build_login_redirect, complete_oidc_login, oidc_enabled, validate_next_path
 from ..services.password_reset import (
@@ -26,6 +27,16 @@ from ..services.password_reset import (
     validate_reset_token,
     consume_reset_token,
     send_reset_email,
+)
+from ..services.mfa import (
+    MfaError,
+    begin_enrollment,
+    confirm_enrollment,
+    consume_recovery_code,
+    disable_mfa,
+    issue_mfa_challenge,
+    resolve_mfa_challenge,
+    verify_totp,
 )
 from ..services.email_verification import (
     create_verification_token,
@@ -111,8 +122,28 @@ def _issue_csrf_token(payload=None):
     return csrf_token
 
 
+def _login_rate_key() -> str:
+    """Throttle key for login attempts: source IP *and* the account tried.
+
+    Keying on IP alone meant everyone behind one NAT gateway or VPN egress
+    shared a single five-per-minute budget, so one colleague mistyping their
+    password locked out the whole office. Including the username gives each
+    (source, account) pair its own budget; the per-account lockout in
+    ``backend.auth`` covers the distributed case where the IP changes.
+    """
+    data = request.get_json(silent=True) or {}
+    identity = data.get("username")
+    identity = identity.strip().lower()[:120] if isinstance(identity, str) else "unknown"
+    return f"auth_login:{get_client_ip() or 'unknown'}:{identity}"
+
+
 @bp.post("/login")
-@rate_limit("RATE_LIMIT_AUTH_LOGIN_LIMIT", "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", identifier="auth_login")
+@rate_limit(
+    "RATE_LIMIT_AUTH_LOGIN_LIMIT",
+    "RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS",
+    key_func=_login_rate_key,
+    identifier="auth_login",
+)
 def login():
     """Authenticate a user with username and password.
     ---
@@ -157,7 +188,17 @@ def login():
     except ValidationError as exc:
         return error_response(exc.error, field=exc.field, details=exc.details)
 
-    user = authenticate_user(username, password)
+    try:
+        user = authenticate_user(username, password)
+    except AccountLockedError as exc:
+        # Same message and status as a wrong password so lockout state cannot
+        # be used to enumerate valid accounts; Retry-After tells a legitimate
+        # user when to come back.
+        response = jsonify({"error": "Invalid credentials"})
+        response.status_code = 401
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
+
     if not user:
         return error_response("Invalid credentials", status_code=401)
 
@@ -166,6 +207,14 @@ def login():
             "Email not verified. Check your inbox for the verification link.",
             status_code=403,
         )
+
+    # MFA: password alone is not a session. Hand back a short-lived challenge
+    # that /api/auth/mfa/verify exchanges for real tokens.
+    if user.mfa_enabled:
+        return jsonify({
+            "mfa_required": True,
+            "mfa_token": issue_mfa_challenge(user),
+        }), 200
 
     token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
     refresh_token, _ = create_refresh_token(user)
@@ -788,4 +837,255 @@ def me():
         "role": u.role,
         "teams": teams_payload,
         "current_team_id": resolve_current_team_id(u),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Multi-factor authentication (TOTP)
+# ---------------------------------------------------------------------------
+
+def _mfa_rate_key() -> str:
+    return f"mfa:{get_client_ip() or 'unknown'}"
+
+
+@bp.post("/mfa/verify")
+@rate_limit(
+    "RATE_LIMIT_SENSITIVE_LIMIT",
+    "RATE_LIMIT_SENSITIVE_WINDOW_SECONDS",
+    key_func=_mfa_rate_key,
+    identifier="mfa_verify",
+)
+def mfa_verify():
+    """Exchange an MFA challenge plus a code for a real session.
+    ---
+    post:
+      summary: Complete multi-factor sign-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfa_token]
+              properties:
+                mfa_token:
+                  type: string
+                  description: Challenge token returned by /api/auth/login
+                code:
+                  type: string
+                  description: Six-digit TOTP code
+                recovery_code:
+                  type: string
+                  description: One-time recovery code, used instead of a TOTP code
+      responses:
+        200:
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        401:
+          description: Invalid or expired challenge, or wrong code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        user = resolve_mfa_challenge(str(data.get("mfa_token") or ""))
+    except MfaError as exc:
+        return error_response(str(exc), status_code=401)
+
+    code = data.get("code")
+    recovery = data.get("recovery_code")
+
+    if code and verify_totp(user, str(code)):
+        pass
+    elif recovery and consume_recovery_code(user, str(recovery)):
+        # No request.user yet — the session is only issued below — so record
+        # the subject explicitly rather than relying on the actor lookup.
+        record_audit(
+            "MFA_RECOVERY_CODE_USED", "users", user.id,
+            new_values={"username": user.username},
+        )
+        db.session.commit()
+    else:
+        return error_response("Invalid verification code", status_code=401)
+
+    token = generate_token(user.id, user.username, user.role, user.token_version, user.last_revoked_at)
+    refresh_token, _ = create_refresh_token(user)
+    db.session.commit()
+    payload = _auth_response(user, token, refresh_token)
+    csrf_token = _issue_csrf_token(payload)
+    response = jsonify(payload)
+    response = _set_auth_cookie(response, token)
+    return _set_csrf_cookie(response, csrf_token)
+
+
+@bp.post("/mfa/enroll")
+@login_required
+def mfa_enroll():
+    """Start TOTP enrolment: returns a secret and otpauth:// URI.
+    ---
+    post:
+      summary: Begin MFA enrolment
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Enrolment started; confirm with a code to activate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                  otpauth_uri:
+                    type: string
+        409:
+          description: MFA is already enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    try:
+        return jsonify(begin_enrollment(request.user))
+    except MfaError as exc:
+        return error_response(str(exc), status_code=409)
+
+
+@bp.post("/mfa/confirm")
+@login_required
+def mfa_confirm():
+    """Confirm enrolment with a code; returns one-time recovery codes.
+    ---
+    post:
+      summary: Confirm MFA enrolment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        200:
+          description: MFA enabled; recovery codes are shown once and never again
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  recovery_codes:
+                    type: array
+                    items:
+                      type: string
+        400:
+          description: Invalid code or enrolment not started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        codes = confirm_enrollment(request.user, str(data.get("code") or ""))
+    except MfaError as exc:
+        return error_response(str(exc), field="code", status_code=400)
+
+    record_audit("MFA_ENABLED", "users", request.user.id)
+    db.session.commit()
+    return jsonify({"enabled": True, "recovery_codes": codes})
+
+
+@bp.post("/mfa/disable")
+@login_required
+def mfa_disable():
+    """Turn off MFA. Requires the current password.
+    ---
+    post:
+      summary: Disable MFA
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        200:
+          description: MFA disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+        403:
+          description: Password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    """
+    from ..auth import verify_password
+
+    data = request.get_json(silent=True) or {}
+    # Removing a second factor is a downgrade of the account's security, so it
+    # is gated on the first factor rather than on session possession alone.
+    if not verify_password(str(data.get("password") or ""), request.user.password_hash):
+        return error_response("Password is incorrect", field="password", status_code=403)
+
+    disable_mfa(request.user)
+    record_audit("MFA_DISABLED", "users", request.user.id)
+    db.session.commit()
+    return jsonify({"enabled": False})
+
+
+@bp.get("/mfa/status")
+@login_required
+def mfa_status():
+    """Report whether MFA is active for the current user.
+    ---
+    get:
+      summary: Get MFA status
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: MFA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  enrolled_at:
+                    type: string
+                    nullable: true
+                  recovery_codes_remaining:
+                    type: integer
+    """
+    u = request.user
+    return jsonify({
+        "enabled": bool(u.mfa_enabled),
+        "enrolled_at": u.mfa_enrolled_at.isoformat() if u.mfa_enrolled_at else None,
+        "recovery_codes_remaining": len(u.mfa_recovery_codes or []),
     })

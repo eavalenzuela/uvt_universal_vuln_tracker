@@ -190,7 +190,7 @@ export function renderHeader() {
       right.appendChild(dropdown);
     }
 
-    right.appendChild(el("div", { class: "muted" }, `${user?.username || "user"} (${user?.role || "?"})`));
+    right.appendChild(el("div", { class: "muted header-username" }, `${user?.username || "user"} (${user?.role || "?"})`));
     right.appendChild(el("button", {
       class: "btn",
       onclick: async () => {

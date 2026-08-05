@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import desc
@@ -43,6 +44,34 @@ def parse_iso_datetime(value, *, field):
     return parsed.astimezone(timezone.utc)
 
 
+_LAST_N_DAYS = re.compile(r"Last\s+(\d+)\s+days?\s*$", flags=re.IGNORECASE)
+
+# Ranges the API understands. Anything else is a client bug, so it is rejected
+# rather than silently treated as the 14-day default — which is how
+# "range=All time" used to return a 14-day trend with no complaint.
+NAMED_RANGES = ("Month to date", "Quarter to date", "Year to date")
+
+
+def validate_range(range_value: str | None) -> str:
+    """Return a canonical range expression, or raise ``ValueError``."""
+    if not range_value:
+        return "Last 14 days"
+    value = str(range_value).strip()
+    for named in NAMED_RANGES:
+        if value.lower() == named.lower():
+            return named
+    match = _LAST_N_DAYS.match(value)
+    if match:
+        days = int(match.group(1))
+        if 1 <= days <= 3650:
+            return f"Last {days} days"
+        raise ValueError("range must span between 1 and 3650 days")
+    raise ValueError(
+        f"Unsupported range {range_value!r}. Use 'Last N days', "
+        + ", ".join(repr(n) for n in NAMED_RANGES)
+    )
+
+
 def range_start(range_value):
     now = datetime.now(timezone.utc)
     if range_value == "Month to date":
@@ -50,16 +79,30 @@ def range_start(range_value):
     if range_value == "Quarter to date":
         quarter_start_month = (now.month - 1) // 3 * 3 + 1
         return datetime(now.year, quarter_start_month, 1, tzinfo=timezone.utc)
+    if range_value == "Year to date":
+        return datetime(now.year, 1, 1, tzinfo=timezone.utc)
     if range_value:
-        import re
-
-        match = re.match(r"Last\s+(\d+)\s+days", range_value, flags=re.IGNORECASE)
+        match = _LAST_N_DAYS.match(str(range_value))
         if match:
             return now - timedelta(days=int(match.group(1)))
     return now - timedelta(days=14)
 
 
 def dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 days"):
+    """Aggregate vulnerabilities for a dashboard widget.
+
+    Two different time semantics live in this response, and conflating them is
+    what made the dashboard show three different totals for one database:
+
+    * ``total`` / ``by_severity`` / ``by_status`` / ``group_totals`` describe
+      **current state**, matching ``filters`` only. "How many open
+      vulnerabilities are there" must not exclude one raised eight months ago.
+    * ``trend`` describes **activity within ``range_value``**.
+
+    ``scope`` states which filters produced ``total`` so the UI can label the
+    number for what it is instead of calling a status-filtered count "Total".
+    """
+    range_value = validate_range(range_value)
     q, _ = build_vulnerability_query(filters, base_query=Vulnerability.query)
     total = q.count()
 
@@ -105,17 +148,29 @@ def dashboard_aggregate(filters, *, group_by="severity", range_value="Last 14 da
                 if 0 <= idx < len(buckets):
                     buckets[idx]["count"] += 1
 
+    status_filter = filters.get("status") if hasattr(filters, "get") else None
+    severity_filter = filters.get("severity") if hasattr(filters, "get") else None
+
     return {
         "total": total,
         "by_severity": by_severity,
         "by_status": by_status,
         "group_by": group_by,
         "group_totals": group_totals,
+        # What `total` actually counts. The UI renders this next to the number
+        # so a status-filtered count is never presented as an overall total.
+        "scope": {
+            "status": status_filter or None,
+            "severity": severity_filter or None,
+            "time_scoped": False,
+            "describes": "current state, all time",
+        },
         "trend": {
             "range": range_value,
             "start_date": start.date().isoformat(),
             "end_date": end.date().isoformat(),
             "buckets": buckets,
+            "describes": f"records updated in {range_value.lower()}",
         },
     }
 

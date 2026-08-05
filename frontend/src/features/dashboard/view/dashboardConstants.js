@@ -107,14 +107,29 @@ export function severityBadge(severity) {
 }
 
 let cachedUsers = null;
+
+/**
+ * Active users as an array, for resolving owner names.
+ *
+ * Two bugs lived here. The API returns `{items: [...]}` and this returned that
+ * envelope unchanged, so callers doing `users.map(...)` threw
+ * "users.map is not a function" — which is what broke the SLA widget. And a
+ * failed request cached `[]` forever, so one transient error meant every
+ * breach was silently attributed to "Unassigned" for the rest of the session.
+ * Failures are no longer cached.
+ */
 export async function ensureActiveUsers() {
   if (cachedUsers) return cachedUsers;
   try {
-    cachedUsers = await listActiveUsers();
+    const payload = await listActiveUsers();
+    cachedUsers = Array.isArray(payload) ? payload : (payload?.items ?? []);
     return cachedUsers;
   } catch (error) {
     console.warn("Unable to load active users.", error);
-    cachedUsers = [];
-    return cachedUsers;
+    return [];
   }
+}
+
+export function clearActiveUsersCache() {
+  cachedUsers = null;
 }

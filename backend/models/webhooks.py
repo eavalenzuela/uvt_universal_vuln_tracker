@@ -15,14 +15,16 @@ class WebhookEndpoint(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     source_type = db.Column(db.String(40), default="generic", nullable=False, index=True)
+    # SHA-256 of the raw secret, and also the HMAC verification key.
+    #
+    # v2.23.0 added a plaintext `secret` column so signatures could be keyed on
+    # the raw value; that made every webhook secret readable from a database
+    # dump for no cryptographic gain. The key does not have to be the raw
+    # secret — it only has to be something both sides can derive from it. The
+    # sender holds the raw secret and computes sha256(secret) itself, so
+    # keying on the digest is equivalent for verification while leaving
+    # nothing recoverable at rest. The plaintext column is gone again.
     secret_hash = db.Column(db.String(128), unique=True, nullable=False, index=True)
-    # HMAC signing key. Ingest signatures are verified against the raw secret,
-    # which is what external senders actually hold. NULL for endpoints created
-    # before v2.23.0 — those fall back to legacy hash-keyed verification until
-    # the secret is rotated. (An HMAC shared secret must be recoverable
-    # server-side to verify; hashing it provided no protection because the
-    # stored hash WAS the verification key.)
-    secret = db.Column(db.String(128))
     is_enabled = db.Column(db.Boolean, default=True, nullable=False, index=True)
 
     product_version_id = db.Column(

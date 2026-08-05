@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.auth import create_user, generate_token, hash_password
-from backend.database import db
+from backend.database import create_all_for_tests, db
 from backend.models import Product, ProductVersion, User, Vulnerability
 from backend.rate_limiter import clear_rate_limit_state
 from backend.uvt_app import create_app
@@ -24,8 +24,11 @@ def app(monkeypatch):
     app = create_app()
     app.config.update(TESTING=True)
 
+    # Build the schema from metadata and stamp it at head. test_migrations.py
+    # separately proves the real revisions produce this same schema.
+    create_all_for_tests(app)
+
     with app.app_context():
-        db.create_all()
         clear_rate_limit_state(app)
         yield app
         db.session.remove()

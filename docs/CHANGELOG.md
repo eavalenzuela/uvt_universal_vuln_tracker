@@ -1,5 +1,99 @@
 # Changelog
 
+## v2.24.0 — Adversarial review remediation
+
+An adversarial review of v2.23.0 (security, missing functionality, visual
+design, usability) found 22 issues, all reproduced against the shipped Docker
+stack. This release fixes them.
+
+### Blockers
+
+- **Database migrations reinstated.** F1 had removed Alembic in favour of
+  `db.create_all()`, which creates missing *tables* but never adds a column to
+  an existing one. v2.23.0's four new columns therefore never appeared on
+  upgraded databases, and `/api/vulnerabilities`, `/api/dashboard/summary`,
+  `/api/search` and `/api/webhooks` all returned 500 while `/api/health` still
+  reported `ok`. Flask-Migrate is back with a squashed `0001` baseline;
+  `backend/schema_guard.py` refuses to serve and names the reason when the
+  database is behind head; `backend/tests/test_migrations.py` fails the build
+  if a model changes without a revision.
+- **`scripts/update-db.sh` no longer destroys the database.** It ran
+  `flask db upgrade` — a command that did not exist — and treated the failure
+  as a failed migration, taking a `pg_restore --clean --if-exists` branch
+  against the live database. The documented upgrade path always failed and
+  always clean-restored while migrating nothing. It now stops on failure and
+  tells the operator where the backup is.
+- **SSE no longer exhausts the worker pool.** Gunicorn ran 4 *sync* workers
+  while the frontend opens an EventSource per session, so four open tabs took
+  the whole service offline. Switched to `gthread` (4 x 25) with a per-user
+  stream cap and a maximum stream lifetime; the frontend reconnects with
+  backoff instead of silently giving up on the first drop.
+
+### Security
+
+- **API token scopes are enforced across the whole API.** They were checked
+  only for paths matching a ten-entry prefix list; a `products:read` token
+  could read the audit log and create teams and webhook endpoints. `ROUTE_SCOPES`
+  is explicit and closed, unmapped routes fail closed, and `audit_route_scopes()`
+  names any unmapped endpoint at boot.
+- **Security headers moved to the HTML document.** They were set by Flask,
+  which serves only `/api/*`, so the strict CSP landed on JSON while the page
+  that executes the app had none — and was fully framable.
+- **`seed-admin` enforces the password policy.** It called `hash_password()`
+  directly, so the documented `--password changeme` created an Admin the API
+  itself would have rejected.
+- **Per-account lockout, and login throttling keyed on (IP, username).** The
+  IP-only key meant one user's typos throttled everyone behind the same NAT
+  gateway, while a distributed attack on one account was unthrottled.
+- `AUTH_COOKIE_SECURE` now defaults to true in the shipped compose file.
+- Request bodies are bounded (`MAX_CONTENT_LENGTH`, nginx `client_max_body_size`)
+  — previously unbounded, and nginx's 1 MB default silently broke scanner imports.
+- SSRF guard resolves hostnames and refuses redirects; the syntactic check
+  alone was walked past by any DNS record pointing at link-local space.
+- Webhook secrets are no longer stored in plaintext, and ingest requires a
+  signed timestamp (bounded replay window).
+- The SSE endpoint no longer accepts a JWT in the query string.
+- CSRF protection extended to `logout`, `logout_all` and the MFA routes.
+- `/metrics` accepts an optional `METRICS_TOKEN`; the backend port is no longer
+  published by the compose file.
+
+### Functionality
+
+- **MFA (TOTP)** with two-phase enrolment, hashed single-use recovery codes,
+  and a signed short-lived login challenge. The Admin → Users page had claimed
+  to manage "MFA posture" while no second factor existed anywhere.
+- **EPSS** enrichment from FIRST.org, alongside the existing KEV flag.
+- **Risk acceptance** with a mandatory expiry, approver and reason, plus an
+  expiring-acceptances endpoint. It was previously a bare status string.
+- **Evidence attachments** on findings, with an extension allowlist, size cap
+  and content hash.
+- **Severity/CVSS agreement checking** — the API accepted `Critical` with
+  `CVSS 5.5` and rendered both without comment.
+- Analysts and Viewers can manage their own API tokens and look up assignees;
+  both were behind an Admin-only scope, which also left the bulk-assign field
+  asking for a user ID they could not discover.
+- The SLA widget works: `ensureActiveUsers()` returned the `{items: []}`
+  envelope where callers expected an array, and cached failures forever.
+- The dashboard states each widget's scope, and the KPI tile no longer labels a
+  status-filtered count "Total". `range` is validated instead of silently
+  falling back to 14 days.
+
+### Design and usability
+
+- Vulnerabilities page: compact filter bar with the seven advanced filters
+  behind a disclosure, result count, and the primary action in the page header.
+  Page height 4,371px → 3,721px, with results above the fold.
+- Result rows use a real column grid; the four "Not Defined" cells are gone and
+  CVSS is padded to one decimal. EPSS and CWE columns added.
+- Dashboard widget headers give the title its own row instead of sharing it
+  with five bordered buttons in a 276px card.
+- **Zero WCAG AA contrast failures** in both themes (was 31); role and status
+  badges were the worst offenders at 2.55:1.
+- **Zero unlabeled form controls** (was 45); skip link and `h1` on every route;
+  targets meet the 24px minimum.
+- Header no longer overflows the viewport on a phone.
+
+
 ## v2.23.0 — v2.22 deferred security follow-ups + CISA KEV, watcher notifications, remediation metrics
 
 Lands the five items deferred from the v2.22.0 analysis pass plus five new features. Plan in `PLANNED_IMPROVEMENTS.md`.

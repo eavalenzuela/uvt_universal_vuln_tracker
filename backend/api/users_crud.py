@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from ..database import db
 from ..models import ApiToken, User
 from ..auth import role_required, hash_password, generate_token, revoke_tokens, validate_password, PasswordTooWeakError
-from ..permissions import ALL_ROLES, ROLE_SCOPES
+from ..permissions import ALL_ROLES, GRANTABLE_SCOPES, ROLE_SCOPES
 from ..rate_limiter import rate_limit
 from .validation import ValidationError, enum_value, error_response, parse_int, required_string
 from ..serializers.users_serializers import serialize_api_token, serialize_user, serialize_user_summary
@@ -43,7 +43,10 @@ def _parse_token_create_payload(data, owner: User):
     if not isinstance(requested_scopes, list) or not requested_scopes:
         return None, error_response("scopes must be a non-empty array", field="scopes")
 
-    allowed_scopes = ROLE_SCOPES.get(owner.role, set())
+    # A token may never exceed its owner's role, and may only carry scopes that
+    # are actually grantable (SCOPE_SELF is implicit; the unmapped sentinel is
+    # not a real scope).
+    allowed_scopes = ROLE_SCOPES.get(owner.role, set()) & GRANTABLE_SCOPES
     scopes = []
     for item in requested_scopes:
         if not isinstance(item, str) or not item.strip():
@@ -365,7 +368,12 @@ def invite_user():
 
 
 @bp.get("/users/active")
-@role_required("Admin")
+# Directory lookup, not user administration: this is what populates assignee
+# pickers and resolves owner names on the dashboard. Restricting it to Admin
+# meant an Analyst — the role that actually triages — could not discover the
+# numeric user ID the bulk-assign field demands, and the SLA widget silently
+# attributed every breach to "Unassigned".
+@role_required("Admin", "Analyst", "Viewer")
 def list_active_users():
     """List active users with pagination.
     ---

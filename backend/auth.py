@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from .database import db
 from .models import ApiToken, RefreshToken, User
-from .permissions import role_has_scope, scope_for_request
+from .permissions import role_has_scope, scope_for_request, token_has_scope
 
 
 def revoke_tokens(user: User):
@@ -246,8 +246,24 @@ def _is_cookie_authenticated_request() -> bool:
     return not auth_header.lower().startswith("bearer ")
 
 
+# Endpoints reachable *before* a session exists, so no CSRF cookie can have
+# been issued yet. Everything else under /api/auth — logout, logout_all, MFA
+# enrolment — is CSRF-protected like any other state-changing route. The
+# previous blanket "/api/auth/" exemption covered those too.
+_CSRF_EXEMPT_PATHS = frozenset({
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/refresh",          # authenticated by the refresh token in the body
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/verify-email",
+    "/api/auth/resend-verification",
+    "/api/auth/mfa/verify",       # completes login; pre-session by definition
+})
+
+
 def _is_csrf_protected_request() -> bool:
-    if request.path.startswith("/api/auth/"):
+    if request.path in _CSRF_EXEMPT_PATHS:
         return False
     return request.method not in {"GET", "HEAD", "OPTIONS", "TRACE"}
 
@@ -366,12 +382,10 @@ def enforce_scopes(app):
         if not csrf_ok:
             return csrf_error
         scope = scope_for_request(request.path, request.method)
-        if not scope:
-            # Unscoped endpoints may still need team context inside the view
-            # (e.g. user preferences, settings). Views call
-            # ``current_team_id()`` from backend.services.team_scope lazily
-            # instead of relying on a before_request stamp — that avoids
-            # running authentication twice and tripping rate-limited paths.
+        if scope is None:
+            # Only intentionally-unauthenticated endpoints reach here (health,
+            # OpenAPI, HMAC-signed webhook ingest). Everything else resolves to
+            # a real scope or to SCOPE_UNMAPPED, which denies.
             return None
         if getattr(request, "user", None) is None:
             _, _, error = authenticate_request()
@@ -382,9 +396,12 @@ def enforce_scopes(app):
             return jsonify({"error": "Unauthorized"}), 401
         if not role_has_scope(user.role, scope):
             return jsonify({"error": "Forbidden"}), 403
+        # An API token never exceeds its declared scopes, even where its owner
+        # would be allowed. This check used to be skipped entirely for any path
+        # the prefix list didn't cover.
         api_token = getattr(request, "api_token", None)
-        if api_token is not None and scope not in set(api_token.scopes or []):
-            return jsonify({"error": "Forbidden"}), 403
+        if api_token is not None and not token_has_scope(api_token.scopes, scope):
+            return jsonify({"error": "Forbidden", "required_scope": scope}), 403
         _populate_current_team()
         return None
 
@@ -438,12 +455,80 @@ def create_user(username, email, password, role="Analyst"):
 
 _DUMMY_HASH = generate_password_hash("timing-attack-dummy")
 
+# Per-account lockout. Deliberately more permissive than the per-IP throttle:
+# the IP limit stops fast automated guessing, while this stops slow,
+# distributed guessing that rotates source addresses.
+MAX_FAILED_LOGINS = 10
+LOCKOUT_MINUTES = 15
+
+
+class AccountLockedError(Exception):
+    """Raised when an account is temporarily locked after repeated failures."""
+
+    def __init__(self, retry_after_seconds: int):
+        super().__init__("Account temporarily locked")
+        self.retry_after_seconds = retry_after_seconds
+
+
+def _is_locked(user: User) -> int:
+    """Return remaining lock seconds, or 0 when the account is not locked."""
+    if not user.locked_until:
+        return 0
+    remaining = (user.locked_until - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+    return int(remaining) if remaining > 0 else 0
+
+
+def _record_failed_login(user: User) -> None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    # A gap longer than the lockout window means the previous failures are
+    # stale; start counting again rather than accumulating forever.
+    if user.last_failed_login_at:
+        idle = (now - user.last_failed_login_at).total_seconds()
+        if idle > LOCKOUT_MINUTES * 60:
+            user.failed_login_count = 0
+
+    user.failed_login_count = int(user.failed_login_count or 0) + 1
+    user.last_failed_login_at = now
+    if user.failed_login_count >= MAX_FAILED_LOGINS:
+        user.locked_until = now + datetime.timedelta(minutes=LOCKOUT_MINUTES)
+        logger.warning(
+            "Account locked after %d failed logins: user_id=%s", user.failed_login_count, user.id
+        )
+    db.session.add(user)
+    db.session.commit()
+
+
+def _clear_failed_logins(user: User) -> None:
+    if user.failed_login_count or user.locked_until:
+        user.failed_login_count = 0
+        user.locked_until = None
+        user.last_failed_login_at = None
+        db.session.add(user)
+        db.session.commit()
+
 
 def authenticate_user(username, password):
+    """Verify credentials, maintaining the per-account failure counter.
+
+    Raises :class:`AccountLockedError` when the account is locked. The caller
+    is responsible for returning the same generic message it uses for bad
+    credentials, so lockout state stays non-enumerable.
+    """
     user = get_user_by_identity(username)
     if not user or not user.is_active:
         verify_password(password, _DUMMY_HASH)
         return None
+
+    locked_for = _is_locked(user)
+    if locked_for:
+        # Still burn a hash comparison so a locked account is not detectable
+        # by response time.
+        verify_password(password, _DUMMY_HASH)
+        raise AccountLockedError(locked_for)
+
     if not verify_password(password, user.password_hash):
+        _record_failed_login(user)
         return None
+
+    _clear_failed_logins(user)
     return user

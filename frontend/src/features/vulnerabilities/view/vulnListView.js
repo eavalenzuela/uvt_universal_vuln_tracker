@@ -12,11 +12,12 @@ import {
   deleteSavedVulnerabilityFilter,
 } from "../../../api/vulnerabilities.js";
 import { getState } from "../../../state/store.js";
+import { listActiveUsers } from "../../../api/users.js";
 import { canWrite, isAdmin } from "../../../state/permissions.js";
 import { downloadReportArtifact, exportVulnerabilities, waitForReportArtifact } from "../../../api/reports.js";
 import { navigate } from "../../../router/router.js";
 import { collectFilterValues, applyFilterValues } from "../selectors/filterNormalization.js";
-import { createFilterRow } from "../../../ui/primitives/filters.js";
+import { createFilterBar } from "../../../ui/primitives/filters.js";
 import {
   STATUS_OPTIONS,
   SEVERITY_OPTIONS,
@@ -75,6 +76,9 @@ export async function VulnListView(params = {}) {
   const list = el("div", { class: "flex-col-12 mt-8" },
     el("div", { class: "muted", text: "Loading vulnerabilities..." }),
   );
+  // Primary page actions live beside the title, not at the tail of the filters.
+  const headerActions = el("div", { class: "page-header-actions" });
+  const resultCount = el("p", { class: "muted result-count", "aria-live": "polite", text: "" });
   const selectedIds = new Set();
   let currentItems = [];
 
@@ -82,18 +86,25 @@ export async function VulnListView(params = {}) {
   const selectedCountLabel = el("span", { class: "muted", text: "0 selected" });
   const bulkSeveritySelect = el(
     "select",
-    { class: "input max-w-170" },
+    { class: "input max-w-170", "aria-label": "Set severity on selected" },
     el("option", { value: "", text: "Severity (no change)" }),
     ...SEVERITY_OPTIONS.map((value) => el("option", { value, text: value })),
   );
   const bulkStatusSelect = el(
     "select",
-    { class: "input max-w-170" },
+    { class: "input max-w-170", "aria-label": "Set status on selected" },
     el("option", { value: "", text: "Status (no change)" }),
     ...STATUS_OPTIONS.map((value) => el("option", { value, text: value })),
   );
-  const bulkAssigneeInput = el("input", { class: "input max-w-170", type: "number", min: "1", placeholder: "Assignee user ID" });
-  const bulkSlaInput = el("input", { class: "input max-w-220", type: "datetime-local" });
+  // Was a bare "Assignee user ID" number field. Analysts — the role that does
+  // the triage — had no way to discover that integer inside the product, so
+  // the control was unusable for exactly the people who needed it.
+  const bulkAssigneeSelect = el(
+    "select",
+    { class: "input max-w-220", id: "bulk-assignee", "aria-label": "Assign to" },
+    el("option", { value: "", text: "Assignee (no change)" }),
+  );
+  const bulkSlaInput = el("input", { class: "input max-w-220", type: "datetime-local", id: "bulk-sla-due" });
   const applyBulkBtn = el("button", { class: "btn", type: "button" }, "Apply to selected");
 
   const bulkToolbar = el(
@@ -103,8 +114,9 @@ export async function VulnListView(params = {}) {
     selectedCountLabel,
     bulkSeveritySelect,
     bulkStatusSelect,
-    bulkAssigneeInput,
-    bulkSlaInput,
+    bulkAssigneeSelect,
+    el("label", { class: "row gap-6 items-center" },
+      el("span", { class: "filter-label", text: "SLA due" }), bulkSlaInput),
     applyBulkBtn,
   );
 
@@ -144,7 +156,7 @@ export async function VulnListView(params = {}) {
     const updates = {};
     if (bulkSeveritySelect.value) updates.severity = bulkSeveritySelect.value;
     if (bulkStatusSelect.value) updates.status = bulkStatusSelect.value;
-    if (bulkAssigneeInput.value !== "") updates.assigned_to = Number(bulkAssigneeInput.value);
+    if (bulkAssigneeSelect.value !== "") updates.assigned_to = Number(bulkAssigneeSelect.value);
     if (bulkSlaInput.value) updates.sla_due_at = new Date(bulkSlaInput.value).toISOString();
 
     if (!Object.keys(updates).length) {
@@ -204,9 +216,16 @@ export async function VulnListView(params = {}) {
       }));
 
       list.innerHTML = "";
+      const total = Number(data?.total ?? data?.items?.length ?? 0);
+      const shown = data?.items?.length || 0;
+      resultCount.textContent = total
+        ? `Showing ${shown} of ${total} ${total === 1 ? "vulnerability" : "vulnerabilities"}`
+        : "";
+
       if (!data?.items?.length) {
         currentItems = [];
         refreshSelectionUi();
+        resultCount.textContent = "No vulnerabilities match these filters";
         list.appendChild(el("div", { class: "muted", text: "No vulnerabilities found." }));
         return;
       }
@@ -231,12 +250,12 @@ export async function VulnListView(params = {}) {
   const applyBtn = el("button", { class: "btn" }, "Apply filters");
   applyBtn.addEventListener("click", load);
 
-  const exportFormatSelect = el("select", { class: "input max-w-120" },
+  const exportFormatSelect = el("select", { class: "input max-w-120", "aria-label": "Export format" },
     el("option", { value: "csv", text: "CSV" }),
     el("option", { value: "json", text: "JSON" }),
     el("option", { value: "pdf", text: "PDF" }),
   );
-  const pdfLayoutSelect = el("select", { class: "input max-w-180", style: "display: none;" },
+  const pdfLayoutSelect = el("select", { class: "input max-w-180", style: "display: none;", "aria-label": "PDF layout" },
     el("option", { value: "default", text: "Default layout" }),
     el("option", { value: "executive_summary", text: "Executive summary" }),
   );
@@ -286,7 +305,7 @@ export async function VulnListView(params = {}) {
     }
   });
 
-  const savedFiltersSelect = el("select", { class: "input" },
+  const savedFiltersSelect = el("select", { class: "input", "aria-label": "Saved filters" },
     el("option", { value: "", text: "Saved filters" }),
   );
   const saveCurrentBtn = el("button", { class: "btn", type: "button" }, "Save current filter");
@@ -331,7 +350,19 @@ export async function VulnListView(params = {}) {
         }),
         visibility,
       });
-      await refreshSavedFilters();
+      // Populate the assignee picker from the directory endpoint. Every role can
+  // read it now, so this works for Analysts and Viewers too.
+  try {
+    const users = await listActiveUsers();
+    const items = Array.isArray(users) ? users : (users?.items ?? []);
+    items.forEach((u) => bulkAssigneeSelect.appendChild(
+      el("option", { value: String(u.id), text: u.full_name || u.username || u.email || `User ${u.id}` }),
+    ));
+  } catch {
+    // Non-fatal: the rest of the toolbar still works without the picker.
+  }
+
+  await refreshSavedFilters();
       toast({ title: "Saved", message: "Filter preset saved." });
     } catch (e) {
       toast({ title: "Save failed", message: e?.message || "Unable to save filter preset" });
@@ -390,51 +421,67 @@ export async function VulnListView(params = {}) {
     }
   });
 
-  const controls = createFilterRow({
-    controls: [searchInput, statusSelect, severitySelect, attackComplexitySelect, confidentialitySelect, integritySelect, availabilitySelect, componentEcosystemInput, componentNameInput, componentDepthInput],
+  // Search / status / severity are what triage actually filters on; the CVSS
+  // sub-scores and component lookups are occasional, so they go behind a
+  // disclosure instead of pushing the results below the fold.
+  const controls = createFilterBar({
+    primary: [
+      { label: "Search", control: searchInput },
+      { label: "Status", control: statusSelect },
+      { label: "Severity", control: severitySelect },
+    ],
+    advanced: [
+      { label: "Attack complexity", control: attackComplexitySelect },
+      { label: "Confidentiality impact", control: confidentialitySelect },
+      { label: "Integrity impact", control: integritySelect },
+      { label: "Availability impact", control: availabilitySelect },
+      { label: "Component ecosystem", control: componentEcosystemInput },
+      { label: "Component package", control: componentNameInput },
+      { label: "Max transitive depth", control: componentDepthInput },
+    ],
     actions: [applyBtn, exportFormatSelect, pdfLayoutSelect, exportBtn, savedFiltersSelect, saveCurrentBtn, setDefaultBtn, deleteSavedBtn],
   });
   controls.classList.add("my-12");
 
   let creationCard = null;
   if (writable) {
-    const titleInput = el("input", { class: "input", placeholder: "Title", required: "true" });
-    const cveInput = el("input", { class: "input", placeholder: "CVE-2024-0001" });
+    const titleInput = el("input", { class: "input", placeholder: "Title", required: "true", "aria-label": "Title" });
+    const cveInput = el("input", { class: "input", placeholder: "CVE-2024-0001", "aria-label": "CVE identifier" });
     const severityInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Severity" },
       ...SEVERITY_OPTIONS.map((s) => el("option", { value: s, text: s, selected: s === "Medium" }))
     );
     const attackComplexityInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Attack complexity" },
       ...ATTACK_COMPLEXITY_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const confidentialityInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Confidentiality impact" },
       ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const integrityInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Integrity impact" },
       ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const availabilityInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Availability impact" },
       ...IMPACT_OPTIONS.map((c) => el("option", { value: c, text: c, selected: c === "Not Defined" }))
     );
     const statusInput = el(
       "select",
-      { class: "input" },
+      { class: "input", "aria-label": "Status" },
       ...STATUS_OPTIONS.map((s) => el("option", { value: s, text: s, selected: s === "Open" }))
     );
-    const cvssInput = el("input", { class: "input", type: "number", step: "0.1", min: "0", max: "10", placeholder: "CVSS (optional)" });
-    const publishedInput = el("input", { class: "input", type: "date" });
-    const modifiedInput = el("input", { class: "input", type: "date" });
-    const descInput = el("textarea", { class: "input", placeholder: "Description" });
-    const versionSelect = el("select", { class: "input", multiple: "true", size: "6" });
+    const cvssInput = el("input", { class: "input", type: "number", step: "0.1", min: "0", max: "10", placeholder: "CVSS (optional)", "aria-label": "CVSS base score" });
+    const publishedInput = el("input", { class: "input", type: "date", "aria-label": "Published date" });
+    const modifiedInput = el("input", { class: "input", type: "date", "aria-label": "Last modified date" });
+    const descInput = el("textarea", { class: "input", placeholder: "Description", "aria-label": "Description" });
+    const versionSelect = el("select", { class: "input", multiple: "true", size: "6", "aria-label": "Affected product versions" });
 
     const fillVersions = async () => {
       const options = await ensureProductVersions();
@@ -545,8 +592,10 @@ export async function VulnListView(params = {}) {
       titleInput.focus();
     });
 
-    controls.appendChild(el("div", { class: "spacer" }));
-    controls.appendChild(addBtn);
+    // Header, not the tail of the filter block: this was an outline button
+    // sitting below "Delete saved", which made the page's primary action read
+    // as its least important control.
+    headerActions.appendChild(addBtn);
   }
 
   await refreshSavedFilters();
@@ -576,9 +625,15 @@ export async function VulnListView(params = {}) {
   return el(
     "div",
     { class: "card" },
-    el("h1", { class: "page-title", text: "Vulnerabilities" }),
-    el("p", { class: "muted", text: "Review, triage, and track vulnerability records." }),
+    el("div", { class: "page-header" },
+      el("div", { class: "flex-col" },
+        el("h1", { class: "page-title", text: "Vulnerabilities" }),
+        el("p", { class: "muted", text: "Review, triage, and track vulnerability records." }),
+      ),
+      headerActions,
+    ),
     controls,
+    resultCount,
     writable ? bulkToolbar : null,
     creationCard,
     list,
